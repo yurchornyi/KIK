@@ -7,7 +7,8 @@ const backdrop={file_path:'/wide.jpg',width:3840,height:2160,iso_639_1:null,vote
 function mockTmdb(routes){const calls=[];const fetcher=async(url,init)=>{calls.push({url,init});for(const [part,body] of routes)if(url.includes(part))return typeof body==='number'?new Response('{}',{status:body}):Response.json(body);return new Response('{}',{status:404});};return {fetcher,calls};}
 
 test('identity comes from link, title and year; series links are tv',()=>{
- assert.deepEqual(artworkIdentity({link,title:' Интерстеллар '}),{title:'Интерстеллар',original:'',year:2014,kind:'movie'});
+ assert.deepEqual(artworkIdentity({link,title:' Интерстеллар '}),{title:'Интерстеллар',original:'',year:2014,kind:'movie',aliases:['Интерстеллар']});
+ const alt=artworkIdentity({link:'https://hdrezka.sh/series/thriller/1-sopranos-1999.html',title:'Клан Сопрано / Сопрано',year:'1999-2007'});assert.deepEqual(alt.aliases,['Клан Сопрано','Сопрано']);assert.equal(matchTitle(alt,[{id:1398,name:'Клан Сопрано',first_air_date:'1999-01-10'}]).id,1398);
  assert.equal(artworkIdentity({link:'https://hdrezka.sh/series/drama/1-friends.html',title:'Друзья',year:'1994-2004'}).kind,'tv');
  assert.throws(()=>artworkIdentity({link:'https://evil.example/films/x/1-x.html',title:'X'}));
  assert.throws(()=>artworkIdentity({link,title:''}));
@@ -41,7 +42,7 @@ test('lookup searches, picks images, sends the token only in the header and cach
  const [a,b]=await Promise.all([service.lookup({link,title:'Интерстеллар'},{token:'secret'}),service.lookup({link,title:'Интерстеллар'},{token:'secret'})]);
  assert.equal(a.artwork.id,157336);assert.equal(a.artwork.page,'https://www.themoviedb.org/movie/157336');assert.deepEqual(a,b);
  assert.equal(calls.length,2);
- for(const c of calls){assert.equal(c.init.headers.Authorization,'Bearer secret');assert.ok(!c.url.includes('secret'));}
+ for(const c of calls){assert.equal(c.init.headers.Authorization,'Bearer secret');assert.ok(['follow','manual'].includes(c.init.redirect),'Workers reject other redirect modes');assert.ok(!c.url.includes('secret'));}
  assert.match(calls[0].url,/language=ru-RU/);assert.match(calls[0].url,/year=2014/);
  await service.lookup({link,title:'Интерстеллар'},{token:'secret'});assert.equal(calls.length,2);
 });

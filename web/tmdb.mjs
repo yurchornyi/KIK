@@ -12,12 +12,14 @@ export function artworkIdentity(input){
  const original=typeof input.original==='string'?input.original.trim().slice(0,200):'';
  const year=Number(String(input.year||'').match(/(?:18|19|20)\d{2}/)?.[0]||path.match(/-((?:18|19|20)\d{2})\.html$/)?.[1])||null;
  const kind=input.kind==='tv'||path.startsWith('series/')?'tv':'movie';
- return {title,original,year,kind};
+ // The source joins alternative names with " / " ("Клан Сопрано / Сопрано"); each one is a separate candidate.
+ const aliases=[...new Set(title.split(/\s+\/\s+/).map(x=>x.trim()).filter(Boolean))].slice(0,3);
+ return {title,original,year,kind,aliases};
 }
 
 /** Require a close title and date match; never pick a popular unrelated result. */
 export function matchTitle(identity,results){
- const names=[identity.original,identity.title].filter(Boolean).map(normalize);
+ const names=[identity.original,identity.title,...(identity.aliases||[])].filter(Boolean).map(normalize);
  const ranked=[];
  for(const item of results||[]){
   if(!Number.isSafeInteger(item.id)||item.id<=0||item.adult)continue;
@@ -54,13 +56,14 @@ export function selectImages(images,id,kind){
 export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={}){
  const memory=new Map(),pending=new Map();let blockedUntil=0;
  async function request(path,token,signal){
-  const r=await fetcher(API+path,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal,redirect:'error'});
-  if(!r.ok){if([401,403,429].includes(r.status))blockedUntil=now()+60000;throw Error('Artwork provider unavailable');}
+  // Workers accept only "follow" or "manual"; TMDB never redirects, so a 3xx is treated as a failure below.
+  const r=await fetcher(API+path,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal,redirect:'manual'});
+  if(!r.ok){if([401,403,429].includes(r.status))blockedUntil=now()+60000;console.warn('TMDB request failed',r.status);throw Error('Artwork provider unavailable');}
   return r.json();
  }
  async function resolve(identity,token){
   const signal=AbortSignal.timeout(6500),language=/[ієїґ]/i.test(identity.title)?'uk-UA':/[а-яё]/i.test(identity.title)?'ru-RU':'en-US';
-  const queries=[...new Set([identity.original,identity.title].filter(Boolean))];
+  const queries=[...new Set([identity.original,...(identity.aliases?.length?identity.aliases:[identity.title])].filter(Boolean))].slice(0,3);
   let match=null;
   for(const query of queries){
    const params=new URLSearchParams({query,language,include_adult:'false',page:'1'});
@@ -86,7 +89,7 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
    if(cache)try{const cached=await cache.match(key);if(cached){const value=await cached.json();remember(value,Math.min(value.artwork?7*DAY:DAY/2,60000));return value;}}catch{}
    if(now()<blockedUntil)return {configured:true,artwork:null,retryAfter:60};
    let artwork;
-   try{artwork=await resolve(identity,token);}catch{const value={configured:true,artwork:null,retryAfter:60};remember(value,60000);return value;}
+   try{artwork=await resolve(identity,token);}catch(e){console.warn('TMDB lookup failed',e?.message);const value={configured:true,artwork:null,retryAfter:60};remember(value,60000);return value;}
    const value={configured:true,artwork},ttl=artwork?7*DAY:DAY/2;remember(value,ttl);
    if(cache)try{await cache.put(key,new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json','Cache-Control':`public, max-age=${ttl/1000}`}}));}catch{}
    return value;
