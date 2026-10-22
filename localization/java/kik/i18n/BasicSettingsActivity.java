@@ -2,6 +2,9 @@ package kik.i18n;
 import android.app.*;
 import android.content.*;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.*;
 import android.os.Bundle;
@@ -62,10 +65,21 @@ public final class BasicSettingsActivity extends Activity {
   updateStatus=text(AppUpdater.status(this),14);updateStatus.setTextColor(0xffb5b1be);content.addView(updateStatus,new LinearLayout.LayoutParams(dp(670),-2));space(10);
   Button check=button("Перевірити оновлення");content.addView(check,new LinearLayout.LayoutParams(dp(350),dp(48)));check.setOnClickListener(v->AppUpdater.manual(this));space(8);
   Button permission=button("Дозвіл на встановлення");content.addView(permission,new LinearLayout.LayoutParams(dp(350),dp(48)));permission.setOnClickListener(v->AppUpdater.permission(this));
-  space(18);TextView about=text("KIK • Вбудований плеєр • Українська → російська",14);about.setTextColor(0xffa29daa);content.addView(about);space(10);
+  space(18);TextView about=text("KIK • Вбудований плеєр • Українська → російська",14);about.setTextColor(0xffa29daa);content.addView(about);space(14);
+  LinearLayout author=new LinearLayout(this);author.setOrientation(0);author.setGravity(Gravity.CENTER_VERTICAL);
+  halfCircle=new HalfCircle(this);author.addView(halfCircle,new LinearLayout.LayoutParams(dp(18),dp(18)));
+  TextView name=text("Зроблено Чорним",15);name.setTextColor(0xffd8d6de);name.setLetterSpacing(0.06f);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-2,-2);np.setMargins(dp(10),0,0,0);author.addView(name,np);
+  content.addView(author);space(14);
   Button back=button("Готово");content.addView(back,new LinearLayout.LayoutParams(dp(160),dp(46)));back.setOnClickListener(v->finish());
   if(selectedButton!=null)selectedButton.requestFocus();
  }
+ /** Author mark: a circle with one filled half, turning slowly only while settings are visible. */
+ private static final class HalfCircle extends View {
+  private final Paint line=new Paint(Paint.ANTI_ALIAS_FLAG),fill=new Paint(Paint.ANTI_ALIAS_FLAG);private final RectF box=new RectF();
+  HalfCircle(Context c){super(c);line.setStyle(Paint.Style.STROKE);line.setColor(0xffd8d6de);line.setStrokeWidth(c.getResources().getDisplayMetrics().density);fill.setColor(0xffd8d6de);setLayerType(LAYER_TYPE_HARDWARE,null);}
+  @Override protected void onDraw(Canvas canvas){float s=line.getStrokeWidth();box.set(s,s,getWidth()-s,getHeight()-s);canvas.drawArc(box,-90,180,true,fill);canvas.drawOval(box,line);}
+ }
+ private HalfCircle halfCircle;private android.animation.ObjectAnimator turning;
  private TextView text(String s,int size){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(Color.WHITE);return t;}
  private void space(int size){View v=new View(this);content.addView(v,new LinearLayout.LayoutParams(1,dp(size)));}
  private Button button(String text){return Ui.pill(this,text,false);}
@@ -73,7 +87,7 @@ public final class BasicSettingsActivity extends Activity {
  private GradientDrawable shape(int fill,int stroke){GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(dp(24));d.setStroke(dp(2),stroke);return d;}
  private long clearImages(File root){long n=0;File[] files=root.listFiles();if(files==null)return 0;for(File f:files){String name=f.getName().toLowerCase(java.util.Locale.ROOT);if(f.isDirectory()&&(name.contains("image")||name.contains("coil"))){n+=removeTree(f);} }return n;}
  private long removeTree(File f){long n=f.length();if(f.isDirectory()){File[] a=f.listFiles();if(a!=null)for(File c:a)n+=removeTree(c);}f.delete();return n;}
- @Override protected void onResume(){super.onResume();AppUpdater.listen(updateChanged);updateChanged.run();AppUpdater.resumed(this);}
- @Override protected void onPause(){AppUpdater.paused(this);AppUpdater.unlisten(updateChanged);super.onPause();}
+ @Override protected void onResume(){super.onResume();if(halfCircle!=null){turning=android.animation.ObjectAnimator.ofFloat(halfCircle,"rotation",halfCircle.getRotation(),halfCircle.getRotation()+360);turning.setDuration(6000);turning.setRepeatCount(android.animation.ValueAnimator.INFINITE);turning.setInterpolator(new android.view.animation.LinearInterpolator());turning.start();}AppUpdater.listen(updateChanged);updateChanged.run();AppUpdater.resumed(this);}
+ @Override protected void onPause(){if(turning!=null){turning.cancel();turning=null;}AppUpdater.paused(this);AppUpdater.unlisten(updateChanged);super.onPause();}
  @Override protected void onDestroy(){UiRuntime.settingsOpen=false;super.onDestroy();}
 }
