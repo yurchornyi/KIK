@@ -13,7 +13,7 @@ import java.util.*;
 public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
- private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private ImageView backdrop;
+ private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private TextView forget;private ImageView backdrop;
  private LinearLayout body,voices,seasons,episodes;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
@@ -43,6 +43,7 @@ public final class FilmActivity extends Activity {
   voiceChip=Ui.chip(this,"Озвучка");LinearLayout.LayoutParams lv=new LinearLayout.LayoutParams(-2,dp(48));lv.setMargins(dp(12),0,0,0);buttons.addView(voiceChip,lv);voiceChip.setVisibility(View.GONE);
   tasteChip=thumb(false);LinearLayout.LayoutParams tasteLp=new LinearLayout.LayoutParams(dp(56),dp(48));tasteLp.setMargins(dp(12),0,0,0);buttons.addView(tasteChip,tasteLp);tasteChip.setOnClickListener(v->rate(1));
   dislikeChip=thumb(true);LinearLayout.LayoutParams dislikeLp=new LinearLayout.LayoutParams(dp(56),dp(48));dislikeLp.setMargins(dp(12),0,0,0);buttons.addView(dislikeChip,dislikeLp);dislikeChip.setOnClickListener(v->rate(-1));paintTaste();
+  forget=Ui.chip(this,"Прибрати з історії");LinearLayout.LayoutParams fl=new LinearLayout.LayoutParams(-2,dp(48));fl.setMargins(dp(12),0,0,0);buttons.addView(forget,fl);forget.setVisibility(View.GONE);forget.setOnClickListener(v->forgetHistory());
   voicesBox=new HorizontalScrollView(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(0,dp(14),0,0);body.addView(status);
   status.setBackground(Ui.states(Ui.shape(0,dp(4),0,0),Ui.shape(Ui.CARD,dp(4),dp(2),Color.WHITE)));status.setOnClickListener(v->{status.setFocusable(false);status.setText("Завантаження…");load();});status.setFocusable(false);
@@ -116,15 +117,22 @@ public final class FilmActivity extends Activity {
    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||gen!=voiceCheck||film!=f||got==null)return;voice=got;buildVoices();
 });});
  }
+ /** Is there a free voice in this language, and (for a series, once known) one that has the selected season? */
+ private boolean offered(String l){
+  for(Site.Voice x:film.voices){if(x.premium||!PlaybackPolicy.lang(x.name).equals(l))continue;if(!film.series||season==null)return true;
+   List<Site.Episode> eps;synchronized(film.coverage){eps=film.coverage.get(x.id);}if(eps==null)return true;for(Site.Episode e:eps)if(season.equals(e.season))return true;}
+  return false;
+ }
  private void buildVoices(){
   voices.removeAllViews();
-  // Languages, not studios: each choice plays the best free studio of that language (the list is already ordered best first).
-  List<String> names=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)names.add(v.name);List<String> langs=PlaybackPolicy.langs(names);
-  voiceChip.setVisibility(langs.size()>1?View.VISIBLE:View.GONE);
+  // Always Ukrainian, Russian, English: a language this title (or season) does not have stays grey. Each one plays its best free studio.
+  boolean free=false;for(Site.Voice v:film.voices)if(!v.premium)free=true;
+  voiceChip.setVisibility(free?View.VISIBLE:View.GONE);
   if(voice!=null)voiceChip.setText(PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)));
-  for(final String l:langs){
-   Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(l)){best=x;break;}final Site.Voice v=best;
+  for(final String l:new String[]{"uk","ru","en"}){
+   Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(l)){best=x;break;}final Site.Voice v=best;boolean on=v!=null&&offered(l);
    TextView c=Ui.chip(this,PlaybackPolicy.label(l));voices.addView(c,Ui.wrap(this,10));Ui.select(c,voice!=null&&PlaybackPolicy.lang(voice.name).equals(l));
+   c.setEnabled(on);c.setFocusable(on);c.setAlpha(on?1f:0.35f);if(!on)continue;
    c.setOnClickListener(x->{voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText(PlaybackPolicy.label(l));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
     if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});});
   }
@@ -155,7 +163,13 @@ public final class FilmActivity extends Activity {
   }
   paintWatch();
  }
+ /** Removes this title from the profile's watch history (every episode); synced profiles drop it too. */
+ private void forgetHistory(){
+  Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+name.getText()+"» зникне з історії та «Продовжити перегляд». Позначки «Подобається» і «Мій список» залишаться.")
+   .setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,link);Ui.toast(this,"Прибрано з історії");paintWatch();if(film!=null&&film.series)showEpisodes();watch.requestFocus();}).show();
+ }
  private void paintWatch(){
+  if(forget!=null)forget.setVisibility(Progress.get(this,link)!=null?View.VISIBLE:View.GONE);
   if(film==null)return;if(film.sourceUrl!=null){watch.setText("Відкрити UASerials ↗");return;}Progress.Entry e=Progress.get(this,link);
   if(e!=null&&!e.finished())watch.setText(film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити з "+Ui.time(e.pos));
   else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");

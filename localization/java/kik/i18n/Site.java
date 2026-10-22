@@ -145,6 +145,8 @@ public final class Site {
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(page(listPath(category,genre,filter,page)));}
  public static List<Card> search(String query,int page)throws IOException{
+  // Ukrainian names come from KIK's own service; ask it while the source search runs instead of after it.
+  FutureTask<List<Card>> ua=null;if(page==1){ua=new FutureTask<List<Card>>(()->FreeSources.cards(query));Thread t=new Thread(ua,"kik-search-ua");t.setDaemon(true);t.start();}
   List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
   // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms, then other names.
   String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
@@ -152,8 +154,9 @@ public final class Site {
   out=new ArrayList<Card>(relevant(query,out));
   // One card per title: a UASerials twin of an HDRezka result replaces it in place with the Ukrainian name.
   if(page==1)try{LinkedHashMap<String,Card> unique=new LinkedHashMap<String,Card>();for(Card c:out)unique.putIfAbsent(Progress.norm(c.link),c);
-   for(Card c:FreeSources.cards(query)){Card old=unique.get(Progress.norm(c.link));if(old!=null){old.title=c.title;if(old.poster==null)old.poster=c.poster;}else unique.put(Progress.norm(c.link),c);}
-   out=new ArrayList<Card>(unique.values());}catch(IOException ignored){}
+   List<Card> extra;try{extra=ua.get(8,TimeUnit.SECONDS);}catch(Exception e){ua.cancel(true);extra=new ArrayList<Card>();}
+   for(Card c:extra){Card old=unique.get(Progress.norm(c.link));if(old!=null){old.title=c.title;if(old.poster==null)old.poster=c.poster;}else unique.put(Progress.norm(c.link),c);}
+   out=new ArrayList<Card>(unique.values());}catch(RuntimeException ignored){}
   return out;
  }
  static String searchForm(String q){return q.toLowerCase(Locale.ROOT).trim().replace("ї","и").replace("і","и").replace("є","е").replace("ґ","г").replace("'","").replace("’","").replace("ʼ","");}

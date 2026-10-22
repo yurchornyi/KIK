@@ -47,7 +47,7 @@ public final class BrowseActivity extends Activity {
    content.addView(query,new LinearLayout.LayoutParams(dp(640),dp(56)));
    final Runnable run=()->reload();
    query.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}
-    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=2)Ui.MAIN.postDelayed(run,500);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setText("Введіть щонайменше 2 символи");status.setVisibility(View.VISIBLE);}}});
+    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setText("Введіть щонайменше 3 літери або натисніть «Пошук»");status.setVisibility(View.VISIBLE);}}});
    query.setOnEditorActionListener((v,a,e)->{Ui.MAIN.removeCallbacks(run);reload();InputMethodManager im=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);im.hideSoftInputFromWindow(v.getWindowToken(),0);return true;});
    Ui.space(content,10);
   }
@@ -127,6 +127,8 @@ public final class BrowseActivity extends Activity {
   for(final G g:items){
    if(openRow==null||inRow>=columns){openRow=new LinearLayout(this);openRow.setOrientation(0);openRow.setClipChildren(false);openRow.setClipToPadding(false);grid.addView(openRow);inRow=0;}
    View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->FilmActivity.open(this,g.link,g.title,g.poster));
+   // History: hold OK on a poster to remove the title from history.
+   if("history".equals(mode)){View target=((ViewGroup)card).getChildAt(0);target.setOnLongClickListener(v->{Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+g.title+"»").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,g.link);Ui.toast(this,"Прибрано з історії");reload();}).show();return true;});}
    cards.put(g,card);openRow.addView(card);inRow++;if(first==null)first=((ViewGroup)card).getChildAt(0);
   }
   return first;
