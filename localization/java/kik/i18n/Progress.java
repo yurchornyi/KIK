@@ -15,7 +15,7 @@ public final class Progress {
  }
  private static File file(Context c,String kind){return file(c,kind,ProfileStore.current(c));}
  private static File file(Context c,String kind,String profile){return new File(c.getFilesDir(),"kik_"+kind+"_"+profile+".json");}
- static String norm(String link){if(link==null)return "";String s=link.replaceFirst("^https?://[^/]+","");while(s.startsWith("/"))s=s.substring(1);return s;}
+ static String norm(String link){if(link==null)return "";String prefix=FreeSources.ua(link)?"uaserials/":"";String s=link.replaceFirst("^https?://[^/]+","");while(s.startsWith("/"))s=s.substring(1);return prefix+s;}
 
  private static synchronized JSONObject all(Context c){return all(c,ProfileStore.current(c));}
  private static synchronized JSONObject all(Context c,String profile){try{return new JSONObject(Site.read(new android.util.AtomicFile(file(c,"progress",profile)).openRead()));}catch(Exception e){return new JSONObject();}}

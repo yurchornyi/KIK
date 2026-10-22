@@ -1,5 +1,7 @@
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
+import {uaCatalogue,uaFilm} from "./uaserials.mjs";
+import {aliases,metadata} from "./metadata.mjs";
 import {catalogue,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
 const artworkService=createArtworkService();
@@ -24,6 +26,9 @@ async function api(request,env,ctx){
   await Promise.all(Array.from({length:4},async()=>{for(let item;(item=queue.shift());)try{const key=titleKey(item.link),r=await artworkService.lookup(item,options);configured&&=r.configured;results[key]=r.artwork;}catch{}}));
   return json({configured,results});
  }
+ if(path==="/api/metadata")return json(await metadata(url.searchParams.get("imdb"),env,url.searchParams.get("kind")||''));
+ if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
+ if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  if(path==="/api/auth/register"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
   const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
@@ -52,9 +57,9 @@ async function api(request,env,ctx){
   const token=await session(db,changed.user_id);return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
  }
  if(path==="/api/catalogue"){
-  const key=new Request(url.origin+path+url.search),cached=await caches.default.match(key);if(cached)return cached;const data=await catalogue(Object.fromEntries(url.searchParams));const r=json({items:data});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
+  const key=new Request(url.origin+path+url.search),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaCatalogue(params):catalogue(params));const r=json({items:data});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
- if(path==="/api/film"){const f=await film(url.searchParams.get("link"));delete f.favs;delete f.origin;return json(f);}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilm(link):await film(link);delete f.favs;delete f.origin;return json(f);}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path==="/api/pair/claim"&&request.method==="POST"){
   const b=await body(request,8192);await owned(db,user,b.profile_id);const code=String(b.code||"").replace(/[\s-]/g,"").toUpperCase();if(!/^[A-Z2-9]{8}$/.test(code))fail("Введіть 8 символів із TV");
@@ -64,7 +69,7 @@ async function api(request,env,ctx){
   const b=await body(request,8192),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");if((await profiles(db,user)).length>=8)fail("Доступно до 8 профілів");const id=crypto.randomUUID();await db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(id,user.id,name,"bear",Date.now()).run();return json({id,name,avatar:"bear"},201);
  }
  if(path==="/api/sync"&&request.method==="POST"){
-  const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:await exchange(db,p.id,b.records||[]),server_time:Date.now()});
+  const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:(await exchange(db,p.id,b.records||[])).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/")),server_time:Date.now()});
  }
  if(path==="/api/episodes"||path==="/api/stream"){
   if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),f=await film(b.link);return json(path.endsWith("episodes")?{episodes:await episodes(f,String(b.voice))}:await stream(f,String(b.voice),String(b.season||""),String(b.episode||"")));

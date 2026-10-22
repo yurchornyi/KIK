@@ -4,3 +4,4 @@
 .player-tools select{min-height:42px;font-size:14px;padding:9px 38px 9px 12px;background-position:right 14px center}
 .hero-art.wide{width:100%;object-position:50% 25%;opacity:.55;mask-image:linear-gradient(90deg,transparent 0,#0008 30%,#000 60%)}.hero-art.contained{width:34%;right:5vw;object-fit:contain;opacity:.9;mask-image:none}.art-in{animation:art-fade .35s ease both}@keyframes art-fade{from{opacity:0}to{opacity:1}}
 @media (max-width:700px){.hero-art.wide{height:70%;opacity:.6;mask-image:linear-gradient(0deg,transparent,#000 45%)}.hero-art.contained{width:60%;right:20%;height:60%;top:4%}}
+.source-metadata{margin-top:22px;padding-top:16px;border-top:1px solid #303035}.metadata-credits{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:#aaa}.metadata-credits a{color:#ccc}.source-badge{display:block;font-size:11px;color:#b7b7bd;margin-top:4px}

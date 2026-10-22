@@ -28,7 +28,7 @@ final class RecommendationRanker {
  static boolean meaningful(long position,long duration){return position>=120_000||(duration>0&&position>=duration*0.1);}
  private static String path(String link){
   if(link==null)return "";
-  try{String path=new URI(link).getPath();return path==null?"":path.replaceAll("^/+|/+$","");}catch(Exception e){return "";}
+  try{URI uri=new URI(link);String path=uri.getPath();return path==null?"":("uaserials.com".equals(uri.getHost())?"uaserials/":"")+path.replaceAll("^/+|/+$","");}catch(Exception e){return "";}
  }
  static String key(String link){String path=path(link);java.util.regex.Matcher id=java.util.regex.Pattern.compile("^(films|series|cartoons|animation)/[^/]+/(\\d+)(?:[-.]|$)").matcher(path);return id.find()?id.group(1)+"/"+id.group(2):path;}
  static String[] parts(String link){

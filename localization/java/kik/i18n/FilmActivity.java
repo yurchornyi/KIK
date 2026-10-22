@@ -13,7 +13,7 @@ import java.util.*;
 public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice;private String season;
- private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip;private Button watch,later;private ImageView backdrop;
+ private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private ImageView backdrop;
  private LinearLayout body,voices,seasons,episodes;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
@@ -35,6 +35,7 @@ public final class FilmActivity extends Activity {
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
   meta=Ui.text(this,"",14,0xffd8d8dc);body.addView(meta);Ui.space(body,12);
   desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(dp(640),-2));
+  sourceInfo=Ui.text(this,"",13,Ui.GREY);sourceInfo.setVisibility(View.GONE);body.addView(sourceInfo);
   Ui.space(body,20);
   LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);buttons.setGravity(Gravity.CENTER_VERTICAL);buttons.setPadding(dp(8),0,dp(8),0);HorizontalScrollView actionsBox=new HorizontalScrollView(this);actionsBox.setHorizontalScrollBarEnabled(false);actionsBox.setClipChildren(false);actionsBox.setClipToPadding(false);actionsBox.setPadding(0,dp(4),0,dp(4));actionsBox.addView(buttons);LinearLayout.LayoutParams actionsLp=new LinearLayout.LayoutParams(-1,-2);actionsLp.setMargins(-dp(8),0,-dp(8),0);body.addView(actionsBox,actionsLp);
   watch=Ui.pill(this,"▶  Дивитися",true);buttons.addView(watch,new LinearLayout.LayoutParams(-2,dp(48)));watch.setEnabled(false);
@@ -48,7 +49,7 @@ public final class FilmActivity extends Activity {
   epHeader=Ui.bold(this,"Серії",20);epHeader.setPadding(0,dp(20),0,dp(8));epHeader.setVisibility(View.GONE);body.addView(epHeader);
   HorizontalScrollView sb=new HorizontalScrollView(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
   HorizontalScrollView eb=new HorizontalScrollView(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
-  watch.setOnClickListener(v->play(null,null));
+  watch.setOnClickListener(v->{if(film!=null&&film.sourceUrl!=null){try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(film.sourceUrl)));}catch(ActivityNotFoundException e){Ui.toast(this,"Відкрийте UASerials на телефоні або комп’ютері");}return;}play(null,null);});
   later.setOnClickListener(v->{boolean on=Progress.toggleLater(this,link,name.getText().toString(),poster,film==null?null:film.year,film==null||film.genres.isEmpty()?null:tr(film.genres.get(0)));paintLater(on);Ui.toast(this,on?"Додано до «Переглянути пізніше»":"Прибрано зі списку");});
   voiceChip.setOnClickListener(v->{boolean show=voicesBox.getVisibility()!=View.VISIBLE;voicesBox.setVisibility(show?View.VISIBLE:View.GONE);if(show&&voices.getChildCount()>0)voices.getChildAt(0).requestFocus();});
   paintLater(Progress.isLater(this,link));
@@ -68,6 +69,7 @@ public final class FilmActivity extends Activity {
     final Map<String,String> cached=TitleTranslate.cached(words);
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,DescTranslate.cached(f.description));});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
+    try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
     Map<String,String> got=TitleTranslate.resolve(words);
     final String d=DescTranslate.tr(f.description);
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
@@ -82,16 +84,16 @@ public final class FilmActivity extends Activity {
   for(View v:new View[]{name,meta,desc}){v.setAlpha(0.3f);v.animate().alpha(1f).setDuration(260).start();}
   pickVoice();buildVoices();
   if(f.series){season=null;Progress.Entry e=Progress.get(this,link);if(e!=null&&e.season!=null&&f.seasons.contains(e.season))season=e.season;if(season==null&&!f.seasons.isEmpty())season=f.seasons.get(0);showEpisodes();}
-  watch.setEnabled(voice!=null);paintWatch();if(voice!=null&&later.hasFocus())watch.requestFocus();
+  watch.setEnabled(voice!=null||f.sourceUrl!=null);paintWatch();if(f.sourceUrl!=null)watch.setText("Відкрити UASerials ↗");if(voice!=null&&later.hasFocus())watch.requestFocus();
   if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(null,null);}
-  if(voice==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
+  if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
  }
  private void showText(Site.Film f,String description){
   name.setText(tr(f.title));original.setText(f.original==null?"":f.original);
   List<String> g=new ArrayList<String>();for(String x:f.genres)g.add(tr(x));
   String country=null;if(f.country!=null){StringBuilder b=new StringBuilder();for(String c:f.country.split(",\\s*")){if(b.length()>0)b.append(", ");b.append(tr(c));}country=b.toString();}
   meta.setMaxLines(2);meta.setEllipsize(TextUtils.TruncateAt.END);meta.setText(Ui.join(f.year,country,TextUtils.join(", ",g.subList(0,Math.min(2,g.size()))),tr(f.duration),f.age,f.rating==null?null:(f.ratingName+" "+f.rating)));
-  desc.setText(description==null?"":description);
+  desc.setText(description==null?"":description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Перегляд на сайті UASerials. Його прогрес не синхронізується з KIK.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
  }
  private void pickVoice(){
   voice=null;Progress.Entry e=Progress.get(this,link);String chosen=Progress.voice(this,link);
@@ -136,7 +138,7 @@ public final class FilmActivity extends Activity {
   paintWatch();
  }
  private void paintWatch(){
-  if(film==null)return;Progress.Entry e=Progress.get(this,link);
+  if(film==null)return;if(film.sourceUrl!=null){watch.setText("Відкрити UASerials ↗");return;}Progress.Entry e=Progress.get(this,link);
   if(e!=null&&!e.finished())watch.setText(film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити з "+Ui.time(e.pos));
   else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");
   else watch.setText("▶  Дивитися");

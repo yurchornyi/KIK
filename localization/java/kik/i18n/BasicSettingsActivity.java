@@ -65,7 +65,8 @@ public final class BasicSettingsActivity extends Activity {
   updateStatus=text(AppUpdater.status(this),14);updateStatus.setTextColor(0xffb5b1be);content.addView(updateStatus,new LinearLayout.LayoutParams(dp(670),-2));space(10);
   Button check=button("Перевірити оновлення");content.addView(check,new LinearLayout.LayoutParams(dp(350),dp(48)));check.setOnClickListener(v->AppUpdater.manual(this));space(8);
   Button permission=button("Дозвіл на встановлення");content.addView(permission,new LinearLayout.LayoutParams(dp(350),dp(48)));permission.setOnClickListener(v->AppUpdater.permission(this));
-  space(18);TextView about=text("KIK • Вбудований плеєр • Українська → російська",14);about.setTextColor(0xffa29daa);content.addView(about);space(14);
+  space(18);TextView about=text("KIK • Вбудований плеєр • Українська → російська",14);about.setTextColor(0xffa29daa);content.addView(about);space(10);
+  Button sources=button("Джерела даних");content.addView(sources,new LinearLayout.LayoutParams(dp(350),dp(46)));sources.setOnClickListener(v->FreeSources.credits(this));space(14);
   LinearLayout author=new LinearLayout(this);author.setOrientation(0);author.setGravity(Gravity.CENTER_VERTICAL);
   halfCircle=new HalfCircle(this);author.addView(halfCircle,new LinearLayout.LayoutParams(dp(18),dp(18)));
   TextView name=text("Зроблено Чорним",15);name.setTextColor(0xffd8d6de);name.setLetterSpacing(0.06f);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-2,-2);np.setMargins(dp(10),0,0,0);author.addView(name,np);

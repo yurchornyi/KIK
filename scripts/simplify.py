@@ -245,5 +245,16 @@ m=re.search(r'<activity [^>]*android:name="rezkatv\.web\.app\.MainActivity"[^>]*
 b2=re.sub(r'\s*<intent-filter>\s*<action android:name="android\.intent\.action\.MAIN"/>\s*<category android:name="android\.intent\.category\.(LEANBACK_)?LAUNCHER"/>\s*</intent-filter>','',block)
 assert block.count('LAUNCHER')==2 and 'LAUNCHER' not in b2
 s=s.replace(block,b2);p.write_text(s);changes.append('manifest:home_is_launcher')
+# Only KIK's own screens: the old HDRezka screen (rezkatv.web.app.MainActivity) is no longer an activity. Its name
+# stays as an alias of the KIK home, so whatever still starts it (the old player's back, series notifications,
+# a recent task) lands in KIK. Opening a title by name from other apps goes to OpenTitleActivity instead, in a task
+# of its own: in KIK's main task Android only brought that task forward and never started it; Back from the film
+# then returns to the app that asked.
+p=D/'AndroidManifest.xml';s=p.read_text()
+m=re.search(r'\s*<activity [^>]*android:name="rezkatv\.web\.app\.MainActivity"[^>]*>.*?</activity>',s,re.S);assert m
+s=s.replace(m[0],'')
+assert 'rezkatv.web.app.MainActivity' not in s and 'kik.i18n.HomeActivity' in s
+s=s.replace('    </application>','    <activity-alias android:name="rezkatv.web.app.MainActivity" android:targetActivity="kik.i18n.HomeActivity" android:exported="false"/>\n    <activity android:name="kik.i18n.OpenTitleActivity" android:exported="true" android:screenOrientation="landscape" android:taskAffinity="rezkatv.web.app.uk.open" android:theme="@android:style/Theme.Material.NoActionBar" android:noHistory="true" android:excludeFromRecents="true"><intent-filter><action android:name="kik.intent.action.OPEN_TITLE"/><category android:name="android.intent.category.DEFAULT"/></intent-filter><intent-filter><action android:name="android.intent.action.SEARCH"/><category android:name="android.intent.category.DEFAULT"/></intent-filter></activity>\n    </application>',1)
+p.write_text(s);changes.append('manifest:old_screen_removed_open_title')
 (ROOT/'localization/simplification-summary.json').write_text(json.dumps({'version':release['version_name'],'patches':changes,'trailers':'removed','rating':'IMDb then HDRezka then Kinopoisk; one badge','genres':2,'quality_default':'1080p','player':'internal','updates':'KIK GitHub Releases; upstream disabled','descriptions':'machine-translated to Ukrainian, cached','profiles':'local, separate history and resume'},indent=2))
 print('Simplification overlay:',len(changes),'patches')

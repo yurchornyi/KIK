@@ -28,7 +28,7 @@ public final class Site {
  public static final class Voice{public String id,name;public boolean premium,camrip,ads,director;}
  public static final class Episode{public String season,episode,title;}
  public static final class Film{
-  public String link,id,title,original,poster,description,year,country,duration,age,favs,rating,ratingName,origin;
+  public String link,id,title,original,poster,description,year,country,duration,age,favs,rating,ratingName,origin,imdb,sourceUrl,nextEpisode,metadataCredit;
   public boolean series;public List<String> genres=new ArrayList<String>();
   public List<String> people=new ArrayList<String>();
   public List<Voice> voices=new ArrayList<Voice>();public List<Card> related=new ArrayList<Card>();public String defaultVoice,defaultVoiceName;public boolean defaultCamrip,defaultAds,defaultDirector;
@@ -143,10 +143,13 @@ public final class Site {
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(page(listPath(category,genre,filter,page)));}
  public static List<Card> search(String query,int page)throws IOException{
-  List<Card> out=cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:"")));
-  // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms.
-  String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))out=cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:"")));
-  return relevant(query,out);
+  List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
+  // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms, then other names.
+  String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
+  if(page==1&&out.isEmpty())for(String alias:FreeSources.aliases(query)){try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8"))));}catch(IOException ignored){}if(!out.isEmpty())break;}
+  out=new ArrayList<Card>(relevant(query,out));
+  if(page==1)try{out.addAll(FreeSources.cards(query));}catch(IOException ignored){}
+  return out;
  }
  static String searchForm(String q){return q.toLowerCase(Locale.ROOT).trim().replace("ї","и").replace("і","и").replace("є","е").replace("ґ","г").replace("'","").replace("’","").replace("ʼ","");}
  private static String fold(String s){return searchForm(s==null?"":s).replace("ё","е").replace("ы","и").replace("э","е").replaceAll("[^\\p{L}\\p{N}]+"," ").trim();}
@@ -174,6 +177,7 @@ public final class Site {
  private static final Map<String,FutureTask<FilmPage>> FILM_PENDING=new HashMap<String,FutureTask<FilmPage>>();
  public static Film film(String link)throws IOException{return film(link,false);}
  private static Film film(String link,boolean force)throws IOException{
+  if(FreeSources.ua(link))return FreeSources.film(link);
   String key=Progress.norm(link);FilmPage cached;FutureTask<FilmPage> task;boolean owner=false;
   synchronized(FILM_PAGES){
    cached=force?null:FILM_PAGES.get(key);
@@ -193,7 +197,7 @@ public final class Site {
  }
  /** Kept independent of transport so catalogue markup changes can be regression-checked locally. */
  static Film parseFilm(String link,String h){
-  Film f=new Film();f.link=link;
+  Film f=new Film();f.link=link;f.imdb=find(h,"imdb\\.com/title/(tt[0-9]+)");
   f.title=text(find(h,"<h1[^>]*>(.*?)</h1>"));
   f.original=text(find(h,"<div class=\"b-post__origtitle\"[^>]*>(.*?)</div>"));
   f.poster=find(h,"<div class=\"b-sidecover\">\\s*<a href=\"([^\"]+)\"");
