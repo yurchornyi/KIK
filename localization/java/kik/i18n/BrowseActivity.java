@@ -19,7 +19,7 @@ public final class BrowseActivity extends Activity {
  private String mode,category,genre,filter="last";private int page=0;private boolean loading,end;
  /** The search came with a name already (OpenTitleActivity): results take focus, no keyboard over them. */
  private boolean handedOver;
- private LinearLayout grid,genres;private ScrollView scroll;private TextView status;private EditText query;
+ private LinearLayout grid,genres,idle;private ScrollView scroll;private TextView status;private EditText query;
  private final List<TextView> filterChips=new ArrayList<TextView>();private int generation;
  private final Map<G,View> cards=new IdentityHashMap<G,View>();
  private LinearLayout openRow;private int inRow;
@@ -41,15 +41,17 @@ public final class BrowseActivity extends Activity {
   Ui.enter(head,0);
   Ui.space(content,14);
   if("search".equals(mode)){
-   query=new EditText(this);query.setSingleLine(true);query.setHint("Назва фільму або серіалу");query.setHintTextColor(0xff8a8592);query.setTextColor(Color.WHITE);query.setTextSize(20);
-   query.setPadding(dp(18),0,dp(18),0);query.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-   query.setBackground(Ui.states(Ui.shape(0xff1f1f23,dp(8),dp(2),0xff2e2e33),Ui.shape(0xff1f1f23,dp(8),dp(2),Ui.RED)));
-   content.addView(query,new LinearLayout.LayoutParams(dp(640),dp(56)));
+   query=new EditText(this);query.setSingleLine(true);query.setHint("Назва фільму або серіалу");query.setHintTextColor(0xff8a8592);query.setTextColor(Color.WHITE);query.setTextSize(21);
+   query.setPadding(dp(22),0,dp(22),0);query.setImeOptions(EditorInfo.IME_ACTION_SEARCH);query.setCompoundDrawablePadding(dp(14));
+   android.graphics.drawable.Drawable lens=new LensIcon(dp(22));lens.setBounds(0,0,dp(22),dp(22));query.setCompoundDrawables(lens,null,null,null);
+   query.setBackground(Ui.states(Ui.shape(0xff1f1f23,dp(30),dp(2),0xff2e2e33),Ui.shape(0xff26262b,dp(30),dp(2),Ui.RED)));
+   LinearLayout.LayoutParams ql=new LinearLayout.LayoutParams(dp(760),dp(60));ql.setMargins(dp(4),dp(6),0,0);content.addView(query,ql);
    final Runnable run=()->reload();
    query.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}
-    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setText("Введіть щонайменше 3 літери або натисніть «Пошук»");status.setVisibility(View.VISIBLE);}}});
-   query.setOnEditorActionListener((v,a,e)->{Ui.MAIN.removeCallbacks(run);reload();InputMethodManager im=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);im.hideSoftInputFromWindow(v.getWindowToken(),0);return true;});
+    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setVisibility(View.GONE);showIdle(true);}}});
+   query.setOnEditorActionListener((v,a,e)->{Ui.MAIN.removeCallbacks(run);remember(query.getText().toString());reload();InputMethodManager im=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);im.hideSoftInputFromWindow(v.getWindowToken(),0);return true;});
    Ui.space(content,10);
+   idle=new LinearLayout(this);idle.setOrientation(1);idle.setClipChildren(false);idle.setClipToPadding(false);content.addView(idle);
   }
   if("catalog".equals(mode)){
    LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(filters);
@@ -66,7 +68,7 @@ public final class BrowseActivity extends Activity {
   status.setBackground(Ui.states(Ui.shape(0,dp(5),0,0),Ui.shape(0xff333337,dp(5),dp(2),Color.WHITE)));status.setOnClickListener(v->reload());status.setFocusable(false);
   grid=new LinearLayout(this);grid.setOrientation(1);grid.setClipChildren(false);grid.setClipToPadding(false);content.addView(grid);
   scroll.getViewTreeObserver().addOnScrollChangedListener(()->{if(!loading&&!end&&("catalog".equals(mode)||"search".equals(mode))){View last=grid.getChildAt(grid.getChildCount()-1);if(last!=null&&last.getBottom()-scroll.getScrollY()<scroll.getHeight()*2)more();}});
-  if("search".equals(mode)){status.setText("Почніть вводити назву");query.requestFocus();
+  if("search".equals(mode)){status.setVisibility(View.GONE);showIdle(true);query.requestFocus();
    // A name handed over (OpenTitleActivity found no sure match): typed in already, results load at once.
    String given=getIntent().getStringExtra(QUERY);if(given!=null&&given.trim().length()>=2){handedOver=true;getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);query.setText(given.trim());query.setSelection(query.length());query.clearFocus();}}
   else reload();
@@ -87,7 +89,34 @@ public final class BrowseActivity extends Activity {
  }
  private void paintGenres(){for(int i=0;i<genres.getChildCount();i++){TextView c=(TextView)genres.getChildAt(i);Ui.select(c,genre==null?c.getTag()==null:genre.equals(c.getTag()));}}
 
- private void reload(){cards.clear();generation++;page=0;end=false;loading=false;grid.removeAllViews();openRow=null;inRow=0;status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);more();}
+ /** Recent searches of this profile, newest first. */
+ private SharedPreferences searches(){return getSharedPreferences("kik_search_"+ProfileStore.current(this),0);}
+ private List<String> recent(){List<String> out=new ArrayList<String>();try{JSONArray a=new JSONArray(searches().getString("recent","[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(Exception ignored){}return out;}
+ private void remember(String q){q=q==null?"":q.trim();if(q.length()<2)return;List<String> list=recent();for(Iterator<String> it=list.iterator();it.hasNext();)if(it.next().equalsIgnoreCase(q))it.remove();list.add(0,q);JSONArray a=new JSONArray();for(int i=0;i<Math.min(8,list.size());i++)a.put(list.get(i));searches().edit().putString("recent",a.toString()).apply();}
+ /** Empty search: recent searches and recommendations instead of a blank screen. */
+ private void showIdle(boolean on){
+  if(idle==null)return;idle.setVisibility(on?View.VISIBLE:View.GONE);if(!on||idle.getChildCount()>0)return;
+  List<String> list=recent();
+  if(!list.isEmpty()){
+   TextView h=Ui.bold(this,"Останні пошуки",20);h.setPadding(dp(4),dp(18),0,dp(10));idle.addView(h);
+   LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);row.setPadding(dp(4),dp(4),dp(4),dp(4));HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.addView(row);idle.addView(hs);
+   for(final String q:list){TextView c=Ui.chip(this,q);row.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{query.setText(q);query.setSelection(query.length());remember(q);reload();});}
+   TextView clear=Ui.chip(this,"Очистити");clear.setAlpha(0.7f);row.addView(clear,Ui.wrap(this,10));clear.setOnClickListener(v->{searches().edit().clear().apply();idle.removeAllViews();showIdle(true);query.requestFocus();});
+  }
+  final TextView h=Ui.bold(this,"Рекомендовано для вас",20);h.setPadding(dp(4),dp(22),0,dp(10));h.setVisibility(View.GONE);idle.addView(h);
+  final LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);row.setPadding(dp(4),dp(4),dp(4),dp(12));HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.addView(row);idle.addView(hs);
+  final String profile=ProfileStore.current(this);
+  Ui.bg(()->{
+   List<G> items=new ArrayList<G>();String[] heading={"Рекомендовано для вас"};
+   try{Recommendations.Snapshot s=Recommendations.snapshot(this,profile);HomeActivity.Row r=Recommendations.row(this,s,new ArrayList<HomeActivity.Row>());if(!"Рекомендовано для вас".equals(r.title))heading[0]=r.title;for(HomeActivity.Item x:r.items){if(x==null)continue;G g=new G();g.link=x.link;g.title=x.title;g.poster=x.poster;g.year=x.year;g.genre=x.genre;g.sub=Ui.join(g.year,g.genre);items.add(g);if(items.size()>=12)break;}}catch(Exception ignored){}
+   if(items.isEmpty())try{heading[0]="Популярне зараз";for(Site.Card c:Site.list("",null,"popular",1)){items.add(of(c));if(items.size()>=12)break;}}catch(Exception ignored){}
+   Set<String> words=new HashSet<String>();for(G g:items){words.add(g.title);if(g.genre!=null)words.add(g.genre);}Map<String,String> uk=TitleTranslate.cached(words);
+   for(G g:items){String t=uk.get(g.title);if(t!=null)g.title=t;if(g.genre!=null){String gn=uk.get(g.genre);if(gn!=null)g.sub=Ui.join(g.year,gn);}}
+   Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||items.isEmpty())return;h.setText(heading[0]);h.setVisibility(View.VISIBLE);
+    for(final G g:items){View card=Ui.card(this,g.title,g.sub,g.poster,null,0,null,()->FilmActivity.open(this,g.link,g.title,g.poster));row.addView(card);}});
+  });
+ }
+ private void reload(){if(idle!=null)showIdle(false);cards.clear();generation++;page=0;end=false;loading=false;grid.removeAllViews();openRow=null;inRow=0;status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);more();}
  private void more(){
   if(loading||end)return;loading=true;final int gen=generation;final int next=page+1;
   final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
@@ -126,7 +155,7 @@ public final class BrowseActivity extends Activity {
   View first=null;
   for(final G g:items){
    if(openRow==null||inRow>=columns){openRow=new LinearLayout(this);openRow.setOrientation(0);openRow.setClipChildren(false);openRow.setClipToPadding(false);grid.addView(openRow);inRow=0;}
-   View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->FilmActivity.open(this,g.link,g.title,g.poster));
+   View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->{if(query!=null)remember(query.getText().toString());FilmActivity.open(this,g.link,g.title,g.poster);});
    // History: hold OK on a poster to remove the title from history.
    if("history".equals(mode)){View target=((ViewGroup)card).getChildAt(0);target.setOnLongClickListener(v->{Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+g.title+"»").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,g.link);Ui.toast(this,"Прибрано з історії");reload();}).show();return true;});}
    cards.put(g,card);openRow.addView(card);inRow++;if(first==null)first=((ViewGroup)card).getChildAt(0);
@@ -135,4 +164,12 @@ public final class BrowseActivity extends Activity {
  }
  @Override public void onBackPressed(){finish();overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
  @Override protected void onDestroy(){generation++;super.onDestroy();}
+ /** Magnifier for the search field, drawn in the hint colour. */
+ private static final class LensIcon extends android.graphics.drawable.Drawable {
+  private final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);private final int size;
+  LensIcon(int size){this.size=size;p.setStyle(android.graphics.Paint.Style.STROKE);p.setStrokeWidth(size/9f);p.setStrokeCap(android.graphics.Paint.Cap.ROUND);p.setColor(0xff8a8592);}
+  @Override public void draw(android.graphics.Canvas c){float r=size*0.32f,cx=size*0.42f,cy=size*0.42f;c.drawCircle(cx,cy,r,p);c.drawLine(cx+r*0.72f,cy+r*0.72f,size*0.92f,size*0.92f,p);}
+  @Override public int getIntrinsicWidth(){return size;}@Override public int getIntrinsicHeight(){return size;}
+  @Override public void setAlpha(int a){p.setAlpha(a);}@Override public void setColorFilter(android.graphics.ColorFilter f){p.setColorFilter(f);}@Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
+ }
 }
