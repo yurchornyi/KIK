@@ -94,9 +94,10 @@ public final class FilmActivity extends Activity {
   desc.setText(description==null?"":description);
  }
  private void pickVoice(){
-  voice=null;Progress.Entry e=Progress.get(this,link);
-  if(e!=null&&e.voice!=null)for(Site.Voice v:film.voices)if(v.id.equals(e.voice)&&!v.premium)voice=v;
-  if(voice==null){int best=Integer.MAX_VALUE;for(Site.Voice v:film.voices){if(v.premium)continue;int r=PlaybackPolicy.rank(v.name);if(r==Integer.MAX_VALUE)r=5000;if(r<best){best=r;voice=v;}}}
+  voice=null;Progress.Entry e=Progress.get(this,link);String chosen=Progress.voice(this,link);
+  if(chosen!=null)for(Site.Voice v:film.voices)if(v.id.equals(chosen)&&!v.premium)voice=v;
+  if(voice==null&&e!=null&&e.voice!=null)for(Site.Voice v:film.voices)if(v.id.equals(e.voice)&&!v.premium)voice=v;
+  if(voice==null){int best=Integer.MAX_VALUE;for(Site.Voice v:film.voices){if(v.premium)continue;int r=PlaybackPolicy.order(v.name,v.camrip,v.ads);if(r<best){best=r;voice=v;}}}
   if(voice==null&&film.defaultVoice!=null)for(Site.Voice v:film.voices)if(v.id.equals(film.defaultVoice)&&!v.premium)voice=v;
  }
  private void buildVoices(){
@@ -105,7 +106,7 @@ public final class FilmActivity extends Activity {
   if(voice!=null)voiceChip.setText("Озвучка: "+Ua.t(voice.name));
   for(final Site.Voice v:film.voices){
    TextView c=Ui.chip(this,Ua.t(v.name)+(v.premium?"  ★":""));c.setEnabled(!v.premium);c.setAlpha(v.premium?0.45f:1f);voices.addView(c,Ui.wrap(this,10));Ui.select(c,v==voice);
-   c.setOnClickListener(x->{voice=v;for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText("Озвучка: "+Ua.t(v.name));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
+   c.setOnClickListener(x->{voice=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText("Озвучка: "+Ua.t(v.name));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
     if(film.series)Ui.bg(()->{try{Site.episodesFor(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});});
   }
  }

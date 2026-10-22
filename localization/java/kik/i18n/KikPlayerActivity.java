@@ -91,7 +91,7 @@ public final class KikPlayerActivity extends Activity {
  }
  private String pickQuality(Site.Stream s){
   String want=getSharedPreferences("settings",0).getString("default_quality","1080p");int target=num(want);String best=null;int bestN=-1;
-  for(String q:s.qualities.keySet()){if(q.equals(want))return q;int n=num(q);if(n<=target&&n>bestN){best=q;bestN=n;}}
+  for(String q:s.qualities.keySet()){if(q.equals(want))return q;int n=num(q);if(n<=target+1&&n>bestN){best=q;bestN=n;}}
   if(best==null)for(String q:s.qualities.keySet())best=q;return best;
  }
  private static int num(String q){Matcher m=Pattern.compile("(\\d+)").matcher(q==null?"":q);int n=m.find()?Integer.parseInt(m.group(1)):0;if(q!=null&&q.toLowerCase(Locale.ROOT).contains("ultra"))n+=1;if(q!=null&&(q.contains("2K")||q.contains("2k")))n=1440;if(q!=null&&(q.contains("4K")||q.contains("4k")))n=2160;return n;}
@@ -158,7 +158,7 @@ public final class KikPlayerActivity extends Activity {
  private void closeMenu(){menu=null;options.setVisibility(View.GONE);paint();}
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  for(final Site.Voice v:film.voices){if(v.premium)continue;if(v==voice)sel=l.size();l.add(Ua.t(v.name));a.add(()->{if(v==voice)return;save();voice=v;start(false,true);});}
+  for(final Site.Voice v:film.voices){if(v.premium)continue;if(v==voice)sel=l.size();l.add(Ua.t(v.name));a.add(()->{if(v==voice)return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
  }
  private void openQualities(){

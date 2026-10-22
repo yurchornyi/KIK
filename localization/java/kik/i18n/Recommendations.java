@@ -32,7 +32,7 @@ final class Recommendations {
   }
   JSONArray saved=Progress.later(c,profile);count=0;
   for(int i=0;i<saved.length();i++){JSONObject o=saved.optJSONObject(i);if(o==null)continue;String link=o.optString("link","");s.excluded.add(link);if(count++<20&&!rated.contains(RecommendationRanker.key(link))){s.signals.add(new RecommendationRanker.Signal(link,o.optString("genre",null),2));s.titles.put(RecommendationRanker.key(link),o.optString("title"));}}
-  StringBuilder stamp=new StringBuilder("v2|");for(RecommendationRanker.Signal x:s.signals)stamp.append(RecommendationRanker.key(x.link)).append(':').append(x.genre).append(':').append(x.weight).append('|');s.fingerprint=stamp.toString();
+  StringBuilder stamp=new StringBuilder("v3|"+CountryFilter.signature()+"|");for(RecommendationRanker.Signal x:s.signals)stamp.append(RecommendationRanker.key(x.link)).append(':').append(x.genre).append(':').append(x.weight).append('|');s.fingerprint=stamp.toString();
   return s;
  }
  private static SharedPreferences prefs(Context c,String profile){return c.getSharedPreferences("kik_recommendations_"+profile,0);}
@@ -45,11 +45,13 @@ final class Recommendations {
   Map<String,HomeActivity.Item> items=new LinkedHashMap<String,HomeActivity.Item>();
   for(HomeActivity.Item x:cached(c,s))items.put(RecommendationRanker.key(x.link),x);
   for(HomeActivity.Row row:catalogue)for(HomeActivity.Item x:row.items)items.putIfAbsent(RecommendationRanker.key(x.link),x);
+  for(RecommendationRanker.Signal signal:s.signals)if(signal.weight>0)for(HomeActivity.Item x:RecommendationMetadata.related(c,signal.link))items.putIfAbsent(RecommendationRanker.key(x.link),x);
   return items;
  }
  private static List<RecommendationRanker.Candidate> pool(Context c,Snapshot s,Map<String,HomeActivity.Item> items){
   for(RecommendationRanker.Signal signal:s.signals)signal.document=RecommendationMetadata.get(c,signal.link);
-  List<RecommendationRanker.Candidate> pool=new ArrayList<RecommendationRanker.Candidate>();for(HomeActivity.Item x:items.values()){RecommendationRanker.Candidate candidate=new RecommendationRanker.Candidate(x.link,x.genre);candidate.document=RecommendationMetadata.get(c,x.link);if(candidate.document==null){candidate.document=new ContentSimilarity.Document();candidate.document.title=x.title==null?"":x.title;}candidate.impressions=s.exposures.getOrDefault(RecommendationRanker.key(x.link),0);pool.add(candidate);}return pool;
+  Map<String,Double> related=new HashMap<String,Double>();for(RecommendationRanker.Signal signal:s.signals)for(HomeActivity.Item x:RecommendationMetadata.related(c,signal.link))related.merge(RecommendationRanker.key(x.link),signal.weight,Double::sum);
+  List<RecommendationRanker.Candidate> pool=new ArrayList<RecommendationRanker.Candidate>();for(HomeActivity.Item x:items.values()){ContentSimilarity.Document facts=RecommendationMetadata.get(c,x.link);if(facts!=null&&CountryFilter.blocked(facts.country))continue;RecommendationRanker.Candidate candidate=new RecommendationRanker.Candidate(x.link,x.genre);candidate.document=RecommendationMetadata.get(c,x.link);if(candidate.document==null){candidate.document=new ContentSimilarity.Document();candidate.document.title=x.title==null?"":x.title;}candidate.impressions=s.exposures.getOrDefault(RecommendationRanker.key(x.link),0);candidate.related=related.getOrDefault(RecommendationRanker.key(x.link),0d);pool.add(candidate);}return pool;
  }
  static HomeActivity.Row row(Context c,Snapshot s,List<HomeActivity.Row> catalogue){
   Map<String,HomeActivity.Item> items=items(c,s,catalogue);List<RecommendationRanker.Candidate> pool=pool(c,s,items);
@@ -66,8 +68,9 @@ final class Recommendations {
   for(RecommendationRanker.Signal seed:seeds){
    String[] category=RecommendationRanker.parts(seed.link);String group=category[0]+"/"+category[1];if(!represented.add(group))continue;
    HomeActivity.Row reason=new HomeActivity.Row((seed.weight>=6?"Тому що вам подобається «":"Тому що ви дивилися «")+s.titles.get(RecommendationRanker.key(seed.link))+"»");reason.recommendationId=RecommendationRanker.key(seed.link);
+   Set<String> seeAlso=new HashSet<String>();for(HomeActivity.Item x:RecommendationMetadata.related(c,seed.link))seeAlso.add(RecommendationRanker.key(x.link));
    List<RecommendationRanker.Signal> context=new ArrayList<RecommendationRanker.Signal>();context.add(seed);for(RecommendationRanker.Signal x:s.signals)if(x.weight<0)context.add(x);
-   for(RecommendationRanker.Candidate x:RecommendationRanker.rank(s.profile,context,excluded,pool,30)){if(index.similarity(x.link,x.genre,x.document,seed.link,seed.genre,seed.document)<0.25)continue;reason.items.add(items.get(RecommendationRanker.key(x.link)));if(reason.items.size()>=8)break;}
+   for(RecommendationRanker.Candidate x:RecommendationRanker.rank(s.profile,context,excluded,pool,30)){if(!seeAlso.contains(x.key)&&index.similarity(x.link,x.genre,x.document,seed.link,seed.genre,seed.document)<0.25)continue;reason.items.add(items.get(RecommendationRanker.key(x.link)));if(reason.items.size()>=8)break;}
    if(reason.items.size()>=3){rows.add(reason);for(HomeActivity.Item x:reason.items)excluded.add(x.link);if(++count==2)break;}
   }return rows;
  }
@@ -75,7 +78,7 @@ final class Recommendations {
   if(catalogue.isEmpty()||!WARMING.compareAndSet(false,true))return;
   ExecutorService workers=Executors.newFixedThreadPool(2);
   try{
-   LinkedHashSet<String> links=new LinkedHashSet<String>();for(RecommendationRanker.Signal x:s.signals)if(RecommendationMetadata.needs(c,x.link)){links.add(x.link);if(links.size()>=4)break;}
+   LinkedHashSet<String> links=new LinkedHashSet<String>();for(RecommendationRanker.Signal x:s.signals)if(x.weight>0?RecommendationMetadata.needsRelated(c,x.link):RecommendationMetadata.needs(c,x.link)){links.add(x.link);if(links.size()>=4)break;}
    HomeActivity.Row top=row(c,s,catalogue);int candidates=0;for(HomeActivity.Item x:top.items)if(RecommendationMetadata.needs(c,x.link)){links.add(x.link);if(++candidates>=2||links.size()>=8)break;}
    // Explore beyond the current top row so known titles cannot permanently crowd out unseen ones.
    List<HomeActivity.Item> exploration=new ArrayList<HomeActivity.Item>(items(c,s,catalogue).values());Collections.shuffle(exploration,new Random(Objects.hash(s.profile,System.currentTimeMillis()/86_400_000L)));

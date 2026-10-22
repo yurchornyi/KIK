@@ -1,4 +1,5 @@
 package kik.i18n;
+import java.util.*;
 
 /** Regression checks for the markup variants observed during projector testing. */
 public final class CatalogueCheck {
@@ -26,7 +27,19 @@ public final class CatalogueCheck {
   require(linked.seasons.size()==2&&linked.episodes.size()==2,"Linked seasons and episodes");
   Site.Film people=Site.parseFilm("/films/drama/test.html","<table class=\"b-post__info\"><tr><td class=\"l\"><h2>Режиссер</h2>:</td><td><a href=\"/person/1\">Director One</a></td></tr><tr><td colspan=\"2\"><span itemprop=\"actor\" itemscope><a><span itemprop=\"name\">Actor One</span></a></span><span itemprop=\"actor\" itemscope><a><span itemprop=\"name\">Actor Two</span></a></span></td></tr></table>");
   require(people.people.contains("Director One")&&people.people.contains("Actor One")&&people.people.contains("Actor Two"),"Director and colspan actor metadata");
-  System.out.println("Catalogue checks passed: 9");
+  String card="<div class=\"b-content__inline_item\" data-id=\"%s\" data-url=\"https://mirror.example/films/fiction/%s-x.html\"> <div class=\"b-content__inline_item-link\"> <a href=\"#\">%s</a> <div class=\"misc\">2014, США, Фантастика</div></div></div>";
+  Site.Film related=Site.parseFilm("https://hdrezka.sh/films/fiction/1-x.html","<h1>X</h1><ul id=\"translators-list\"><li title=\"Оригинал (+субтитры)\" data-translator_id=\"1\">o</li><li title=\"Дубляж\" data-translator_id=\"2\">d</li><li title=\"Украинский многоголосый \" data-translator_id=\"3\">u <img alt=\"Украинский\"></li></ul><div class=\"b-sidelist\">"+String.format(card,"5","5","Солярис")+String.format(card,"1","1","X")+"</div>");
+  if(!"3".equals(related.voices.get(0).id)||!"2".equals(related.voices.get(1).id)||!"1".equals(related.voices.get(2).id))throw new AssertionError("Voices ordered Ukrainian, Russian, original");
+  if(related.related.size()!=1||!related.related.get(0).link.startsWith("https://hdrezka.sh/")||!"2014, США, Фантастика".equals(related.related.get(0).info))throw new AssertionError("See-also titles parsed on a trusted host without the film itself");
+  List<Site.Card> found=new ArrayList<Site.Card>();for(String t:new String[]{"Мир Гарри Поттера","Гарри Поттер и Тайная комната","Гарри Поттер"}){Site.Card c=new Site.Card();c.title=t;c.info="2001, США";found.add(c);}
+  List<Site.Card> ranked=Site.relevant("гаррі поттер",found);
+  if(!"Гарри Поттер".equals(ranked.get(0).title)||!"Мир Гарри Поттера".equals(ranked.get(2).title))throw new AssertionError("Search relevance: exact, prefix, then other matches");
+  if(!"гарри поттер".equals(Site.searchForm("Гаррі Поттер")))throw new AssertionError("Ukrainian letters fallback");
+  String page=String.format(card,"7","7","Брат")+String.format(card,"8","8","Interstellar");page=page.replaceFirst("2014, США","1997, Россия");
+  List<Site.Card> visible=Site.cards(page);
+  if(visible.size()!=1||!"Interstellar".equals(visible.get(0).title)||Site.lastRaw()!=2)throw new AssertionError("Default filter hides Russian titles but keeps paging info");
+  if(!CountryFilter.blocked("СССР, Казахстан")||CountryFilter.blocked("Украина, США")||CountryFilter.blocked("Россия",new HashSet<String>()))throw new AssertionError("Country matching");
+  System.out.println("Catalogue checks passed: 15");
  }
  private static void require(boolean ok,String message){if(!ok)throw new AssertionError(message);}
 }

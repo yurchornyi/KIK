@@ -31,7 +31,7 @@ public final class Site {
   public String link,id,title,original,poster,description,year,country,duration,age,favs,rating,ratingName,origin;
   public boolean series;public List<String> genres=new ArrayList<String>();
   public List<String> people=new ArrayList<String>();
-  public List<Voice> voices=new ArrayList<Voice>();public String defaultVoice,defaultVoiceName;public boolean defaultCamrip,defaultAds,defaultDirector;
+  public List<Voice> voices=new ArrayList<Voice>();public List<Card> related=new ArrayList<Card>();public String defaultVoice,defaultVoiceName;public boolean defaultCamrip,defaultAds,defaultDirector;
   public List<String> seasons=new ArrayList<String>();public List<Episode> episodes=new ArrayList<Episode>();
  }
  public static final class Stream{public LinkedHashMap<String,String> qualities=new LinkedHashMap<String,String>();public String subtitles;public List<String[]> subtitleList=new ArrayList<String[]>();}
@@ -124,22 +124,42 @@ public final class Site {
  }
  public static List<Card> cards(String html){
   List<Card> out=new ArrayList<Card>();
-  String[] chunks=html.split("<div class=\"b-content__inline_item\"");
+  String[] chunks=html.split("<div class=\"b-content__inline_item\"");int raw=0;
   for(int i=1;i<chunks.length;i++){
    String b=chunks[i];String link=find(b,"^[^>]*data-url=\"([^\"]+)\"");if(link==null)continue;
    b=b.replaceAll("(?s)<!--.*?-->","");
    Card c=new Card();c.link=link;
    c.poster=find(b,"<img src=\"([^\"]+)\"");
    c.title=text(find(b,"b-content__inline_item-link\">\\s*<a[^>]*>(.*?)</a>"));
-   c.info=text(find(b,"b-content__inline_item-link\">\\s*<a[^>]*>.*?</a>\\s*<div>(.*?)</div>"));
+   c.info=text(find(b,"b-content__inline_item-link\">\\s*<a[^>]*>.*?</a>\\s*<div[^>]*>(.*?)</div>"));
    c.type=text(find(b,"<i class=\"entity\">(.*?)</i>"));
-   if(c.title!=null)out.add(c);
+   if(c.title==null)continue;raw++;
+   if(!CountryFilter.blocked(c.info))out.add(c);
   }
-  return out;
+  RAW.set(raw);return out;
  }
+ private static final ThreadLocal<Integer> RAW=new ThreadLocal<Integer>();
+ /** Titles on the last parsed page of this thread before the country filter; 0 means the source has no more pages. */
+ public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(page(listPath(category,genre,filter,page)));}
  public static List<Card> search(String query,int page)throws IOException{
-  return cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:"")));
+  List<Card> out=cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:"")));
+  // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms.
+  String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))out=cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:"")));
+  return relevant(query,out);
+ }
+ static String searchForm(String q){return q.toLowerCase(Locale.ROOT).trim().replace("ї","и").replace("і","и").replace("є","е").replace("ґ","г").replace("'","").replace("’","").replace("ʼ","");}
+ private static String fold(String s){return searchForm(s==null?"":s).replace("ё","е").replace("ы","и").replace("э","е").replaceAll("[^\\p{L}\\p{N}]+"," ").trim();}
+ /** Stable relevance order inside a result page: exact title, prefix, whole phrase, all words, then source order. */
+ static List<Card> relevant(String query,List<Card> cards){
+  String q=fold(query);if(q.isEmpty()||cards.size()<2)return cards;String[] words=q.split(" ");
+  final Map<Card,Integer> score=new IdentityHashMap<Card,Integer>();
+  for(Card c:cards){String t=fold(c.title);int s=0;
+   if(t.equals(q))s=100;else if(t.startsWith(q+" ")||t.startsWith(q))s=60;else if((" "+t+" ").contains(" "+q+" "))s=45;else if(t.contains(q))s=35;
+   else{int hit=0;for(String w:words)if(w.length()>1&&(" "+t).contains(" "+w))hit++;s=hit==words.length?25:hit*15/Math.max(1,words.length);}
+   String year=c.year();if(year!=null)for(String w:words)if(w.length()==4&&year.startsWith(w))s+=20;
+   score.put(c,s);}
+  List<Card> out=new ArrayList<Card>(cards);Collections.sort(out,(a,b)->Integer.compare(score.get(b),score.get(a)));return out;
  }
  public static List<Genre> genres(String category)throws IOException{
   String html=page(listPath(category,null,"last",1));List<Genre> out=new ArrayList<Genre>();Set<String> seen=new HashSet<String>();
@@ -212,6 +232,10 @@ public final class Site {
     f.voices.add(x);}
   }
   if(f.voices.isEmpty()&&f.defaultVoice!=null){Voice x=new Voice();x.id=f.defaultVoice;x.name=f.defaultVoiceName!=null?f.defaultVoiceName:f.series?"Озвучка":"Основна доріжка";x.camrip=f.defaultCamrip;x.ads=f.defaultAds;x.director=f.defaultDirector;f.voices.add(x);}
+  // Best track first: Ukrainian, then Russian, then the rest; studio quality inside each language.
+  Collections.sort(f.voices,(x,y)->Integer.compare(PlaybackPolicy.order(x.name,x.camrip,x.ads),PlaybackPolicy.order(y.name,y.camrip,y.ads)));
+  int side=h.indexOf("class=\"b-sidelist\"");
+  if(side>=0)for(Card c:cards(h.substring(side))){if(f.related.size()>=12)break;c.link="https://"+HOSTS[0]+"/"+Progress.norm(c.link);if(!Progress.norm(c.link).equals(Progress.norm(link)))f.related.add(c);}
   if(f.series)parseEpisodes(h,f);
   return f;
  }
@@ -241,10 +265,16 @@ public final class Site {
    Stream s=new Stream();
    Matcher m=Pattern.compile("\\[([^\\]]+)\\]([^,\\[]+)").matcher(url);
    while(m.find()){String[] alts=m.group(2).split(" or ");String pick=alts[alts.length-1].trim();for(String a:alts)if(a.trim().endsWith(".mp4"))pick=a.trim();s.qualities.put(text(m.group(1)),pick);}
+   // Menus list the best quality first.
+   List<String> labels=new ArrayList<String>(s.qualities.keySet());Collections.sort(labels,(x,y)->Integer.compare(quality(y),quality(x)));LinkedHashMap<String,String> sorted=new LinkedHashMap<String,String>();for(String q:labels)sorted.put(q,s.qualities.get(q));s.qualities=sorted;
    Object sub=o.opt("subtitle");
    if(sub instanceof String&&!((String)sub).isEmpty()){Matcher t=Pattern.compile("\\[([^\\]]+)\\](https?://[^,\\[]+)").matcher((String)sub);while(t.find())s.subtitleList.add(new String[]{t.group(1),t.group(2).trim()});}
    return s;
   }catch(JSONException e){throw new IOException(e);}
+ }
+ static int quality(String q){
+  String s=q==null?"":q.toLowerCase(Locale.ROOT);Matcher m=Pattern.compile("(\\d+)").matcher(s);int n=m.find()?Integer.parseInt(m.group(1))*2:0;
+  if(s.contains("4k"))n=2160*2;else if(s.contains("2k"))n=1440*2;if(s.contains("ultra"))n+=1;return n;
  }
  private static String enc(String s){try{return URLEncoder.encode(s==null?"":s,"UTF-8");}catch(UnsupportedEncodingException e){return "";}}
  /** Legacy "#h" stream encoding: base64 with inserted junk blocks. */

@@ -85,12 +85,15 @@ public final class BrowseActivity extends Activity {
  private void reload(){cards.clear();generation++;page=0;end=false;loading=false;grid.removeAllViews();openRow=null;inRow=0;status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);more();}
  private void more(){
   if(loading||end)return;loading=true;final int gen=generation;final int next=page+1;
-  final String q=query==null?null:query.getText().toString().trim();
+  final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
   Ui.bg(()->{
    List<G> items=new ArrayList<G>();String error=null;
    try{
-    if("catalog".equals(mode))for(Site.Card c:Site.list(category,genre,filter,next))items.add(of(c));
-    else if("search".equals(mode)){if(q!=null&&q.length()>=2)for(Site.Card c:Site.search(q,next))items.add(of(c));}
+    // A page can be fully hidden by the country filter: keep paging while the source still has titles.
+    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;tries<5&&items.isEmpty();tries++){
+     if("search".equals(mode)&&(q==null||q.length()<2))break;reached[0]=next+tries;
+     for(Site.Card c:"catalog".equals(mode)?Site.list(category,genre,filter,reached[0]):Site.search(q,reached[0]))items.add(of(c));
+     if(Site.lastRaw()==0)break;}
     else if(next==1&&"history".equals(mode))for(Progress.Entry e:Progress.recent(this)){G g=new G();g.link=e.link;g.title=e.title;g.poster=e.poster;
       g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"переглянуто":"зупинились на "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}
     else if(next==1&&"later".equals(mode)){JSONArray a=Progress.later(this);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;G g=new G();g.link=o.optString("link");g.title=o.optString("title");g.poster=o.optString("poster",null);g.sub=Ui.join(o.optString("year",""),o.optString("genre",""));items.add(g);}}
@@ -100,7 +103,7 @@ public final class BrowseActivity extends Activity {
    }catch(Exception e){error="Не вдалося завантажити. Перевірте інтернет і спробуйте ще раз.";}
    final List<G> got=items;final String err=error;
    Ui.MAIN.post(()->{
-    if(gen!=generation||isFinishing()||isDestroyed())return;loading=false;page=next;
+    if(gen!=generation||isFinishing()||isDestroyed())return;loading=false;page=reached[0];
     if(err!=null){status.setText(err+"  Натисніть OK, щоб повторити.");status.setVisibility(View.VISIBLE);status.setFocusable(true);if(next==1)status.requestFocus();end=true;return;}
     if(got.isEmpty()){end=true;if(next==1){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}return;}
     if(!"catalog".equals(mode)&&!"search".equals(mode))end=true;

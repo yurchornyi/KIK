@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kik-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--prefix", "web", "wrangler", "dev", "--cwd", "web", "--port", "8787"],
+      "port": 8787
+    }
+  ]
+}

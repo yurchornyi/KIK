@@ -7,6 +7,8 @@ final class RecommendationRanker {
  static final class Candidate {
   final String link,genre,key,group;final String[] parts;
   ContentSimilarity.Document document;int impressions;
+  /** Sum of signal weights whose source page lists this title under "see also"; negative for disliked seeds. */
+  double related;
   Candidate(String link,String genre){this.link=link;this.genre=genre;this.key=key(link);this.parts=parts(link);this.group=parts[0]+"/"+parts[1];}
  }
  static final class Signal {
@@ -62,9 +64,11 @@ final class RecommendationRanker {
     if(s.weight>0){positive+=match*s.weight;total+=s.weight;strongest=Math.max(strongest,match*Math.min(1,s.weight/4));}
     else if(s.weight<0)negative=Math.max(negative,match*Math.min(1,Math.abs(s.weight)/4));
    }
-   if(negative>0.55&&strongest<negative*0.8)continue;
+   if(negative>0.55&&strongest<negative*0.8&&c.related<=0)continue;
    double score=0.04+(total>0?0.65*strongest+0.35*positive/total:0)-0.85*negative;
    if(c.document!=null)score+=Math.max(0,Math.min(10,c.document.rating))*0.003;
+   // The source's own "see also" list captures what other viewers pair with a title.
+   score+=0.14*Math.max(-1,Math.min(1,c.related/6));
    score-=Math.min(4,c.impressions)*0.018;scores.put(c.key,score);
   }
   List<Candidate> pool=new ArrayList<Candidate>();for(Candidate c:unique.values())if(scores.containsKey(c.key))pool.add(c);List<Candidate> out=new ArrayList<Candidate>();Map<String,Integer> counts=new HashMap<String,Integer>();

@@ -29,6 +29,11 @@ public class PolicyCheck {
   if(PlaybackPolicy.bestVoice(Collections.emptyList(),false)!=null)throw new AssertionError("Empty choices");
   if(PlaybackPolicy.genres(Arrays.asList("a","b","c")).size()!=2)throw new AssertionError("At most two genres");
   if(!"IMDb".equals(PlaybackPolicy.rating(new Film())[0]))throw new AssertionError("Single preferred rating");
-  System.out.println("Playback policy checks passed: 9");
+  Voice by=new Voice("Белорусский двухголосый (Белорусский)",false),author=new Voice("Живов",false),uaAuthor=new Voice("Одноголосый закадровый (Украинский)",false),ruDub=new Voice("Дубляж",false);
+  if(PlaybackPolicy.bestVoice(Arrays.asList(by,author),false)!=author)throw new AssertionError("Russian before third languages");
+  if(PlaybackPolicy.bestVoice(Arrays.asList(ruDub,uaAuthor),false)!=uaAuthor)throw new AssertionError("Any Ukrainian track before Russian dubbing");
+  if(!(PlaybackPolicy.order("Оригинал (+субтитры)",false,false)>PlaybackPolicy.order("Живов",false,false)))throw new AssertionError("Original listed last");
+  if(!(PlaybackPolicy.order("Дубляж",true,false)>PlaybackPolicy.order("Дубляж",false,false)))throw new AssertionError("Camrip lower");
+  System.out.println("Playback policy checks passed: 13");
  }
 }

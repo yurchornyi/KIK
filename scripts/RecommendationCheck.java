@@ -69,6 +69,8 @@ public final class RecommendationCheck {
   check("Negative signals never create targeted genre fetches",RecommendationRanker.queries(Arrays.asList(dislike)).isEmpty());
   check("Short accidental launch remains eligible",!RecommendationRanker.meaningful(30_000,7_200_000));
   WatchTracker tracker=new WatchTracker();check("First sample cannot invent watch time",tracker.sample(0,0,true)==0);check("Advancing playback counts wall time",tracker.sample(500,500,true)==500);check("Pause adds no watch time",tracker.sample(1000,500,false)==0);check("Resuming does not count the pause gap",tracker.sample(1500,500,true)==0);check("Faster playback counts actual elapsed time",tracker.sample(2000,1500,true)==500);check("Seeking ahead is not watch time",tracker.sample(2500,60_000,true)==0);check("Playback after seek resumes counting",tracker.sample(3000,60_500,true)==500);check("Buffering stall is not watch time",tracker.sample(3500,60_500,true)==0);check("Background gaps are not watch time",tracker.sample(13_500,70_500,true)==0);check("Seeking backward is not watch time",tracker.sample(14_000,50_500,true)==0);tracker.reset();check("New stream resets observation baseline",tracker.sample(14_500,0,true)==0);
+  RecommendationRanker.Candidate plain=c("https://one/films/drama/71.html","Драма"),seeAlso=c("https://one/films/drama/72.html","Драма");seeAlso.related=6;
+  check("See-also titles of a liked film rank higher",links(rank("p",Arrays.asList(s("https://one/films/drama/70.html","Драма",6)),new HashSet<>(),Arrays.asList(plain,seeAlso),2)).get(0).equals(seeAlso.link));
   System.out.println("Recommendation checks passed: "+checks);
  }
 }

@@ -61,6 +61,7 @@ public final class ProfileStore {
   removeTree(dir);
   new android.util.AtomicFile(new File(c.getFilesDir(),"kik_progress_"+id+".json")).delete();
   new android.util.AtomicFile(new File(c.getFilesDir(),"kik_later_"+id+".json")).delete();
+  new android.util.AtomicFile(new File(c.getFilesDir(),"kik_voices_"+id+".json")).delete();
   Recommendations.delete(c,id);
   RatingStore.delete(c,id);
   if(id.equals(current(c)))prefs(c).edit().putString("current",all.isEmpty()?FIRST:all.get(0).id).commit();

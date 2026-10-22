@@ -9,21 +9,40 @@ public final class PlaybackPolicy {
   try {Method m=target.getClass().getMethod(name);m.setAccessible(true);return m.invoke(target);}catch(Exception e){return null;}
  }
  public static String string(Object target,String name) {Object v=call(target,name);return v==null?"":String.valueOf(v);}
- public static int rank(String title) {
-  String s=title.toLowerCase(Locale.ROOT);
-  boolean uk=s.contains("укра")||s.contains("ukrain")||s.contains("украї");
-  if(!uk && (s.contains("оригинал")||s.contains("оригінал")||s.contains("original")||s.contains("англий")||s.contains("english")||s.contains("польск")||s.contains("корей")||s.contains("япон")||s.contains("франц")||s.contains("испан")||s.contains("немец")))return Integer.MAX_VALUE;
-  int score=uk?0:1000;
-  if(s.contains("дубляж")||s.contains("дубльован"))score+=0;
-  else if(s.contains("hdrezka")||s.contains("rezka studio"))score+=15;
-  else if(s.contains("lostfilm"))score+=25;
-  else if(s.contains("многоголос")||s.contains("багатоголос"))score+=35;
-  else if(s.contains("двухголос")||s.contains("двоголос"))score+=80;
-  else if(s.contains("одноголос")||s.contains("авторск"))score+=150;
-  else score+=100;
+ private static final String[] UKRAINIAN={"укра","ukrain","украї","1+1","постмодерн","postmodern","le doyen","dniprofilm","так треба","uateam","ua team","hurtom","цікава ідея","eneida"};
+ private static final String[] FOREIGN={"оригинал","оригінал","original","субтитр","англий","англій","english","польск","польськ","корей","япон","франц","испан","іспан","немец","німец","грузин","белорус","білорус","казах","узбек","армян","вірмен","азербайдж","литов","латыш","эстон","турец","італій","итальян","китай","чешск","португал","иврит","арабск"};
+ private static boolean any(String s,String[] words){for(String w:words)if(s.contains(w))return true;return false;}
+ /** 0 Ukrainian, 1 Russian (unmarked tracks on the source are Russian), 2 original or another language. */
+ public static int language(String title) {
+  String s=title==null?"":title.toLowerCase(Locale.ROOT);
+  if(any(s,UKRAINIAN))return 0;
+  return any(s,FOREIGN)?2:1;
+ }
+ /** Studio quality inside one language: lower is better. */
+ static int studio(String s) {
+  int score;
+  if(s.contains("дубляж")||s.contains("дубльован"))score=0;
+  else if(s.contains("hdrezka")||s.contains("rezka studio"))score=15;
+  else if(s.contains("lostfilm"))score=25;
+  else if(s.contains("newstudio")||s.contains("кубик в кубе")||s.contains("baibako")||s.contains("coldfilm")||s.contains("tvshows")||s.contains("jaskier")||s.contains("red head sound")||s.contains("amedia")||s.contains("кураж")||s.contains("постмодерн")||s.contains("postmodern")||s.contains("le doyen")||s.contains("1+1"))score=30;
+  else if(s.contains("многоголос")||s.contains("багатоголос"))score=35;
+  else if(s.contains("студия")||s.contains("студія")||s.contains("studio"))score=45;
+  else if(s.contains("двухголос")||s.contains("двоголос"))score=80;
+  else if(s.contains("одноголос")||s.contains("авторск")||s.contains("автор"))score=150;
+  else score=100;
   if(s.contains("любител")||s.contains("аматор"))score+=200;
   if(s.contains("camrip")||s.contains("экран")||s.contains("екран"))score+=400;
   return score;
+ }
+ /** Full order for every track: language first (Ukrainian, then Russian, then the rest), then studio quality. */
+ public static int order(String title,boolean camrip,boolean ads) {
+  String s=title==null?"":title.toLowerCase(Locale.ROOT);
+  return language(title)*1000+studio(s)+(camrip?400:0)+(ads?60:0);
+ }
+ /** Automatic choice never starts original or third-language audio. */
+ public static int rank(String title) {
+  int language=language(title);
+  return language==2?Integer.MAX_VALUE:order(title,false,false);
  }
  /** Keeps the voice saved with the viewer's progress so resume continues the same track. */
  public static Object bestVoice(String savedId,List<?> list,boolean premiumAllowed) {

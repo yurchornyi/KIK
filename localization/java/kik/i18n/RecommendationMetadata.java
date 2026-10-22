@@ -16,6 +16,7 @@ final class RecommendationMetadata {
  static synchronized void remember(Context c,Site.Film f){
   if(f==null||f.link==null)return;
   try{JSONObject o=new JSONObject().put("link",f.link).put("title",f.title).put("original",f.original).put("poster",f.poster).put("plot",f.description==null?"":f.description.substring(0,Math.min(5000,f.description.length()))).put("country",f.country).put("year",f.year).put("rating",f.rating).put("genres",new JSONArray(f.genres)).put("people",new JSONArray(f.people)).put("time",System.currentTimeMillis());
+   JSONArray related=new JSONArray();for(Site.Card r:f.related)related.put(new JSONObject().put("link",r.link).put("title",r.title).put("poster",r.poster).put("year",r.year()).put("genre",r.genre()));o.put("related",related);
    JSONObject all=data(c);all.put(RecommendationRanker.key(f.link),o);
    if(all.length()>300){List<String> keys=new ArrayList<String>();Iterator<String> it=all.keys();while(it.hasNext())keys.add(it.next());Collections.sort(keys,(a,b)->Long.compare(all.optJSONObject(a).optLong("time"),all.optJSONObject(b).optLong("time")));for(int i=0;i<keys.size()-300;i++)all.remove(keys.get(i));}write(c);
   }catch(Exception e){Log.w("KIK","Remember film facts",e);}
@@ -25,6 +26,14 @@ final class RecommendationMetadata {
   ContentSimilarity.Document d=new ContentSimilarity.Document();d.title=o.optString("title","");d.original=o.optString("original","");d.plot=o.optString("plot","");d.country=o.optString("country","");try{d.year=Integer.parseInt(o.optString("year","0").replaceAll("[^0-9]",""));}catch(Exception ignored){}try{d.rating=Double.parseDouble(o.optString("rating","0"));}catch(Exception ignored){}
   JSONArray genres=o.optJSONArray("genres"),people=o.optJSONArray("people");if(genres!=null)for(int i=0;i<genres.length();i++)d.genres.add(genres.optString(i));if(people!=null)for(int i=0;i<people.length();i++)d.people.add(people.optString(i).toLowerCase(Locale.ROOT).trim());return d;
  }
+ /** Source "see also" titles for one film page; public catalogue data only. */
+ static synchronized List<HomeActivity.Item> related(Context c,String link){
+  List<HomeActivity.Item> out=new ArrayList<HomeActivity.Item>();JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));JSONArray a=o==null?null:o.optJSONArray("related");if(a==null)return out;
+  for(int i=0;i<a.length();i++){JSONObject r=a.optJSONObject(i);if(r==null||r.optString("link","").isEmpty()||r.optString("title","").isEmpty())continue;HomeActivity.Item x=new HomeActivity.Item();x.link=r.optString("link");x.title=r.optString("title");x.poster=r.optString("poster",null);x.year=r.optString("year",null);x.genre=r.optString("genre",null);out.add(x);}
+  return out;
+ }
+ /** Entries cached before related titles were stored are refreshed for signals, failures still back off. */
+ static synchronized boolean needsRelated(Context c,String link){JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));if(o==null||o.has("related"))return needs(c,link);return !o.optBoolean("failed")||needs(c,link);}
  static synchronized boolean needs(Context c,String link){JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));if(o==null)return true;long age=System.currentTimeMillis()-o.optLong("time");return age<0||age>(o.optBoolean("failed")?DAY/24:30*DAY);}
  static synchronized void failed(Context c,String link){try{JSONObject all=data(c);String key=RecommendationRanker.key(link);JSONObject o=all.optJSONObject(key);if(o==null)o=new JSONObject();o.put("time",System.currentTimeMillis()).put("failed",true);all.put(key,o);trim(all);write(c);}catch(Exception ignored){}}
 }

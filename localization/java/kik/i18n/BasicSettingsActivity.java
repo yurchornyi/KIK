@@ -37,6 +37,20 @@ public final class BasicSettingsActivity extends Activity {
   }
   space(6);TextView help=text("Якщо вибрана якість недоступна, плеєр використає доступний варіант.",14);help.setTextColor(0xffa29daa);content.addView(help);space(18);
   Switch next=new Switch(this);next.setText("Автоматично вмикати наступну серію");next.setTextColor(Color.WHITE);next.setTextSize(19);next.setPadding(dp(14),dp(8),dp(14),dp(8));next.setFocusable(true);next.setBackground(focusBackground());next.setThumbTintList(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{Ui.RED,Ui.GREY}));next.setTrackTintList(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff713038,0xff46464b}));next.setChecked(prefs.getBoolean("auto_play_next_episode",true));next.setOnCheckedChangeListener((v,on)->{prefs.edit().putBoolean("auto_play_next_episode",on).apply();UiRuntime.updateState("E",on);});content.addView(next,new LinearLayout.LayoutParams(dp(670),dp(52)));space(18);
+  space(18);TextView countries=text("Приховати фільми з країн",20);content.addView(countries);space(6);
+  final java.util.Set<String> hidden=new java.util.LinkedHashSet<String>(CountryFilter.excluded());
+  LinearLayout countryRow=null;
+  for(int i=0;i<CountryFilter.CHOICES.length;i++){
+   final String[] choice=CountryFilter.CHOICES[i];
+   if(i%4==0){countryRow=new LinearLayout(this);countryRow.setOrientation(0);countryRow.setClipChildren(false);countryRow.setClipToPadding(false);content.addView(countryRow);space(8);}
+   final Button b=button((hidden.contains(choice[0])?"✓ ":"")+choice[1]);b.setTextSize(16);b.setPadding(dp(12),0,dp(12),0);
+   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(200),dp(50));lp.setMargins(0,0,dp(8),0);countryRow.addView(b,lp);
+   b.setOnClickListener(v->{if(!hidden.remove(choice[0]))hidden.add(choice[0]);b.setText((hidden.contains(choice[0])?"✓ ":"")+choice[1]);
+    prefs.edit().putString("excluded_countries",String.join(",",hidden)).apply();CountryFilter.set(hidden);
+    // Cached rows were built with the old filter.
+    getSharedPreferences("kik_home",0).edit().clear().apply();});
+  }
+  TextView countryHelp=text("Позначені країни не показуються в каталозі, пошуку й рекомендаціях. Історія та «Мій список» не змінюються.",14);countryHelp.setTextColor(0xffa29daa);content.addView(countryHelp,new LinearLayout.LayoutParams(dp(900),-2));space(18);
   Button cache=button("Очистити кеш зображень");content.addView(cache,new LinearLayout.LayoutParams(dp(350),dp(48)));
   cache.setOnClickListener(v->Ui.dialog(this).setTitle("Очистити кеш зображень?").setMessage("Обране та історія перегляду збережуться.").setNegativeButton("Скасувати",null).setPositiveButton("Очистити",(dialog,which)->{new Thread(()->{long deleted=clearImages(getCacheDir());HomeActivity.Images.clear();runOnUiThread(()->Toast.makeText(this,"Кеш зображень очищено",Toast.LENGTH_SHORT).show());}).start();}).show());
   space(18);String who=ProfileStore.nameOf(this,ProfileStore.current(this));
