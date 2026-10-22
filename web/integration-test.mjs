@@ -26,6 +26,10 @@ const users=[];try{
  check((await req('/api/pair/poll',{device_code:pair.body.device_code})).status===410,'pair consumed once');
  const device=await req('/api/sync',{profile_id:profile,records:[]},undefined,{Authorization:'Bearer '+poll.body.token});check(device.body.records.length===2,'TV token sees same history');
  check((await req('/api/sync',{profile_id:b.body.profiles[0].id,records:[]},undefined,{Authorization:'Bearer '+poll.body.token})).status===404,'TV token isolated from other account');
+ const uaLink='https://uaserials.com/12740-unabomber-2026.html',uaKey='uaserials/12740-unabomber-2026.html',uaRecord={kind:'later',key:uaKey,data:{link:uaLink,title:'QA Ukrainian source'},updated_at:Date.now()};
+ const multi=await req('/api/sync',{source_schema:2,profile_id:profile,records:[uaRecord]},cookie);check(multi.body.records.find(r=>r.key===uaKey)?.data.link===uaLink,'new source round-trip preserves its domain');
+ const legacy=await req('/api/sync',{profile_id:profile,records:[]},cookie);check(!legacy.body.records.some(r=>r.key===uaKey),'older TV clients do not receive unsupported source keys');
+ const foreign=await req('/api/sync',{source_schema:2,profile_id:profile,records:[]},b.cookie);check(foreign.status===404,'new source history remains account-private');
  await req('/api/auth/logout',{},cookie);check((await req('/api/me',undefined,cookie)).body.user===null,'logout revokes browser session');
  console.log(JSON.stringify({passed:true,checks,accounts:users,base}));
 }finally{if(process.env.KIK_CLEANUP_FILE)await writeFile(process.env.KIK_CLEANUP_FILE,users.map(u=>`DELETE FROM users WHERE username='${u}';`).join('\n'));}

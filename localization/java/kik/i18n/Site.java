@@ -28,7 +28,7 @@ public final class Site {
  public static final class Voice{public String id,name;public boolean premium,camrip,ads,director;}
  public static final class Episode{public String season,episode,title;}
  public static final class Film{
-  public String link,id,title,original,poster,description,year,country,duration,age,favs,rating,ratingName,origin;
+  public String link,id,title,original,poster,description,year,country,duration,age,favs,rating,ratingName,origin,imdb,sourceUrl,nextEpisode,metadataCredit;
   public boolean series;public List<String> genres=new ArrayList<String>();
   public List<String> people=new ArrayList<String>();
   public List<Voice> voices=new ArrayList<Voice>();public String defaultVoice,defaultVoiceName;public boolean defaultCamrip,defaultAds,defaultDirector;
@@ -139,7 +139,7 @@ public final class Site {
  }
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(page(listPath(category,genre,filter,page)));}
  public static List<Card> search(String query,int page)throws IOException{
-  return cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:"")));
+  List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}if(page==1){if(out.isEmpty())for(String alias:FreeSources.aliases(query)){try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8"))));}catch(IOException ignored){}if(!out.isEmpty())break;}try{out.addAll(FreeSources.cards(query));}catch(IOException ignored){}}return out;
  }
  public static List<Genre> genres(String category)throws IOException{
   String html=page(listPath(category,null,"last",1));List<Genre> out=new ArrayList<Genre>();Set<String> seen=new HashSet<String>();
@@ -154,6 +154,7 @@ public final class Site {
  private static final Map<String,FutureTask<FilmPage>> FILM_PENDING=new HashMap<String,FutureTask<FilmPage>>();
  public static Film film(String link)throws IOException{return film(link,false);}
  private static Film film(String link,boolean force)throws IOException{
+  if(FreeSources.ua(link))return FreeSources.film(link);
   String key=Progress.norm(link);FilmPage cached;FutureTask<FilmPage> task;boolean owner=false;
   synchronized(FILM_PAGES){
    cached=force?null:FILM_PAGES.get(key);
@@ -173,7 +174,7 @@ public final class Site {
  }
  /** Kept independent of transport so catalogue markup changes can be regression-checked locally. */
  static Film parseFilm(String link,String h){
-  Film f=new Film();f.link=link;
+  Film f=new Film();f.link=link;f.imdb=find(h,"imdb\\.com/title/(tt[0-9]+)");
   f.title=text(find(h,"<h1[^>]*>(.*?)</h1>"));
   f.original=text(find(h,"<div class=\"b-post__origtitle\"[^>]*>(.*?)</div>"));
   f.poster=find(h,"<div class=\"b-sidecover\">\\s*<a href=\"([^\"]+)\"");
