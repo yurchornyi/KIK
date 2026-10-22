@@ -66,10 +66,11 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
   return r.json();
  }
  async function resolve(identity,token){
-  const signal=AbortSignal.timeout(6500),language=/[ієїґ]/i.test(identity.title)?'uk-UA':/[а-яё]/i.test(identity.title)?'ru-RU':'en-US';
+  const signal=AbortSignal.timeout(6500);
   const queries=[...new Set([identity.original,...(identity.aliases?.length?identity.aliases:[identity.title])].filter(Boolean))].slice(0,3);
   let match=null;
   for(const query of queries){
+   const language=/[ієїґ]/i.test(query)?'uk-UA':/[а-яё]/i.test(query)?'ru-RU':'en-US';
    const params=new URLSearchParams({query,language,include_adult:'false',page:'1'});
    if(identity.year)params.set(identity.kind==='tv'?'first_air_date_year':'year',String(identity.year));
    const data=await request(`/search/${identity.kind}?${params}`,token,signal);

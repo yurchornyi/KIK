@@ -72,3 +72,8 @@ test('regional release dates can differ without choosing an unrelated film',asyn
  const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/images'))return Response.json({posters:[poster],backdrops:[backdrop]});return Response.json({results:new URL(url).searchParams.has('year')?[]:[{id:77,title:'Exact title',release_date:'2025-12-31'},{id:78,title:'Other title',release_date:'2026-01-01'}]});};
  const a=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/films/concert/1-exact-2026.html',title:'Exact title'},{token:'secret'});assert.equal(a.artwork.id,77);assert.equal(calls.length,3);
 });
+
+test('an English international title requests English translations even when the catalogue title is Russian',async()=>{
+ const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/images'))return Response.json({backdrops:[backdrop],posters:[poster]});const lang=new URL(url).searchParams.get('language');return Response.json({results:lang==='en-US'?[{id:81,title:'International Title',original_title:'한국 영화',release_date:'2026-01-01'}]:[]});};
+ const result=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/films/concert/81-test-2026.html',title:'Название фильма',original:'International Title'},{token:'secret'});assert.equal(result.artwork.id,81);assert.equal(new URL(calls[0]).searchParams.get('language'),'en-US');assert.ok(result.artwork.backdrop);
+});
