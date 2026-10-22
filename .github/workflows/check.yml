@@ -22,7 +22,7 @@ jobs:
       - name: Admin and settings integration with local D1
         run: |
           npm exec --prefix web -- wrangler d1 migrations apply kik-data --local --config web/wrangler.jsonc
-          npm exec --prefix web -- wrangler dev --config web/wrangler.jsonc --port 8791 > /tmp/kik-web.log 2>&1 &
+          npm exec --prefix web -- wrangler dev --config web/wrangler.test.jsonc --port 8791 > /tmp/kik-web.log 2>&1 &
           preview_pid=$!
           trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           ready=0

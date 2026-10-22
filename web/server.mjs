@@ -1,3 +1,6 @@
+import {localizedCards,localizedFilm,localizedRecords} from './localization.mjs';
+import {recommendations} from './recommendations.mjs';
+import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
@@ -11,10 +14,11 @@ const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{stat
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 async function body(request,max=1024*1024){if(Number(request.headers.get("Content-Length"))>max)fail("Завеликий запит",413);const reader=request.body?.getReader();if(!reader)fail("Порожній запит");let data=[],size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>max)fail("Завеликий запит",413);data.push(value);}}finally{await reader.cancel();}const bytes=new Uint8Array(size);let at=0;for(const b of data){bytes.set(b,at);at+=b.length;}try{return JSON.parse(new TextDecoder().decode(bytes));}catch{fail("Некоректний JSON");}}
 function origin(request){const o=request.headers.get("Origin");if(o&&o!==new URL(request.url).origin)fail("Запит з іншого сайту відхилено",403);if(request.headers.get("Sec-Fetch-Site")==="cross-site")fail("Запит з іншого сайту відхилено",403);}
-async function owned(db,user,id){if(typeof id!=="string")fail("Виберіть профіль");const p=await db.prepare("SELECT id,name,avatar FROM profiles WHERE id=? AND user_id=?").bind(id,user.id).first();if(!p)fail("Профіль недоступний",404);return p;}
-async function profiles(db,user){return (await db.prepare("SELECT id,name,avatar FROM profiles WHERE user_id=? ORDER BY created_at,id").bind(user.id).all()).results;}
+async function owned(db,user,id){if(typeof id!=="string")fail("Виберіть профіль");const p=await db.prepare("SELECT id,name,avatar,enhanced_recs FROM profiles WHERE id=? AND user_id=?").bind(id,user.id).first();if(!p)fail("Профіль недоступний",404);return p;}
+async function profiles(db,user){return (await db.prepare("SELECT id,name,avatar,enhanced_recs FROM profiles WHERE user_id=? ORDER BY created_at,id").bind(user.id).all()).results;}
 async function api(request,env,ctx){
  const url=new URL(request.url),path=url.pathname,db=env.DB,ip=request.headers.get("CF-Connecting-IP")||"local";
+ if(path==="/api/avatars")return json({avatars:AVATARS});
  if(path==="/api/health")return json({ok:true,service:"kik-web"});
  if(!["GET","POST"].includes(request.method))return json({error:"Метод недоступний"},405);
  if(request.method==="POST")origin(request);
@@ -29,15 +33,16 @@ async function api(request,env,ctx){
   await Promise.all(Array.from({length:4},async()=>{for(let item;(item=queue.shift());)try{const key=titleKey(item.link),r=await artworkService.lookup(item,options);configured&&=r.configured;results[key]=r.artwork;}catch{}}));
   return json({configured,results});
  }
- if(path==="/api/metadata")return json(await metadata(url.searchParams.get("imdb"),env,url.searchParams.get("kind")||''));
+ if(path==="/api/metadata"){const m=await metadata(url.searchParams.get("imdb"),env,url.searchParams.get("kind")||''),t=await localizedFilm(db,{title:m.title,description:m.overview});return json({...m,title:t.title,overview:t.description});}
  if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  if(path==="/api/auth/register"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
   if(!await registrationAllowed(db,email))fail("Реєстрація лише за дозволом адміністратора. Попросіть додати вашу пошту.",403);
   const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
+  const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");
   const id=crypto.randomUUID(),salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40);
-  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,"bear",now)]);}catch{fail("Ця пошта вже зареєстрована",409);}
+  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,avatar,now)]);}catch{fail("Ця пошта вже зареєстрована",409);}
   const token=await session(db,id);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id})},201,{"Set-Cookie":cookie(token)});
  }
  if(path==="/api/auth/login"&&request.method==="POST"){
@@ -46,7 +51,7 @@ async function api(request,env,ctx){
   const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user)},200,{"Set-Cookie":cookie(token)});
  }
  const user=await identity(request,db);
- if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body));
+ if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>env.AI&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
  if(path==="/api/auth/logout"&&request.method==="POST"){
   const token=request.headers.get("Cookie")?.match(/(?:^|;\s*)kik_session=([a-f0-9]{64})/)?.[1]||request.headers.get("Authorization")?.slice(7);if(token)await db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await hash(token)).run();return json({ok:true},200,{"Set-Cookie":cookie("",true)});
  }
@@ -62,10 +67,11 @@ async function api(request,env,ctx){
   const token=await session(db,changed.user_id);return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
  }
  if(path==="/api/catalogue"){
-  const key=new Request(url.origin+path+url.search),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:data});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
+  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk4"),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:await localizedCards(db,data)});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(f);}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(await localizedFilm(db,f));}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
+ if(path==="/api/recommendations"&&request.method==="POST"){const b=await body(request,65536),p=await owned(db,user,b.profile_id);return json(await recommendations(db,p,b.items,env));}
  if(path==="/api/auth/logout-others"&&request.method==="POST")return json(await logoutOtherSessions(db,user,requestToken(request)));
  if(path==="/api/settings"){
   const b=request.method==="POST"?await body(request,8192):null,p=await owned(db,user,b?.profile_id||url.searchParams.get("profile_id"));
@@ -73,17 +79,17 @@ async function api(request,env,ctx){
   const row=await db.prepare("SELECT data FROM profile_settings WHERE profile_id=?").bind(p.id).first();return json({settings:row?cleanSettings(JSON.parse(row.data)):DEFAULT_SETTINGS});
  }
  if(path==="/api/profiles/update"&&request.method==="POST"){
-  const b=await body(request,8192),p=await owned(db,user,b.profile_id),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");await db.prepare("UPDATE profiles SET name=? WHERE id=?").bind(name,p.id).run();return json({...p,name});
+  const b=await body(request,8192),p=await owned(db,user,b.profile_id),name=b.name===undefined?p.name:typeof b.name==="string"?b.name.trim().slice(0,40):"",avatar=b.avatar===undefined?p.avatar:b.avatar;if(!name)fail("Введіть ім’я профілю");if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");await db.prepare("UPDATE profiles SET name=?,avatar=? WHERE id=?").bind(name,avatar,p.id).run();return json({...p,name,avatar});
  }
  if(path==="/api/pair/claim"&&request.method==="POST"){
   const b=await body(request,8192);await owned(db,user,b.profile_id);const code=String(b.code||"").replace(/[\s-]/g,"").toUpperCase();if(!/^[A-Z2-9]{8}$/.test(code))fail("Введіть 8 символів із TV");
   const result=await db.prepare("UPDATE pairs SET user_id=?,profile_id=? WHERE user_code=? AND expires_at>? AND user_id IS NULL AND consumed=0").bind(user.id,b.profile_id,code,Date.now()).run();if(!result.meta.changes)fail("Код недійсний або вже використаний",410);return json({ok:true});
  }
  if(path==="/api/profiles"&&request.method==="POST"){
-  const b=await body(request,8192),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");if((await profiles(db,user)).length>=8)fail("Доступно до 8 профілів");const id=crypto.randomUUID();await db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(id,user.id,name,"bear",Date.now()).run();return json({id,name,avatar:"bear"},201);
+  const b=await body(request,8192),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");if((await profiles(db,user)).length>=8)fail("Доступно до 8 профілів");const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");const id=crypto.randomUUID();await db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(id,user.id,name,avatar,Date.now()).run();return json({id,name,avatar,enhanced_recs:0},201);
  }
  if(path==="/api/sync"&&request.method==="POST"){
-  const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:(await exchange(db,p.id,b.records||[])).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/")),server_time:Date.now()});
+  const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[])).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:Date.now()});
  }
  if(path==="/api/episodes"||path==="/api/stream"){
   if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),f=await film(b.link);return json(path.endsWith("episodes")?{episodes:await episodes(f,String(b.voice))}:await stream(f,String(b.voice),String(b.season||""),String(b.episode||"")));

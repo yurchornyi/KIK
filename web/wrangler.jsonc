@@ -11,5 +11,6 @@
     { "name": "AUTH_LIMIT", "namespace_id": "2301", "simple": { "limit": 15, "period": 60 } },
     { "name": "API_LIMIT", "namespace_id": "2302", "simple": { "limit": 180, "period": 60 } }
   ],
+  "ai": {"binding":"AI"},
   "observability": { "enabled": true }
 }
