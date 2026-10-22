@@ -1,6 +1,6 @@
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
-import {uaCatalogue,uaFilm} from "./uaserials.mjs";
+import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
 import {catalogue,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
@@ -57,9 +57,9 @@ async function api(request,env,ctx){
   const token=await session(db,changed.user_id);return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
  }
  if(path==="/api/catalogue"){
-  const key=new Request(url.origin+path+url.search),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaCatalogue(params):catalogue(params));const r=json({items:data});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
+  const key=new Request(url.origin+path+url.search),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:data});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilm(link):await film(link);delete f.favs;delete f.origin;return json(f);}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(f);}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path==="/api/pair/claim"&&request.method==="POST"){
   const b=await body(request,8192);await owned(db,user,b.profile_id);const code=String(b.code||"").replace(/[\s-]/g,"").toUpperCase();if(!/^[A-Z2-9]{8}$/.test(code))fail("Введіть 8 символів із TV");

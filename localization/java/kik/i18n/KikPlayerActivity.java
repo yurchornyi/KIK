@@ -70,11 +70,16 @@ public final class KikPlayerActivity extends Activity {
    try{
     Site.Film updated=null;if(refreshEpisodes&&selectedFilm.series){Site.Film copy=new Site.Film();copy.id=selectedFilm.id;copy.favs=selectedFilm.favs;copy.origin=selectedFilm.origin;try{Site.episodesFor(copy,selected.id);if(!copy.episodes.isEmpty())updated=copy;}catch(Exception e){Log.w("KIK","Voice episodes",e);}}
     final Site.Film episodeData=updated;
-    final Site.Stream s=Site.stream(selectedFilm,selected,ss,ee);
+    Site.Voice use=selected;
+    if(selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,refreshEpisodes?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
+    final Site.Voice playing=use;
+    final Site.Stream s=Site.stream(selectedFilm,playing,ss,ee);
     final List<Object[]> parsed=new ArrayList<Object[]>();
     h.post(()->{
      if(destroyed||gen!=generation)return;
      if(episodeData!=null){selectedFilm.seasons=new ArrayList<String>(episodeData.seasons);selectedFilm.episodes=new ArrayList<Site.Episode>(episodeData.episodes);}
+     if(playing!=selected){voice=playing;paintSub();boolean ukExists=false;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&PlaybackPolicy.language(v.name)==0)ukExists=true;
+      if(PlaybackPolicy.language(playing.name)!=0&&ukExists)Ui.toast(this,"Української озвучки для цієї серії немає. Увімкнено «"+Ua.t(playing.name)+"».");}
      stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.");return;}
      quality=!fromHistory&&quality!=null&&s.qualities.containsKey(quality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;

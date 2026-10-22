@@ -70,6 +70,9 @@ public final class FilmActivity extends Activity {
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,DescTranslate.cached(f.description));});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
+    // The page lists one voice's episodes; show every season the leading voices have.
+    if(f.series&&f.sourceUrl==null){final List<Site.Episode> all=Site.allEpisodes(f,4);Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f||all.size()<=f.episodes.size())return;
+     f.episodes=new ArrayList<Site.Episode>(all);f.seasons.clear();for(Site.Episode x:all)if(!f.seasons.contains(x.season))f.seasons.add(x.season);if(season==null||!f.seasons.contains(season))season=f.seasons.isEmpty()?null:f.seasons.get(0);showEpisodes();});}
     Map<String,String> got=TitleTranslate.resolve(words);
     final String d=DescTranslate.tr(f.description);
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
@@ -78,6 +81,8 @@ public final class FilmActivity extends Activity {
  }
  private String tr(String s){if(s==null)return null;String t=uk.get(s);return t==null?Ua.t(s):t;}
  private void show(Site.Film f,String description){
+  // A UASerials title may open as its HDRezka twin: history, list and voices follow the playable link.
+  if(f.sourceUrl==null&&!Progress.norm(f.link).equals(Progress.norm(link)))link=f.link;
   film=f;current=f;status.setVisibility(View.GONE);
   showText(f,description);
   if(f.poster!=null){poster=poster==null?f.poster:poster;HomeActivity.Images.crossfade(f.poster,backdrop);}

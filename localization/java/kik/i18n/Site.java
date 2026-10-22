@@ -33,6 +33,8 @@ public final class Site {
   public List<String> people=new ArrayList<String>();
   public List<Voice> voices=new ArrayList<Voice>();public List<Card> related=new ArrayList<Card>();public String defaultVoice,defaultVoiceName;public boolean defaultCamrip,defaultAds,defaultDirector;
   public List<String> seasons=new ArrayList<String>();public List<Episode> episodes=new ArrayList<Episode>();
+  /** Episodes each voice covers, loaded on demand: voices differ in which seasons they have. */
+  final Map<String,List<Episode>> coverage=new HashMap<String,List<Episode>>();
  }
  public static final class Stream{public LinkedHashMap<String,String> qualities=new LinkedHashMap<String,String>();public String subtitles;public List<String[]> subtitleList=new ArrayList<String[]>();}
  public static final class Genre{public String slug,name;}
@@ -148,7 +150,10 @@ public final class Site {
   String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
   if(page==1&&out.isEmpty())for(String alias:FreeSources.aliases(query)){try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8"))));}catch(IOException ignored){}if(!out.isEmpty())break;}
   out=new ArrayList<Card>(relevant(query,out));
-  if(page==1)try{out.addAll(FreeSources.cards(query));}catch(IOException ignored){}
+  // One card per title: a UASerials twin of an HDRezka result replaces it in place with the Ukrainian name.
+  if(page==1)try{LinkedHashMap<String,Card> unique=new LinkedHashMap<String,Card>();for(Card c:out)unique.putIfAbsent(Progress.norm(c.link),c);
+   for(Card c:FreeSources.cards(query)){Card old=unique.get(Progress.norm(c.link));if(old!=null){old.title=c.title;if(old.poster==null)old.poster=c.poster;}else unique.put(Progress.norm(c.link),c);}
+   out=new ArrayList<Card>(unique.values());}catch(IOException ignored){}
   return out;
  }
  static String searchForm(String q){return q.toLowerCase(Locale.ROOT).trim().replace("ї","и").replace("і","и").replace("є","е").replace("ґ","г").replace("'","").replace("’","").replace("ʼ","");}
@@ -250,6 +255,24 @@ public final class Site {
   while(e.find()){if(!seen.add(e.group(1)+":"+e.group(2)))continue;Episode x=new Episode();x.season=e.group(1);x.episode=e.group(2);x.title=text(e.group(3));f.episodes.add(x);}
   if(f.seasons.isEmpty())for(Episode x:f.episodes)if(!f.seasons.contains(x.season))f.seasons.add(x.season);
  }
+ static List<Episode> covered(Film f,String voice)throws IOException{
+  synchronized(f.coverage){List<Episode> known=f.coverage.get(voice);if(known!=null)return known;}
+  Film copy=new Film();copy.id=f.id;copy.favs=f.favs;copy.origin=f.origin;copy.link=f.link;episodesFor(copy,voice);
+  synchronized(f.coverage){f.coverage.put(voice,copy.episodes);}return copy.episodes;
+ }
+ /** The viewer's own choice first, then the source order (Ukrainian, Russian, the rest): the first voice that has this episode. */
+ public static Voice voiceFor(Film f,String season,String episode,String preferred)throws IOException{
+  List<Voice> order=new ArrayList<Voice>();for(Voice v:f.voices)if(!v.premium&&v.id.equals(preferred))order.add(v);for(Voice v:f.voices)if(!v.premium&&!order.contains(v))order.add(v);
+  for(Voice v:order){if(Thread.currentThread().isInterrupted())break;for(Episode e:covered(f,v.id))if(e.season.equals(season)&&e.episode.equals(episode))return v;}
+  return null;
+ }
+ /** Every season and episode the leading voices have, so a season missing in one voice still shows. */
+ public static List<Episode> allEpisodes(Film f,int voices){
+  Map<String,Episode> all=new HashMap<String,Episode>();for(Episode e:f.episodes)all.put(e.season+":"+e.episode,e);int n=0;
+  for(Voice v:f.voices){if(v.premium)continue;if(n++>=voices)break;try{for(Episode e:covered(f,v.id))all.putIfAbsent(e.season+":"+e.episode,e);}catch(IOException ignored){}}
+  List<Episode> out=new ArrayList<Episode>(all.values());Collections.sort(out,(a,b)->{int s=Integer.compare(num(a.season),num(b.season));return s!=0?s:Integer.compare(num(a.episode),num(b.episode));});return out;
+ }
+ private static int num(String s){try{return Integer.parseInt(s);}catch(Exception e){return 0;}}
  /** Seasons and episodes differ per voice for series. */
  public static void episodesFor(Film f,String voice)throws IOException{
   String body=send(filmEndpoint(f),"id="+f.id+"&translator_id="+voice+"&favs="+enc(f.favs)+"&action=get_episodes",true);
