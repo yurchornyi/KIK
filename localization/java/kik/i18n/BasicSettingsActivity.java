@@ -49,6 +49,7 @@ public final class BasicSettingsActivity extends Activity {
   Button check=button("Перевірити оновлення");content.addView(check,new LinearLayout.LayoutParams(dp(350),dp(48)));check.setOnClickListener(v->AppUpdater.manual(this));space(8);
   Button permission=button("Дозвіл на встановлення");content.addView(permission,new LinearLayout.LayoutParams(dp(350),dp(48)));permission.setOnClickListener(v->AppUpdater.permission(this));
   space(18);TextView about=text("KIK • Вбудований плеєр • Українська → російська",14);about.setTextColor(0xffa29daa);content.addView(about);space(10);
+  Button sources=button("Джерела даних");content.addView(sources,new LinearLayout.LayoutParams(dp(350),dp(46)));sources.setOnClickListener(v->FreeSources.credits(this));space(10);
   Button back=button("Готово");content.addView(back,new LinearLayout.LayoutParams(dp(160),dp(46)));back.setOnClickListener(v->finish());
   if(selectedButton!=null)selectedButton.requestFocus();
  }
