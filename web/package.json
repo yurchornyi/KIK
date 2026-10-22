@@ -1,0 +1,1 @@
+{"name":"kik-web","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node --test *.test.mjs","build":"node build.mjs","dev":"wrangler dev","deploy":"wrangler deploy"},"dependencies":{"hls.js":"^1.6.13"},"devDependencies":{"wrangler":"4.151.1"}}

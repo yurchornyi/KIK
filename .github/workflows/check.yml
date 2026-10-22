@@ -1,0 +1,31 @@
+name: Overlay checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: python3 -m py_compile scripts/*.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test cloudflare/worker.test.mjs
+      - name: Update security policy
+        run: |
+          mkdir -p /tmp/kik-checks
+          javac -d /tmp/kik-checks localization/java/kik/i18n/UpdatePolicy.java scripts/UpdatePolicyCheck.java
+          java -cp /tmp/kik-checks UpdatePolicyCheck
+      - name: Ensure no private build inputs are tracked
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          names=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          bad=[n for n in names if n.startswith(('work/','backup/','decoded/','decompiled/','localized/','outputs/')) or n.endswith(('.apk','.jks','.keystore','.key','.pem'))]
+          assert not bad,bad
+          PY
