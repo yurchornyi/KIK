@@ -12,11 +12,13 @@ import org.json.*;
 
 /** Poster grid for a catalogue section, search, history or the watch-later list. */
 public final class BrowseActivity extends Activity {
- public static final String MODE="mode",CATEGORY="category",TITLE="title";
+ public static final String MODE="mode",CATEGORY="category",TITLE="title",QUERY="query";
  private int columns=6;
  static final class G{String link,title,sub,poster,badge,year,genre,sourceTitle;float progress;}
 
  private String mode,category,genre,filter="last";private int page=0;private boolean loading,end;
+ /** The search came with a name already (OpenTitleActivity): results take focus, no keyboard over them. */
+ private boolean handedOver;
  private LinearLayout grid,genres;private ScrollView scroll;private TextView status;private EditText query;
  private final List<TextView> filterChips=new ArrayList<TextView>();private int generation;
  private final Map<G,View> cards=new IdentityHashMap<G,View>();
@@ -64,7 +66,10 @@ public final class BrowseActivity extends Activity {
   status.setBackground(Ui.states(Ui.shape(0,dp(5),0,0),Ui.shape(0xff333337,dp(5),dp(2),Color.WHITE)));status.setOnClickListener(v->reload());status.setFocusable(false);
   grid=new LinearLayout(this);grid.setOrientation(1);grid.setClipChildren(false);grid.setClipToPadding(false);content.addView(grid);
   scroll.getViewTreeObserver().addOnScrollChangedListener(()->{if(!loading&&!end&&("catalog".equals(mode)||"search".equals(mode))){View last=grid.getChildAt(grid.getChildCount()-1);if(last!=null&&last.getBottom()-scroll.getScrollY()<scroll.getHeight()*2)more();}});
-  if("search".equals(mode)){status.setText("Почніть вводити назву");query.requestFocus();}else reload();
+  if("search".equals(mode)){status.setText("Почніть вводити назву");query.requestFocus();
+   // A name handed over (OpenTitleActivity found no sure match): typed in already, results load at once.
+   String given=getIntent().getStringExtra(QUERY);if(given!=null&&given.trim().length()>=2){handedOver=true;getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);query.setText(given.trim());query.setSelection(query.length());query.clearFocus();}}
+  else reload();
  }
  @Override protected void onResume(){super.onResume();if(("history".equals(mode)||"later".equals(mode))&&page>0)reload();}
 
@@ -105,7 +110,7 @@ public final class BrowseActivity extends Activity {
     if(got.isEmpty()){end=true;if(next==1){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}return;}
     if(!"catalog".equals(mode)&&!"search".equals(mode))end=true;
     status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(got);
-    if(first&&firstCard!=null&&!"search".equals(mode))firstCard.requestFocus();
+    if(first&&firstCard!=null&&(!"search".equals(mode)||handedOver))firstCard.requestFocus();
    });
    if(err==null&&!got.isEmpty()){
     Set<String> words=new LinkedHashSet<String>();for(G g:got){words.add(g.sourceTitle);if(g.genre!=null)words.add(g.genre);}Map<String,String> translated=TitleTranslate.resolve(words);
