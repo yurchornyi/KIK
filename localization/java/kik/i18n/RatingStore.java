@@ -11,7 +11,7 @@ final class RatingStore {
  static final class Rating {String link,title,poster,genre;int value;long time;}
  private static AtomicFile file(Context c,String profile){return new AtomicFile(new File(c.getFilesDir(),"kik_taste_"+profile+".json"));}
  private static JSONObject all(Context c,String p){try{return new JSONObject(Site.read(file(c,p).openRead()));}catch(Exception e){return new JSONObject();}}
- private static boolean write(Context c,String p,JSONObject o){FileOutputStream out=null;AtomicFile f=file(c,p);try{out=f.startWrite();out.write(o.toString().getBytes("UTF-8"));f.finishWrite(out);return true;}catch(Exception e){if(out!=null)f.failWrite(out);Log.w("KIK","Save taste",e);return false;}}
+ private static boolean write(Context c,String p,JSONObject o){FileOutputStream out=null;AtomicFile f=file(c,p);try{out=f.startWrite();out.write(o.toString().getBytes("UTF-8"));f.finishWrite(out);CloudSync.changed(c);return true;}catch(Exception e){if(out!=null)f.failWrite(out);Log.w("KIK","Save taste",e);return false;}}
  static synchronized List<Rating> list(Context c,String profile){
   List<Rating> out=new ArrayList<Rating>();JSONObject ratings=all(c,profile).optJSONObject("ratings");if(ratings==null)return out;Iterator<String> keys=ratings.keys();while(keys.hasNext()){JSONObject o=ratings.optJSONObject(keys.next());if(o==null)continue;Rating r=new Rating();r.link=o.optString("link");r.title=o.optString("title");r.poster=o.optString("poster",null);r.genre=o.optString("genre",null);r.value=o.optInt("value");r.time=o.optLong("time");out.add(r);}Collections.sort(out,(a,b)->Long.compare(b.time,a.time));return out;
  }

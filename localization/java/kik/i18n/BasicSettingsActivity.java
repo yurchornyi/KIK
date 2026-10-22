@@ -42,6 +42,7 @@ public final class BasicSettingsActivity extends Activity {
   space(18);String who=ProfileStore.nameOf(this,ProfileStore.current(this));
   Button profiles=button(who==null?"Профілі":"Профіль: "+who+" • змінити");content.addView(profiles,new LinearLayout.LayoutParams(dp(420),dp(48)));
   profiles.setOnClickListener(v->startActivity(new Intent(this,ProfilesActivity.class)));
+  space(18);Button sync=button("Синхронізація профілю");content.addView(sync,new LinearLayout.LayoutParams(dp(350),dp(48)));sync.setOnClickListener(v->startActivity(new Intent(this,SyncActivity.class)));
   space(22);TextView updates=text("Оновлення KIK • "+AppUpdater.version(this),20);content.addView(updates);space(8);
   Switch automatic=new Switch(this);automatic.setText("Оновлювати автоматично");automatic.setTextColor(Color.WHITE);automatic.setTextSize(19);automatic.setPadding(dp(14),dp(8),dp(14),dp(8));automatic.setFocusable(true);automatic.setBackground(focusBackground());automatic.setThumbTintList(next.getThumbTintList());automatic.setTrackTintList(next.getTrackTintList());automatic.setChecked(AppUpdater.enabled(this));automatic.setOnCheckedChangeListener((v,on)->AppUpdater.setEnabled(this,on));content.addView(automatic,new LinearLayout.LayoutParams(dp(670),dp(52)));space(8);
   updateStatus=text(AppUpdater.status(this),14);updateStatus.setTextColor(0xffb5b1be);content.addView(updateStatus,new LinearLayout.LayoutParams(dp(670),-2));space(10);

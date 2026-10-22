@@ -1,0 +1,15 @@
+{
+  "name": "kik",
+  "main": "server.mjs",
+  "account_id": "175aa69489121cb4274c780bc5195f18",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "d1_databases": [{ "binding": "DB", "database_name": "kik-data", "database_id": "a2f6bf81-66e7-47e7-bc22-29723145cabb" }],
+  "assets": { "directory": "dist", "binding": "ASSETS", "run_worker_first": true },
+  "ratelimits": [
+    { "name": "AUTH_LIMIT", "namespace_id": "2301", "simple": { "limit": 15, "period": 60 } },
+    { "name": "API_LIMIT", "namespace_id": "2302", "simple": { "limit": 180, "period": 60 } }
+  ],
+  "observability": { "enabled": true }
+}

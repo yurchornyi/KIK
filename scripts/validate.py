@@ -16,7 +16,7 @@ job=b.find("./application/service[@"+ns+"name='kik.i18n.UpdateJob']")
 assert job is not None and job.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE'
 receiver=b.find("./application/receiver[@"+ns+"name='kik.i18n.UpdateReceiver']")
 assert receiver is not None and receiver.get(ns+'exported')=='false'
-assert len(a.findall('./application/activity'))+7==len(b.findall('./application/activity'))
+assert len(a.findall('./application/activity'))+8==len(b.findall('./application/activity'))
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.BasicSettingsActivity']") is not None
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.ProfilesActivity']") is not None
 taste=b.find("./application/activity[@"+ns+"name='kik.i18n.TasteActivity']")
@@ -38,8 +38,8 @@ def urls(path):
    except ValueError:continue
    if s.startswith(('http://','https://')):out.add(s)
  return out
-# Only addition: the description translation endpoint.
-assert urls(root/'localized')-urls(root/'decoded')<={'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=uk','https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ru&tl=uk','https://hdrezka.website','https://hdrezka.website/',release['update_url']}
+# Added endpoints are translation, KIK services and the existing source's canonical sync base.
+assert urls(root/'localized')-urls(root/'decoded')<={'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=uk','https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ru&tl=uk','https://hdrezka.website','https://hdrezka.website/','https://hdrezka.sh/',release['update_url'],release['web_url']}
 assert urls(root/'decoded')<=urls(root/'localized')
 repository=(root/'localized/smali/rezkatv/web/app/data/repository/AppUpdateRepository.smali').read_text()
 for m in re.finditer(r'\.method public final checkForUpdates-gIAlu-s[^\n]*\n(.*?)\.end method',repository,re.S):

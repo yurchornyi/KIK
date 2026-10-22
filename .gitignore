@@ -14,6 +14,7 @@ outputs/
 .env.*
 node_modules/
 .wrangler/
+web/dist/
 localization/java/kik/i18n/Ua.java
 localization/java/kik/i18n/LocaleBridge.java
 localization/java/kik/i18n/UpdateConfig.java

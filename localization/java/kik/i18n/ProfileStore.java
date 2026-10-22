@@ -53,6 +53,7 @@ public final class ProfileStore {
  public static void rename(Context c,String id,String name){List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id))p.name=name.trim();save(c,all);}
  public static void changePassword(Context c,String id,String password){List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id)){p.salt=UUID.randomUUID().toString();p.hash=hash(p.salt,password);}save(c,all);}
  public static void delete(Context c,String id){
+  if(CloudSync.linked(c,id))CloudSync.disconnect(c,id);
   List<Profile> all=list(c);
   for(Iterator<Profile> it=all.iterator();it.hasNext();)if(it.next().id.equals(id))it.remove();
   save(c,all);

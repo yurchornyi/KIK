@@ -53,9 +53,9 @@ public final class KikPlayerActivity extends Activity {
   h.post(tick);h.postDelayed(saver,5000);
   start(true);
  }
- @Override protected void onResume(){super.onResume();active=true;if(prepared&&seeking){mp.setVolume(0f,0f);video.start();}else if(prepared&&!video.isPlaying()){playWhenReady=false;show(true);}}
- @Override protected void onPause(){super.onPause();active=false;save();if(prepared){playWhenReady=false;video.pause();}}
- @Override protected void onDestroy(){destroyed=true;generation++;h.removeCallbacksAndMessages(null);video.stopPlayback();super.onDestroy();}
+ @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&seeking){mp.setVolume(0f,0f);video.start();}else if(prepared&&!video.isPlaying()){playWhenReady=false;show(true);}}
+ @Override protected void onPause(){super.onPause();active=false;save();CloudSync.playing(profileId,false);CloudSync.changed(this);if(prepared){playWhenReady=false;video.pause();}}
+ @Override protected void onDestroy(){destroyed=true;CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);video.stopPlayback();super.onDestroy();}
 
  // ---------- playback ----------
  /** Loads the stream for the current voice/episode; keepPosition continues from the same moment. */

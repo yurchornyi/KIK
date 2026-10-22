@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: '22'
       - run: node --test cloudflare/worker.test.mjs
+      - run: npm ci --prefix web --no-audit --no-fund
+      - run: npm test --prefix web
+      - run: npm run build --prefix web
       - name: Update security policy
         run: |
           mkdir -p /tmp/kik-checks

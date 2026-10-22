@@ -31,9 +31,9 @@ public final class Progress {
     .put("voice",e.voice).put("voiceName",e.voiceName).put("pos",e.pos).put("dur",e.dur).put("ts",System.currentTimeMillis()).put("eps",eps)
     .put("observed",e.observed||(prev!=null&&prev.optBoolean("observed"))).put("watched",Math.max(0,e.watchedMs)+(prev==null?0:prev.optLong("watched"))));
   }catch(JSONException ignored){}
-  write(c,o);
+  write(c,o);CloudSync.changed(c);
  }
- public static synchronized void remove(Context c,String link){JSONObject o=all(c);o.remove(norm(link));write(c,o);}
+ public static synchronized void remove(Context c,String link){JSONObject o=all(c);o.remove(norm(link));write(c,o);CloudSync.removedHistory(c,ProfileStore.current(c),link);}
  public static synchronized Entry get(Context c,String link){JSONObject x=all(c).optJSONObject(norm(link));return x==null?null:entry(x);}
  /** Position and duration of one episode, or null. */
  public static synchronized long[] episode(Context c,String link,String season,String episode){
@@ -52,6 +52,8 @@ public final class Progress {
   e.voice=x.optString("voice",null);e.voiceName=x.optString("voiceName",null);e.pos=x.optLong("pos");e.dur=x.optLong("dur");e.ts=x.optLong("ts");e.observed=x.optBoolean("observed");e.watchedMs=x.optLong("watched");return e;
  }
 
+ static synchronized JSONObject cloudData(Context c,String p){try{return new JSONObject(all(c,p).toString());}catch(Exception e){return new JSONObject();}}
+ static synchronized void cloudApply(Context c,String p,JSONObject progress,JSONArray later)throws IOException{atomicWrite(file(c,"progress",p),progress.toString());atomicWrite(file(c,"later",p),later.toString());}
  // ---------- watch later (same file format as the home screen used) ----------
  private static File laterFile(Context c){return new File(c.getFilesDir(),"kik_later_"+ProfileStore.current(c)+".json");}
  public static synchronized JSONArray later(Context c){return later(c,ProfileStore.current(c));}
@@ -63,7 +65,7 @@ public final class Progress {
   for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&norm(o.optString("link")).equals(norm(link))){found=true;continue;}next.put(o);}
   JSONArray out=new JSONArray();
   try{if(!found)out.put(new JSONObject().put("link",link).put("title",title).put("poster",poster).put("year",year).put("genre",genre));for(int i=0;i<next.length();i++)out.put(next.get(i));
-   atomicWrite(laterFile(c),out.toString());}catch(Exception e){android.util.Log.w("KIK","Save watch list",e);return found;}
+   atomicWrite(laterFile(c),out.toString());CloudSync.changed(c);}catch(Exception e){android.util.Log.w("KIK","Save watch list",e);return found;}
   return !found;
  }
 }
