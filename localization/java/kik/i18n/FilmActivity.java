@@ -12,7 +12,7 @@ import java.util.*;
 /** Film / series page: backdrop, Ukrainian title and description, voice choice, seasons and episodes. */
 public final class FilmActivity extends Activity {
  static Site.Film current;
- private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice;private String season;
+ private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
  private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private ImageView backdrop;
  private LinearLayout body,voices,seasons,episodes;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
@@ -106,6 +106,15 @@ public final class FilmActivity extends Activity {
   if(voice==null&&e!=null&&e.voice!=null)for(Site.Voice v:film.voices)if(v.id.equals(e.voice)&&!v.premium)voice=v;
   if(voice==null){int best=Integer.MAX_VALUE;for(Site.Voice v:film.voices){if(v.premium)continue;int r=PlaybackPolicy.order(v.name,v.camrip,v.ads);if(r<best){best=r;voice=v;}}}
   if(voice==null&&film.defaultVoice!=null)for(Site.Voice v:film.voices)if(v.id.equals(film.defaultVoice)&&!v.premium)voice=v;
+  preferred=voice;
+ }
+ /** Voices cover different seasons: show the voice that will really play in the selected season, and say when Ukrainian is missing there. */
+ private void seasonVoice(){
+  if(film==null||!film.series||preferred==null||season==null||film.sourceUrl!=null)return;String first=null;for(Site.Episode e:film.episodes)if(season.equals(e.season)){first=e.episode;break;}if(first==null)return;
+  final String s=season,e=first;final int gen=++voiceCheck;final Site.Film f=film;final Site.Voice want=preferred;
+  Ui.bg(()->{Site.Voice v=null;try{v=Site.voiceFor(f,s,e,want.id);}catch(Exception ignored){}final Site.Voice got=v;
+   Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||gen!=voiceCheck||film!=f||got==null)return;voice=got;buildVoices();
+    if(got!=want&&PlaybackPolicy.language(want.name)==0)voiceChip.setText("Озвучка: "+Ua.t(got.name)+"  •  української для сезону "+s+" немає");});});
  }
  private void buildVoices(){
   voices.removeAllViews();
@@ -113,11 +122,12 @@ public final class FilmActivity extends Activity {
   if(voice!=null)voiceChip.setText("Озвучка: "+Ua.t(voice.name));
   for(final Site.Voice v:film.voices){
    TextView c=Ui.chip(this,Ua.t(v.name)+(v.premium?"  ★":""));c.setEnabled(!v.premium);c.setAlpha(v.premium?0.45f:1f);voices.addView(c,Ui.wrap(this,10));Ui.select(c,v==voice);
-   c.setOnClickListener(x->{voice=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText("Озвучка: "+Ua.t(v.name));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
-    if(film.series)Ui.bg(()->{try{Site.episodesFor(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});});
+   c.setOnClickListener(x->{voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText("Озвучка: "+Ua.t(v.name));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
+    if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});});
   }
  }
  private void showEpisodes(){
+  seasonVoice();
   epHeader.setVisibility(film.episodes.isEmpty()?View.GONE:View.VISIBLE);
   seasons.removeAllViews();
   if(film.seasons.size()>1)for(final String s:film.seasons){TextView c=Ui.chip(this,"Сезон "+s);seasons.addView(c,Ui.wrap(this,10));Ui.select(c,s.equals(season));c.setOnClickListener(v->{season=s;showEpisodes();seasons.post(()->{for(int i=0;i<seasons.getChildCount();i++)if(((TextView)seasons.getChildAt(i)).getText().toString().endsWith(" "+s))seasons.getChildAt(i).requestFocus();});});}
