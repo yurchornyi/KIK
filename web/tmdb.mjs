@@ -40,24 +40,28 @@ export function selectImages(images,id,kind){
  const backdrops=(images.backdrops||[]).filter(i=>valid(i)&&i.width>=1280&&i.height>=720&&i.width/i.height>=1.5&&i.width/i.height<=2.2);
  backdrops.sort((a,b)=>(b.iso_639_1==null?100:0)-(a.iso_639_1==null?100:0)+Math.min(b.width,3840)/384-Math.min(a.width,3840)/384+(b.vote_average||0)-(a.vote_average||0));
  const language=i=>i.iso_639_1==='uk'?30:i.iso_639_1==null?20:i.iso_639_1==='en'?10:0;
- const posters=(images.posters||[]).filter(i=>valid(i)&&i.width>=300&&i.height>=450&&i.width/i.height>=.55&&i.width/i.height<=.8);
+ const posters=(images.posters||[]).filter(i=>valid(i)&&i.width>=500&&i.height>=750&&i.width/i.height>=.55&&i.width/i.height<=.8);
  posters.sort((a,b)=>language(b)-language(a)+(b.vote_average||0)-(a.vote_average||0));
  const backdrop=backdrops[0],poster=posters[0];
  if(!backdrop&&!poster)return null;
  return {source:'tmdb',id,kind,page:`https://www.themoviedb.org/${kind}/${id}`,
   poster:poster?`${CDN}/w500${poster.file_path}`:null,
   posterLarge:poster?`${CDN}/w780${poster.file_path}`:null,
+  posterOriginal:poster?`${CDN}/original${poster.file_path}`:null,
+  posterWidth:poster?.width||null,
   backdrop:backdrop?`${CDN}/w1280${backdrop.file_path}`:null,
   backdropOriginal:backdrop?`${CDN}/original${backdrop.file_path}`:null,
   backdropWidth:backdrop?.width||null};
 }
 
-/** Public artwork only. Credentials stay in Authorization headers on this server. */
+/** Public artwork only. Both TMDB credential formats stay on this server. */
 export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={}){
  const memory=new Map(),pending=new Map();let blockedUntil=0;
  async function request(path,token,signal){
   // Workers accept only "follow" or "manual"; TMDB never redirects, so a 3xx is treated as a failure below.
-  const r=await fetcher(API+path,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal,redirect:'manual'});
+  const credential=token.trim().replace(/^Bearer\s+/i,''),key=/^[a-f0-9]{32}$/i.test(credential);
+  const url=API+path+(key?(path.includes('?')?'&':'?')+'api_key='+encodeURIComponent(credential):'');
+  const r=await fetcher(url,{headers:{Accept:'application/json',...(!key?{Authorization:`Bearer ${credential}`}:{})},signal,redirect:'manual'});
   if(!r.ok){if([401,403,429].includes(r.status))blockedUntil=now()+60000;console.warn('TMDB request failed',r.status);throw Error('Artwork provider unavailable');}
   return r.json();
  }
@@ -70,6 +74,8 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
    if(identity.year)params.set(identity.kind==='tv'?'first_air_date_year':'year',String(identity.year));
    const data=await request(`/search/${identity.kind}?${params}`,token,signal);
    match=matchTitle(identity,data.results);if(match)break;
+   // Regional release years can differ; validate the bounded year difference ourselves.
+   if(identity.year){params.delete(identity.kind==='tv'?'first_air_date_year':'year');const nearby=await request(`/search/${identity.kind}?${params}`,token,signal);match=matchTitle(identity,nearby.results);if(match)break;}
   }
   if(!match)return null;
   const images=await request(`/${identity.kind}/${match.id}/images?include_image_language=uk,en,null`,token,signal);
@@ -81,7 +87,7 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
   token=token.trim();
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity)+'\n'+token));
   const digest=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
-  const key=new Request(new URL('/__artwork-cache/v1/'+digest,origin));
+  const key=new Request(new URL('/__artwork-cache/v2/'+digest,origin));
   const hit=memory.get(digest);if(hit&&hit.until>now())return hit.value;
   if(pending.has(digest))return pending.get(digest);
   if(pending.size>=12)return {configured:true,artwork:null,retryAfter:10};

@@ -1,3 +1,4 @@
+import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
@@ -19,6 +20,7 @@ async function api(request,env,ctx){
  if(request.method==="POST")origin(request);
  const limit=path.startsWith("/api/auth/")||path==="/api/pair/start"?env.AUTH_LIMIT:env.API_LIMIT;
  if(limit&&!(await limit.limit({key:ip})).success)fail("Забагато запитів. Зачекайте хвилину.",429);
+ if(publicArtworkPreview(request,env))return previewArtwork(request);
  if(path==="/api/artwork"&&request.method==="GET")return json(await artworkService.lookup(Object.fromEntries(url.searchParams),{token:env.TMDB_READ_TOKEN,cache:caches.default,origin:url.origin}));
  // One request per batch of visible cards keeps the page inside the per-IP API limit.
  if(path==="/api/artwork/batch"&&request.method==="POST"){
