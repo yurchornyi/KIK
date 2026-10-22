@@ -1,0 +1,2 @@
+# Copy to .dev.vars for local development. Never commit the real token.
+TMDB_READ_TOKEN="replace-with-your-api-read-access-token"

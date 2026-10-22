@@ -1,6 +1,8 @@
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
-import {exchange} from "./sync.mjs";
+import {exchange,titleKey} from "./sync.mjs";
 import {catalogue,film,episodes,stream} from "./catalogue.mjs";
+import {createArtworkService} from "./tmdb.mjs";
+const artworkService=createArtworkService();
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 async function body(request,max=1024*1024){if(Number(request.headers.get("Content-Length"))>max)fail("Завеликий запит",413);const reader=request.body?.getReader();if(!reader)fail("Порожній запит");let data=[],size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>max)fail("Завеликий запит",413);data.push(value);}}finally{await reader.cancel();}const bytes=new Uint8Array(size);let at=0;for(const b of data){bytes.set(b,at);at+=b.length;}try{return JSON.parse(new TextDecoder().decode(bytes));}catch{fail("Некоректний JSON");}}
@@ -14,6 +16,14 @@ async function api(request,env,ctx){
  if(request.method==="POST")origin(request);
  const limit=path.startsWith("/api/auth/")||path==="/api/pair/start"?env.AUTH_LIMIT:env.API_LIMIT;
  if(limit&&!(await limit.limit({key:ip})).success)fail("Забагато запитів. Зачекайте хвилину.",429);
+ if(path==="/api/artwork"&&request.method==="GET")return json(await artworkService.lookup(Object.fromEntries(url.searchParams),{token:env.TMDB_READ_TOKEN,cache:caches.default,origin:url.origin}));
+ // One request per batch of visible cards keeps the page inside the per-IP API limit.
+ if(path==="/api/artwork/batch"&&request.method==="POST"){
+  const b=await body(request,32768);if(!Array.isArray(b.items)||b.items.length>24)fail("Некоректний запит обкладинок");
+  const options={token:env.TMDB_READ_TOKEN,cache:caches.default,origin:url.origin},results={},queue=[...b.items];let configured=true;
+  await Promise.all(Array.from({length:4},async()=>{for(let item;(item=queue.shift());)try{const key=titleKey(item.link),r=await artworkService.lookup(item,options);configured&&=r.configured;results[key]=r.artwork;}catch{}}));
+  return json({configured,results});
+ }
  if(path==="/api/auth/register"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
   const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
