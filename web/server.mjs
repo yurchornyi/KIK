@@ -15,7 +15,7 @@ async function api(request,env,ctx){
  const limit=path.startsWith("/api/auth/")||path==="/api/pair/start"?env.AUTH_LIMIT:env.API_LIMIT;
  if(limit&&!(await limit.limit({key:ip})).success)fail("Забагато запитів. Зачекайте хвилину.",429);
  if(path==="/api/auth/register"&&request.method==="POST"){
-  const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<10||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 10 символів.");
+  const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
   const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
   const id=crypto.randomUUID(),salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40);
   try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) VALUES(?,?,?,?,?,?)").bind(id,email,email,salt,password_hash,now),db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,"bear",now)]);}catch{fail("Ця пошта вже зареєстрована",409);}
