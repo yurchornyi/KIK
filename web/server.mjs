@@ -1,3 +1,4 @@
+import {admin,registrationAllowed,cleanSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -31,17 +32,19 @@ async function api(request,env,ctx){
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  if(path==="/api/auth/register"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
+  if(!await registrationAllowed(db,email))fail("Реєстрація лише за дозволом адміністратора. Попросіть додати вашу пошту.",403);
   const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
   const id=crypto.randomUUID(),salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40);
-  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) VALUES(?,?,?,?,?,?)").bind(id,email,email,salt,password_hash,now),db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,"bear",now)]);}catch{fail("Ця пошта вже зареєстрована",409);}
-  const token=await session(db,id);return json({user:{id,email},profiles:await profiles(db,{id})},201,{"Set-Cookie":cookie(token)});
+  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,"bear",now)]);}catch{fail("Ця пошта вже зареєстрована",409);}
+  const token=await session(db,id);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id})},201,{"Set-Cookie":cookie(token)});
  }
  if(path==="/api/auth/login"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email),legacy=typeof b.username==="string"?b.username.trim().toLowerCase():"";if((!validEmail(email)&&!validUsername(legacy))||typeof b.password!=="string"||b.password.length>256)fail("Неправильна пошта або пароль",401);
   const user=await db.prepare("SELECT * FROM users WHERE email=? OR (email IS NULL AND username=?)").bind(email,legacy).first();const digest=await passwordHash(b.password,user?.salt||"invalid-account-timing-padding");if(!user||!equal(digest,user.password_hash))fail("Неправильна пошта або пароль",401);
-  const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username},profiles:await profiles(db,user)},200,{"Set-Cookie":cookie(token)});
+  const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user)},200,{"Set-Cookie":cookie(token)});
  }
  const user=await identity(request,db);
+ if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body));
  if(path==="/api/auth/logout"&&request.method==="POST"){
   const token=request.headers.get("Cookie")?.match(/(?:^|;\s*)kik_session=([a-f0-9]{64})/)?.[1]||request.headers.get("Authorization")?.slice(7);if(token)await db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await hash(token)).run();return json({ok:true},200,{"Set-Cookie":cookie("",true)});
  }
@@ -61,6 +64,15 @@ async function api(request,env,ctx){
  }
  if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(f);}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
+ if(path==="/api/auth/logout-others"&&request.method==="POST")return json(await logoutOtherSessions(db,user,requestToken(request)));
+ if(path==="/api/settings"){
+  const b=request.method==="POST"?await body(request,8192):null,p=await owned(db,user,b?.profile_id||url.searchParams.get("profile_id"));
+  if(b){const settings=cleanSettings(b.settings);await db.prepare("INSERT INTO profile_settings(profile_id,data,updated_at) VALUES(?,?,?) ON CONFLICT(profile_id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at").bind(p.id,JSON.stringify(settings),Date.now()).run();return json({settings});}
+  const row=await db.prepare("SELECT data FROM profile_settings WHERE profile_id=?").bind(p.id).first();return json({settings:row?cleanSettings(JSON.parse(row.data)):DEFAULT_SETTINGS});
+ }
+ if(path==="/api/profiles/update"&&request.method==="POST"){
+  const b=await body(request,8192),p=await owned(db,user,b.profile_id),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");await db.prepare("UPDATE profiles SET name=? WHERE id=?").bind(name,p.id).run();return json({...p,name});
+ }
  if(path==="/api/pair/claim"&&request.method==="POST"){
   const b=await body(request,8192);await owned(db,user,b.profile_id);const code=String(b.code||"").replace(/[\s-]/g,"").toUpperCase();if(!/^[A-Z2-9]{8}$/.test(code))fail("Введіть 8 символів із TV");
   const result=await db.prepare("UPDATE pairs SET user_id=?,profile_id=? WHERE user_code=? AND expires_at>? AND user_id IS NULL AND consumed=0").bind(user.id,b.profile_id,code,Date.now()).run();if(!result.meta.changes)fail("Код недійсний або вже використаний",410);return json({ok:true});

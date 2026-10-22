@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {cleanSettings,DEFAULT_SETTINGS,requireAdmin,admin} from './management.mjs';
+test('playback settings accept bounded values and never persist arbitrary fields',()=>{assert.deepEqual(cleanSettings({}),DEFAULT_SETTINGS);assert.deepEqual(cleanSettings({quality:'720p',audio:'en',speed:1.5,autoplay:false}),{quality:'720p',audio:'en',speed:1.5,autoplay:false});for(const v of [null,[],{role:'admin'},{quality:'8K'},{audio:'javascript:'},{speed:500},{autoplay:'false'}])assert.throws(()=>cleanSettings(v),e=>e.status===400);});
+test('admin authorization comes only from server identity, not request parameters',async()=>{assert.throws(()=>requireAdmin(null),e=>e.status===401);assert.throws(()=>requireAdmin({email:'owner@example.invalid',role:'user'}),e=>e.status===403);assert.doesNotThrow(()=>requireAdmin({role:'admin'}));await assert.rejects(admin(new Request('https://kik.test/api/admin/access?role=admin'),{}, {role:'user'},()=>({role:'admin'})),e=>e.status===403);});
+
+import {preferredQuality} from './public/preferences.js';
+test('quality preference falls back below the target and auto picks the highest available',()=>{const q=['2160p','720p','480p'].map(label=>({label}));assert.equal(preferredQuality(q,'1080p').label,'720p');assert.equal(preferredQuality(q,'720p').label,'720p');assert.equal(preferredQuality(q,'auto').label,'2160p');assert.equal(preferredQuality(q,'240p').label,'480p');assert.equal(preferredQuality([],'1080p'),null);});
