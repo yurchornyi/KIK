@@ -262,7 +262,10 @@ public final class Site {
  }
  /** The viewer's own choice first, then the source order (Ukrainian, Russian, the rest): the first voice that has this episode. */
  public static Voice voiceFor(Film f,String season,String episode,String preferred)throws IOException{
-  List<Voice> order=new ArrayList<Voice>();for(Voice v:f.voices)if(!v.premium&&v.id.equals(preferred))order.add(v);for(Voice v:f.voices)if(!v.premium&&!order.contains(v))order.add(v);
+  List<Voice> order=new ArrayList<Voice>();for(Voice v:f.voices)if(!v.premium&&v.id.equals(preferred))order.add(v);
+  // Stay in the chosen language (best studio first) before falling back to Ukrainian, Russian, the rest.
+  if(!order.isEmpty()){String l=PlaybackPolicy.lang(order.get(0).name);for(Voice v:f.voices)if(!v.premium&&!order.contains(v)&&PlaybackPolicy.lang(v.name).equals(l))order.add(v);}
+  for(Voice v:f.voices)if(!v.premium&&!order.contains(v))order.add(v);
   for(Voice v:order){if(Thread.currentThread().isInterrupted())break;for(Episode e:covered(f,v.id))if(e.season.equals(season)&&e.episode.equals(episode))return v;}
   return null;
  }

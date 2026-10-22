@@ -114,15 +114,18 @@ public final class FilmActivity extends Activity {
   final String s=season,e=first;final int gen=++voiceCheck;final Site.Film f=film;final Site.Voice want=preferred;
   Ui.bg(()->{Site.Voice v=null;try{v=Site.voiceFor(f,s,e,want.id);}catch(Exception ignored){}final Site.Voice got=v;
    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||gen!=voiceCheck||film!=f||got==null)return;voice=got;buildVoices();
-    if(got!=want&&PlaybackPolicy.language(want.name)==0)voiceChip.setText("Озвучка: "+Ua.t(got.name)+"  •  української для сезону "+s+" немає");});});
+});});
  }
  private void buildVoices(){
   voices.removeAllViews();
-  boolean many=film.voices.size()>1;voiceChip.setVisibility(many?View.VISIBLE:View.GONE);
-  if(voice!=null)voiceChip.setText("Озвучка: "+Ua.t(voice.name));
-  for(final Site.Voice v:film.voices){
-   TextView c=Ui.chip(this,Ua.t(v.name)+(v.premium?"  ★":""));c.setEnabled(!v.premium);c.setAlpha(v.premium?0.45f:1f);voices.addView(c,Ui.wrap(this,10));Ui.select(c,v==voice);
-   c.setOnClickListener(x->{voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText("Озвучка: "+Ua.t(v.name));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
+  // Languages, not studios: each choice plays the best free studio of that language (the list is already ordered best first).
+  List<String> names=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)names.add(v.name);List<String> langs=PlaybackPolicy.langs(names);
+  voiceChip.setVisibility(langs.size()>1?View.VISIBLE:View.GONE);
+  if(voice!=null)voiceChip.setText(PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)));
+  for(final String l:langs){
+   Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(l)){best=x;break;}final Site.Voice v=best;
+   TextView c=Ui.chip(this,PlaybackPolicy.label(l));voices.addView(c,Ui.wrap(this,10));Ui.select(c,voice!=null&&PlaybackPolicy.lang(voice.name).equals(l));
+   c.setOnClickListener(x->{voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText(PlaybackPolicy.label(l));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();
     if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});});
   }
  }

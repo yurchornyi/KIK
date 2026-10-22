@@ -78,8 +78,10 @@ public final class KikPlayerActivity extends Activity {
     h.post(()->{
      if(destroyed||gen!=generation)return;
      if(episodeData!=null){selectedFilm.seasons=new ArrayList<String>(episodeData.seasons);selectedFilm.episodes=new ArrayList<Site.Episode>(episodeData.episodes);}
-     if(playing!=selected){voice=playing;paintSub();boolean ukExists=false;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&PlaybackPolicy.language(v.name)==0)ukExists=true;
-      if(PlaybackPolicy.language(playing.name)!=0&&ukExists)Ui.toast(this,"Української озвучки для цієї серії немає. Увімкнено «"+Ua.t(playing.name)+"».");}
+     if(playing!=selected){voice=playing;paintSub();
+      // Say so only when the episode is not in the language the viewer wants (their choice, else the best one offered).
+      String chosen=Progress.voice(this,selectedFilm.link),desired=null;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&(chosen==null?desired==null:v.id.equals(chosen)))desired=PlaybackPolicy.lang(v.name);
+      String got=PlaybackPolicy.lang(playing.name);if(desired!=null&&!desired.equals(got))Ui.toast(this,PlaybackPolicy.label(desired)+" озвучка для цієї серії недоступна. Увімкнено: "+PlaybackPolicy.label(got).toLowerCase(Locale.ROOT)+".");}
      stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.");return;}
      quality=!fromHistory&&quality!=null&&s.qualities.containsKey(quality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
@@ -135,7 +137,7 @@ public final class KikPlayerActivity extends Activity {
   addControl("⟲10",()->seek(-10000));addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
   View gap=new View(this);buttons.addView(gap,new LinearLayout.LayoutParams(0,1,1));
   if(film.series)addControl("Наступна серія",()->{if(!prepared)return;Site.Episode n=next(film,season,episode);if(n!=null){save();season=n.season;episode=n.episode;start(true);}else Ui.toast(this,"Це остання серія");});
-  if(film.voices.size()>1)addControl("Озвучка",()->openVoices());
+  if(PlaybackPolicy.langs(voiceNames()).size()>1)addControl("Озвучка",()->openVoices());
   addControl("Якість",()->openQualities());
   addControl("Швидкість",()->openSpeeds());
   addControl("Субтитри",()->openSubtitles());
@@ -146,13 +148,31 @@ public final class KikPlayerActivity extends Activity {
   root.addView(flash,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));
   top.setAlpha(0);bottom.setAlpha(0);top.setVisibility(View.GONE);bottom.setVisibility(View.GONE);
  }
+ /** Round transport button drawn as vectors: replay 10, play/pause, forward 10. The text only names the state. */
+ private static final class Icon extends TextView {
+  private final Paint ink=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path path=new Path();private final RectF box=new RectF();
+  Icon(Context c,String state){super(c);setText(state);ink.setStrokeCap(Paint.Cap.ROUND);ink.setStrokeJoin(Paint.Join.ROUND);ink.setTextAlign(Paint.Align.CENTER);ink.setTypeface(Typeface.DEFAULT_BOLD);}
+  @Override protected void onDraw(Canvas canvas){
+   float w=getWidth(),h=getHeight(),cx=w/2,cy=h/2,r=Math.min(w,h)/2,u=r/10f;String s=getText().toString();ink.setColor(getCurrentTextColor());
+   if(s.equals("❚❚")){ink.setStyle(Paint.Style.FILL);box.set(cx-3.6f*u,cy-4.4f*u,cx-1.2f*u,cy+4.4f*u);canvas.drawRoundRect(box,u*.7f,u*.7f,ink);box.offset(4.8f*u,0);canvas.drawRoundRect(box,u*.7f,u*.7f,ink);}
+   else if(s.equals("▶")){ink.setStyle(Paint.Style.FILL);path.reset();path.moveTo(cx-2.8f*u,cy-4.8f*u);path.lineTo(cx+5f*u,cy);path.lineTo(cx-2.8f*u,cy+4.8f*u);path.close();canvas.drawPath(path,ink);}
+   else{boolean back=s.startsWith("⟲");ink.setStyle(Paint.Style.STROKE);ink.setStrokeWidth(1.1f*u);box.set(cx-5.6f*u,cy-5.6f*u,cx+5.6f*u,cy+5.6f*u);
+    // Circle open at the top; the arrowhead sits at one end of the gap and points across it.
+    canvas.drawArc(box,-60,300,false,ink);
+    float R=5.6f*u,ax=cx+(back?.5f:-.5f)*R,ay=cy-.866f*R,dir=back?-1:1;ink.setStyle(Paint.Style.FILL);path.reset();path.moveTo(ax+dir*2.6f*u,ay);path.lineTo(ax-dir*.4f*u,ay-2.1f*u);path.lineTo(ax-dir*.4f*u,ay+2.1f*u);path.close();canvas.drawPath(path,ink);
+    ink.setTextSize(4.6f*u);canvas.drawText("10",cx,cy+1.7f*u,ink);}
+  }
+ }
  private void addControl(String label,Runnable r){
+  if(label.equals("⟲10")||label.equals("❚❚")||label.equals("10⟳")){boolean main=label.equals("❚❚");Icon t=new Icon(this,label);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
+   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(main?64:54),dp(main?64:54));lp.setMargins(0,0,dp(14),0);buttons.addView(t,lp);controls.add(t);return;}
   boolean icon=label.length()<=4;TextView t=Ui.bold(this,label,icon?20:16);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(icon?0:dp(12),0,icon?0:dp(12),0);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(icon?dp(54):-2,dp(48));lp.setMargins(0,0,dp(8),0);buttons.addView(t,lp);controls.add(t);
  }
+ private List<String> voiceNames(){List<String> n=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)n.add(v.name);return n;}
  private void paintSub(){
   String s=film.series&&season!=null?"Сезон "+season+" · Серія "+episode:"";
-  sub.setText(Ui.join(s,Ua.t(voice.name),quality));
+  sub.setText(Ui.join(s,PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)),quality));
  }
  private void openMenu(String kind,List<String> labels,List<Runnable> actions,int selected){
   if(labels.isEmpty()){Ui.toast(this,"Немає доступних варіантів");return;}
@@ -163,7 +183,10 @@ public final class KikPlayerActivity extends Activity {
  private void closeMenu(){menu=null;options.setVisibility(View.GONE);paint();}
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  for(final Site.Voice v:film.voices){if(v.premium)continue;if(v==voice)sel=l.size();l.add(Ua.t(v.name));a.add(()->{if(v==voice)return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
+  List<String> names=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)names.add(v.name);
+  for(final String lang:PlaybackPolicy.langs(names)){Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(lang)){best=x;break;}final Site.Voice v=best;
+   if(voice!=null&&PlaybackPolicy.lang(voice.name).equals(lang))sel=l.size();l.add(PlaybackPolicy.label(lang));
+   a.add(()->{if(voice!=null&&PlaybackPolicy.lang(voice.name).equals(lang))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
  }
  private void openQualities(){
@@ -213,7 +236,8 @@ public final class KikPlayerActivity extends Activity {
  }
  private void paint(){
   for(int i=0;i<controls.size();i++){boolean f=menu==null&&!progressFocus&&i==focus;TextView t=controls.get(i);
-   Ui.paintControl(t,f);}
+   if(t instanceof Icon){GradientDrawable o=new GradientDrawable();o.setShape(GradientDrawable.OVAL);o.setColor(f?Color.WHITE:0x26ffffff);if(f)o.setStroke(dp(2),Ui.RED);t.setBackground(o);t.setTextColor(f?Color.BLACK:Color.WHITE);t.animate().scaleX(f?1.08f:1f).scaleY(f?1.08f:1f).setDuration(150).start();t.invalidate();}
+   else Ui.paintControl(t,f);}
   for(int i=0;i<options.getChildCount();i++){TextView t=(TextView)options.getChildAt(i);boolean f=i==optFocus;Ui.paintControl(t,f);if(!f&&i==optSelected)t.setBackground(Ui.shape(Ui.RED,dp(24),0,0));if(f){final View target=t;options.post(()->((HorizontalScrollView)options.getParent()).smoothScrollTo(Math.max(0,target.getLeft()-dp(120)),0));}}
   knob.animate().scaleX(progressFocus?1.6f:1f).scaleY(progressFocus?1.6f:1f).setDuration(180).start();
  }

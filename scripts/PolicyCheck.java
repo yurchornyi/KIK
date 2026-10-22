@@ -34,6 +34,8 @@ public class PolicyCheck {
   if(PlaybackPolicy.bestVoice(Arrays.asList(ruDub,uaAuthor),false)!=uaAuthor)throw new AssertionError("Any Ukrainian track before Russian dubbing");
   if(!(PlaybackPolicy.order("Оригинал (+субтитры)",false,false)>PlaybackPolicy.order("Живов",false,false)))throw new AssertionError("Original listed last");
   if(!(PlaybackPolicy.order("Дубляж",true,false)>PlaybackPolicy.order("Дубляж",false,false)))throw new AssertionError("Camrip lower");
-  System.out.println("Playback policy checks passed: 13");
+  if(!"en".equals(PlaybackPolicy.lang("Оригинал (+субтитры)"))||!"ru".equals(PlaybackPolicy.lang("Red Head Sound"))||!"uk".equals(PlaybackPolicy.lang("Украинский многоголосый (Украинский)"))||!"other".equals(PlaybackPolicy.lang("Грузинский многоголосый (Грузинский)")))throw new AssertionError("Language groups");
+  if(!PlaybackPolicy.langs(Arrays.asList("Оригинал (+субтитры)","Дубляж","Coldfilm","Украинский многоголосый (Украинский)","Грузинский (Грузинский)")).equals(Arrays.asList("uk","ru","en")))throw new AssertionError("Three languages, best first, third languages hidden");
+  System.out.println("Playback policy checks passed: 15");
  }
 }

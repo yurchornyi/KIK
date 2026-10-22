@@ -18,6 +18,12 @@ public final class PlaybackPolicy {
   if(any(s,UKRAINIAN))return 0;
   return any(s,FOREIGN)?2:1;
  }
+ private static final String[] ORIGINAL={"оригинал","оригінал","original","англий","англій","english","субтитр"};
+ /** Viewer-facing language group: uk, ru, en (original or English) or other. */
+ public static String lang(String title){int l=language(title);if(l==0)return "uk";if(l==1)return "ru";String s=title==null?"":title.toLowerCase(Locale.ROOT);return any(s,ORIGINAL)?"en":"other";}
+ public static String label(String lang){return "uk".equals(lang)?"Українська":"ru".equals(lang)?"Російська":"en".equals(lang)?"Англійська":"Інша мова";}
+ /** Language choices offered to the viewer, best first; third languages only when nothing else exists. */
+ public static List<String> langs(List<String> names){List<String> out=new ArrayList<String>();for(String l:new String[]{"uk","ru","en"})for(String n:names)if(lang(n).equals(l)){out.add(l);break;}if(out.isEmpty()&&!names.isEmpty())out.add("other");return out;}
  /** Studio quality inside one language: lower is better. */
  static int studio(String s) {
   int score;
