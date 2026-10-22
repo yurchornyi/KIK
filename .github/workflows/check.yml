@@ -19,6 +19,19 @@ jobs:
       - run: npm ci --prefix web --no-audit --no-fund
       - run: npm test --prefix web
       - run: npm run build --prefix web
+      - name: Admin and settings integration with local D1
+        run: |
+          npm exec --prefix web -- wrangler d1 migrations apply kik-data --local --config web/wrangler.jsonc
+          npm exec --prefix web -- wrangler dev --config web/wrangler.jsonc --port 8791 > /tmp/kik-web.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8791/api/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat /tmp/kik-web.log; exit 1; fi
+          node web/management-integration.mjs
       - name: Update security policy
         run: |
           mkdir -p /tmp/kik-checks

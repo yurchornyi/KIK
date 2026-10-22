@@ -9,8 +9,8 @@ export function cookie(token,clear=false){return `kik_session=${clear?"":token};
 export function requestToken(request){return request.headers.get("Authorization")?.match(/^Bearer ([a-f0-9]{64})$/)?.[1]||request.headers.get("Cookie")?.match(/(?:^|;\s*)kik_session=([a-f0-9]{64})(?:;|$)/)?.[1];}
 export async function remember(db,token){await db.prepare("UPDATE sessions SET expires_at=? WHERE token_hash=?").bind(Date.now()+SESSION_MS,await hash(token)).run();}
 export async function identity(request,db){const token=requestToken(request);if(!token)return null;
- const user=await db.prepare("SELECT users.id,users.username,users.email,sessions.expires_at FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?").bind(await hash(token),Date.now()).first();
- if(!user)return null;if(user.expires_at-Date.now()<30*86400000)await remember(db,token);return {id:user.id,username:user.username,email:user.email};
+ const user=await db.prepare("SELECT users.id,users.username,users.email,users.role,sessions.expires_at FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?").bind(await hash(token),Date.now()).first();
+ if(!user)return null;if(user.expires_at-Date.now()<30*86400000)await remember(db,token);return {id:user.id,username:user.username,email:user.email,role:user.role};
 }
 export async function session(db,user){const token=randomToken();await db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)").bind(await hash(token),user,Date.now()+SESSION_MS).run();return token;}
 export function validUsername(value){return typeof value==="string"&&/^[a-z0-9._-]{3,40}$/.test(value);}

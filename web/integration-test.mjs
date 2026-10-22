@@ -1,8 +1,10 @@
+import {execFileSync} from 'node:child_process';
 // Runs against the dedicated development DB or deployment. Creates only disposable QA accounts.
 import assert from 'node:assert/strict';import {randomInt} from 'node:crypto';import {writeFile} from 'node:fs/promises';
 const base=process.env.KIK_TEST_URL||'http://localhost:8787',run='qa_'+Date.now().toString(36),password=String(randomInt(100000,1000000)),email=run+'@example.invalid';let checks=0;
 async function req(path,data,cookie,headers={}){const r=await fetch(base+path,{method:data===undefined?'GET':'POST',headers:{...(data===undefined?{}:{'Content-Type':'application/json'}),...(cookie?{Cookie:cookie}:{}),...headers},body:data===undefined?undefined:JSON.stringify(data)});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],cookieOptions:r.headers.get('set-cookie')?.split(';').slice(1).join(';')};}
 function check(ok,message){assert.ok(ok,message);checks++;}
+if(process.env.KIK_LOCAL_FIXTURES==='1'){if(!/^http:\/\/(localhost|127\.0\.0\.1):[0-9]+$/.test(base))throw Error('Fixtures require local Worker');const file=new URL('../work/sync-test-access.sql',import.meta.url);await writeFile(file,[email,run+'_b@example.invalid'].map(e=>`INSERT OR IGNORE INTO registration_access(email,created_at) VALUES('${e}',${Date.now()});`).join('\n'));execFileSync('npm',['exec','--prefix','web','--','wrangler','d1','execute','kik-data','--local','--config','web/wrangler.jsonc','--file',file.pathname],{cwd:new URL('../',import.meta.url),stdio:'pipe'});}
 const users=[];try{
  check((await req('/api/auth/register',{email,password:password.slice(0,5)})).status===400,'password shorter than six characters rejected');
  let a=await req('/api/auth/register',{email,password,name:'QA Sync'});check(a.status===201,'registration');check(a.cookieOptions.includes('Max-Age=7776000')&&a.cookieOptions.includes('HttpOnly')&&a.cookieOptions.includes('Secure'),'browser remembers secure session for 90 days');users.push(email);const cookie=a.cookie,profile=a.body.profiles[0].id;check((await req('/api/auth/register',{email:email.toUpperCase(),password})).status===409,'email normalization');check((await req('/api/auth/register',{email:'invalid-mail',password})).status===400,'invalid email rejected');check((await req('/api/auth/login',{email:email.toUpperCase(),password})).status===200,'email login ignores case');
@@ -32,4 +34,4 @@ const users=[];try{
  const foreign=await req('/api/sync',{source_schema:2,profile_id:profile,records:[]},b.cookie);check(foreign.status===404,'new source history remains account-private');
  await req('/api/auth/logout',{},cookie);check((await req('/api/me',undefined,cookie)).body.user===null,'logout revokes browser session');
  console.log(JSON.stringify({passed:true,checks,accounts:users,base}));
-}finally{if(process.env.KIK_CLEANUP_FILE)await writeFile(process.env.KIK_CLEANUP_FILE,users.map(u=>`DELETE FROM users WHERE username='${u}';`).join('\n'));}
+}finally{if(process.env.KIK_CLEANUP_FILE)await writeFile(process.env.KIK_CLEANUP_FILE,users.map(u=>`DELETE FROM pairs WHERE user_id IN (SELECT id FROM users WHERE username='${u}'); DELETE FROM registration_access WHERE email='${u}'; DELETE FROM users WHERE username='${u}';`).join('\n'));}
