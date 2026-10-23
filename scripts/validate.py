@@ -44,7 +44,7 @@ def urls(path):
    if s.startswith(('http://','https://')):out.add(s)
  return out
 # Added endpoints are translation, KIK services and the existing source's canonical sync base.
-assert urls(root/'localized')-urls(root/'decoded')<={'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=uk','https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ru&tl=uk','https://hdrezka.website','https://hdrezka.website/','https://hdrezka.sh/','https://uaserials.com/',release['update_url'],release['web_url'],release['web_url']+'/api/artwork/batch',release['web_url']+'/api/synopsis?link=',release['web_url']+'/api/ad-breaks?link=',release['web_url']+'/pair?code='}
+assert urls(root/'localized')-urls(root/'decoded')<={'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=uk','https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ru&tl=uk','https://hdrezka.website','https://hdrezka.website/','https://hdrezka.sh/','https://uaserials.com/','https://1.1.1.1/dns-query','https://1.0.0.1/dns-query','https://cloudflare-dns.com/dns-query',release['update_url'],release['web_url'],release['web_url']+'/api/artwork/batch',release['web_url']+'/api/synopsis?link=',release['web_url']+'/api/ad-breaks?link=',release['web_url']+'/pair?code='}
 assert urls(root/'decoded')<=urls(root/'localized')
 repository=(root/'localized/smali/rezkatv/web/app/data/repository/AppUpdateRepository.smali').read_text()
 for m in re.finditer(r'\.method public final checkForUpdates-gIAlu-s[^\n]*\n(.*?)\.end method',repository,re.S):

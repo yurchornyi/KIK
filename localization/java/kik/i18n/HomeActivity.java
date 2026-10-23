@@ -416,7 +416,7 @@ public final class HomeActivity extends Activity {
    if(dir!=null){dir.mkdirs();byte[] digest=java.security.MessageDigest.getInstance("SHA-256").digest(url.getBytes("UTF-8"));StringBuilder key=new StringBuilder();for(byte x:digest)key.append(String.format("%02x",x));file=new File(dir,key.toString());
     if(file.isFile()&&file.length()>0&&System.currentTimeMillis()-file.lastModified()<7L*24*60*60*1000){try(FileInputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[16384];int n;while((n=in.read(b))>0)out.write(b,0,n);return out.toByteArray();}}
    }
-   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setRequestProperty("User-Agent",Site.UA);
+   HttpURLConnection c=Doh.open(url);c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setRequestProperty("User-Agent",Site.UA);
    byte[] data;try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buf=new byte[16384];int n;while((n=in.read(buf))>0){out.write(buf,0,n);if(out.size()>8*1024*1024)throw new IOException("Poster exceeds cache limit");}data=out.toByteArray();}finally{c.disconnect();}
    BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(data,0,data.length,bounds);if(bounds.outWidth<=0||bounds.outHeight<=0)throw new IOException("Invalid poster");
    if(file!=null){try{File tmp=File.createTempFile("poster-",".tmp",dir);try(FileOutputStream out=new FileOutputStream(tmp)){out.write(data);}if(!tmp.renameTo(file))tmp.delete();trimImages(dir);}catch(IOException ignored){}}

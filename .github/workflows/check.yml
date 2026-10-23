@@ -47,6 +47,11 @@ jobs:
         run: |
           javac -d /tmp/kik-checks localization/java/kik/i18n/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java
           java -cp /tmp/kik-checks RecoveryPolicyCheck
+      - name: DNS-over-HTTPS bypass policy
+        run: |
+          mkdir -p /tmp/kik-doh
+          javac -d /tmp/kik-doh localization/java/kik/i18n/DohPolicy.java scripts/DohCheck.java
+          java -cp /tmp/kik-doh DohCheck
       - name: TV image memory and focus scrolling
         run: |
           mkdir -p /tmp/kik-ui-checks

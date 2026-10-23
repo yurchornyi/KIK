@@ -59,7 +59,7 @@ public final class Site {
  }
  private static String send(String url,String form,boolean xhr)throws IOException{
   for(int hop=0;hop<6;hop++){
-   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
+   HttpURLConnection c=Doh.open(url);
    c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(15000);
    c.setRequestProperty("User-Agent",UA);c.setRequestProperty("Accept-Encoding","gzip");c.setRequestProperty("Accept-Language","ru-RU,ru;q=0.9,uk;q=0.8");
    String ck=cookieHeader();if(!ck.isEmpty())c.setRequestProperty("Cookie",ck);
@@ -93,7 +93,7 @@ public final class Site {
     String h=send(url,null,false);
     if(h.contains("anubis_challenge")){h=solve(h,url);}
     if(h.contains("anubis_challenge"))throw new IOException("bot check not passed");
-    if(mirror){Integer code=PAGE_CODE.get();if(code!=null&&(code==403||code==451))SiteReport.failed("http",tried,tried+" HTTP "+code);else SiteReport.ok(tried);}
+    if(mirror){Integer code=PAGE_CODE.get();if(code!=null&&(code==403||code==451))SiteReport.failed("http",tried,tried+" HTTP "+code);else SiteReport.ok(tried,Doh.used(tried));}
     return h;
    }catch(IOException e){
     last=e;Log.w("KIK","Site "+host+": "+e);
@@ -330,7 +330,7 @@ public final class Site {
   String at=url;
   for(int hop=0;hop<3;hop++){
    HttpURLConnection c=null;
-   try{c=(HttpURLConnection)new URL(at).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("User-Agent",UA);c.setRequestProperty("Range","bytes=0-0");
+   try{c=Doh.open(at);c.setInstanceFollowRedirects(false);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("User-Agent",UA);c.setRequestProperty("Range","bytes=0-0");
     int code=c.getResponseCode();String next=c.getHeaderField("Location");
     if(code<300||code>399||next==null)return at;
     String target=new URL(new URL(at),next).toString();if(!RecoveryPolicy.media(target))return url;at=target;
