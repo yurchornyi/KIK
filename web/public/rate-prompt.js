@@ -8,7 +8,7 @@ export function askRating({time,duration,watched,series=false,last=false,finishe
  return !series||last||finished>=3;
 }
 /** What a tap did, in the same words as RatingStore.said on TV. */
-export function said(value){return value>0?'Подобається · покажемо більше схожого':value<0?'Не подобається · сховаємо це й схоже':'Оцінку скасовано';}
+export function said(value){return value>0?'Подобається · покажемо більше схожого':value<-1?'Не цікавить · більше не покажемо':value<0?'Не подобається · сховаємо це й схоже':'Оцінку скасовано';}
 /** Titles this browser already asked about, per account profile: never asked twice, whatever the answer. */
 const KEY='kik-rate-asked:';
 function list(store,owner){try{const v=JSON.parse(store?.getItem(KEY+owner)||'[]');return Array.isArray(v)?v:[];}catch{return [];}}

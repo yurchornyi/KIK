@@ -8,7 +8,7 @@ export function cleanRecord(input,now=Date.now()){
    for(const key of ["pos","dur","watched"]){const value=d[key]??0;if(!Number.isFinite(value)||value<0||value>1e12)throw Error("Некоректний час");data[key]=Math.floor(value);}
    for(const key of ["season","episode","voice","voiceName"])data[key]=short(d[key],100);data.ts=input.updated_at;data.observed=!!d.observed;
    const expected=path+"|"+(data.season||"0")+":"+(data.episode||"0");if(input.key!==expected)throw Error("Некоректний ключ прогресу");
-  }else if(input.kind==="rating"){if(![-1,1].includes(d.value))throw Error("Некоректна оцінка");data.value=d.value;data.genre=short(d.genre,200);data.time=input.updated_at;if(input.key!==path)throw Error("Некоректний ключ оцінки");}
+  }else if(input.kind==="rating"){if(![-2,-1,1].includes(d.value))throw Error("Некоректна оцінка");data.value=d.value;data.genre=short(d.genre,200);data.time=input.updated_at;if(input.key!==path)throw Error("Некоректний ключ оцінки");}
   else if(input.kind==="voice"){if(typeof d.voice!=="string"||!/^\d{1,10}$/.test(d.voice))throw Error("Некоректна озвучка");data.voice=d.voice;data.voiceName=short(d.voiceName,100);if(input.key!==path)throw Error("Некоректний ключ озвучки");}
   else{data.year=short(d.year,40);data.genre=short(d.genre,200);if(input.key!==path)throw Error("Некоректний ключ списку");}
  }else if(!/^(films|series|cartoons|animation|documentary|uaserials)\//.test(input.key))throw Error("Некоректне видалення");

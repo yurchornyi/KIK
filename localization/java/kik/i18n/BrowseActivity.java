@@ -221,7 +221,7 @@ public final class BrowseActivity extends Activity {
      for(Site.Card c:"catalog".equals(mode)?(requestedStudio.isEmpty()?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.studioList(requestedCategory,requestedGenre,requestedFilter,requestedStudio,reached[0])):Site.search(q,reached[0]))items.add(of(c));
      studioMore[0]=Site.lastRaw()>0;if(Site.lastRaw()==0)break;}
     else if(next==1&&"history".equals(mode))for(Progress.Entry e:Progress.recent(this)){G g=new G();g.link=e.link;g.title=e.title;g.poster=e.poster;
-      g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"переглянуто":"зупинились на "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}
+      g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"переглянуто":"з "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}
     else if(next==1&&"later".equals(mode)){JSONArray a=Progress.later(this);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;G g=new G();g.link=o.optString("link");g.title=o.optString("title");g.poster=o.optString("poster",null);g.sub=Ui.join(o.optString("year",""),o.optString("genre",""));items.add(g);}}
     Set<String> words=new HashSet<String>();for(G g:items){g.sourceTitle=g.title;words.add(g.title);if(g.genre!=null)words.add(g.genre);}
     Map<String,String> uk=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);

@@ -28,11 +28,13 @@ public final class HomeActivity extends Activity {
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
  private TextView heroTitle,heroMeta,heroSub,heroText;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
- private Item hero,pendingHero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
+ private Item hero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
  private static final android.view.animation.Interpolator EASE=new android.view.animation.DecelerateInterpolator(1.6f);private boolean expanded,loadedOnce;
  private final Handler main=new Handler(Looper.getMainLooper());
  private volatile Map<String,String> uk=new HashMap<String,String>();
- private LinearLayout recommendedLine;private TextView recommendedHeading;private String recommendationKeys="";
+ private LinearLayout menuRow;private LinearLayout recommendedLine;private TextView recommendedHeading;private String recommendationKeys="";
+ /** The heading and the line of every row on screen, by title, and the rows themselves: one row can be redrawn alone. */
+ private final Map<String,View[]> rowViews=new HashMap<String,View[]>();private List<Row> shownRows=new ArrayList<Row>();
  private final Map<String,LinearLayout> recommendationLines=new HashMap<String,LinearLayout>();private final Map<String,String> recommendationSignatures=new HashMap<String,String>();private List<Item> tasteChoices=new ArrayList<Item>();
 
  private volatile boolean foreground;
@@ -82,13 +84,14 @@ public final class HomeActivity extends Activity {
 
  private long cloudRevision=CloudSync.revision();
  private final Runnable cloudTick=new Runnable(){public void run(){if(destroyed||!foreground)return;CloudSync.now(HomeActivity.this);long next=CloudSync.revision();if(next!=cloudRevision){cloudRevision=next;load();}main.postDelayed(this,15000);}};
- @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
- @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
+ @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();main.postDelayed(this::resumeSlides,700);}}
+ @Override protected void onPause(){foreground=false;main.removeCallbacks(idleResume);AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
  @Override protected void onDestroy(){destroyed=true;loadGeneration++;main.removeCallbacksAndMessages(null);super.onDestroy();}
  private long backAt;private TextView backHint;
  /** Back twice leaves the app; the first press only shows a quiet hint (no dialog). */
  // The app opts into predictive back, so onBackPressed is not called on Android 13+: handle the key itself.
  @Override public boolean dispatchKeyEvent(KeyEvent e){
+  if(e.getAction()==KeyEvent.ACTION_DOWN)armIdle();
   if(e.getKeyCode()==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   return super.dispatchKeyEvent(e);
  }
@@ -160,7 +163,7 @@ public final class HomeActivity extends Activity {
  private View topBar(){
   LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
-  LinearLayout menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
+  menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
   HorizontalScrollView navigation=Ui.horizontal(this,menuRow);LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,-2,1);navLp.setMargins(dp(14),0,dp(10),0);bar.addView(navigation,navLp);
   menuRow.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
   menuRow.addView(menu("Каталог ▾",this::catalogueMenu));
@@ -253,22 +256,26 @@ public final class HomeActivity extends Activity {
  }
  private List<Row> localRows(String profile){
   List<Row> rows=new ArrayList<Row>();
-  Row resume=new Row("Продовжити перегляд");
+  Row resume=new Row(RESUME_ROW);
   for(Progress.Entry e:Progress.recent(this,profile)){
    if(e.finished()&&e.season==null)continue;
    Item i=new Item();i.link=e.link;i.title=e.title;i.poster=e.poster;i.resume=true;
    i.progress=e.dur>0?Math.min(1f,(float)e.pos/e.dur):0;
-   i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"наступна серія":"продовжити з "+Ui.time(e.pos));
+   i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"наступна серія":"з "+Ui.time(e.pos));
    long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
    i.heroLine=join(e.season!=null&&!"0".equals(e.season)?"Сезон "+e.season+" · Серія "+e.episode:null,e.finished()?"далі наступна серія":left>0?"ще "+left+" хв":"з "+Ui.time(e.pos));
    String[] d=DETAILS.get(norm(e.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.year=d[3];i.genre=d[4];}
    resume.items.add(i);if(resume.items.size()>=20)break;
   }
   if(!resume.items.isEmpty())rows.add(resume);
-  Row saved=new Row("Переглянути пізніше");JSONArray a=Progress.later(this,profile);
-  for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=o.optString("link",null);i.title=o.optString("title",null);i.poster=o.optString("poster",null);i.year=o.optString("year",null);i.genre=o.optString("genre",null);if(i.link!=null&&i.title!=null)saved.items.add(i);}
-  if(!saved.items.isEmpty())rows.add(saved);
+  Row saved=laterRow(profile);if(!saved.items.isEmpty())rows.add(saved);
   return rows;
+ }
+ static final String LATER_ROW="Переглянути пізніше",RESUME_ROW="Продовжити перегляд";
+ private Row laterRow(String profile){
+  Row saved=new Row(LATER_ROW);JSONArray a=Progress.later(this,profile);
+  for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=o.optString("link",null);i.title=o.optString("title",null);i.poster=o.optString("poster",null);i.year=o.optString("year",null);i.genre=o.optString("genre",null);if(i.link!=null&&i.title!=null)saved.items.add(i);}
+  return saved;
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
   final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();
@@ -324,7 +331,7 @@ public final class HomeActivity extends Activity {
   shownSignature=signature(rows);
   boolean initial=!loadedOnce;loadedOnce=true;boolean actionFocused=watch.hasFocus()||later.hasFocus()||more.hasFocus();
   recommendedLine=null;recommendedHeading=null;recommendationKeys="";
-  recommendationLines.clear();recommendationSignatures.clear();tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
+  recommendationLines.clear();recommendationSignatures.clear();rowViews.clear();shownRows=new ArrayList<Row>(rows);tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
   while(content.getChildCount()>2)content.removeViewAt(2);
   View first=null;
   View again=null;
@@ -333,7 +340,6 @@ public final class HomeActivity extends Activity {
   if(rows.isEmpty()){heroTitle.setText("Ласкаво просимо");heroText.setText("Завантажуємо новинки… Тим часом можна відкрити «Фільми», «Серіали» або «Пошук».");watch.setVisibility(View.GONE);more.setVisibility(View.GONE);return;}
   watch.setVisibility(View.VISIBLE);more.setVisibility(View.VISIBLE);later.setVisibility(View.VISIBLE);
   watch.setOnClickListener(v->{if(hero!=null){startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}});
-  if(pendingHero!=null){Item keep=pendingHero;pendingHero=null;hero=null;setHero(keep);later.requestFocus();return;}
   if(again!=null&&!actionFocused){((ViewGroup)again).getChildAt(0).requestFocus();return;}
   startSlides(rows);
   if(initial){watch.requestFocus();scroll.scrollTo(0,0);}else if(actionFocused)watch.requestFocus();
@@ -341,17 +347,34 @@ public final class HomeActivity extends Activity {
 
  private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];
   for(Row r:rows){
-   TextView h=text(r.title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);
-   if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));content.addView(header);}else content.addView(h);
-   HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
-   LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);content.addView(hs);
+   TextView h=rowHeading(r.title);View head=h;
+   if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));head=header;}
+   content.addView(head);HorizontalScrollView hs=rowLine(r);LinearLayout line=(LinearLayout)hs.getChildAt(0);content.addView(hs);rowViews.put(r.title,new View[]{head,hs});
    if(r.personalized){recommendedLine=line;recommendedHeading=h;recommendationKeys=recommendationKeys(r);}
    if(r.recommendationId!=null){recommendationLines.put(r.recommendationId,line);recommendationSignatures.put(r.recommendationId,recommendationKeys(r));}
-   for(Item i:r.items){View c=card(i);line.addView(c);if(focus[0]==null)focus[0]=c;if(focus[1]==null&&focusedLink!=null&&focusedLink.equals(i.link))focus[1]=c;}
+   for(int n=0;n<line.getChildCount();n++){View c=line.getChildAt(n);Item i=r.items.get(n);if(focus[0]==null)focus[0]=c;if(focus[1]==null&&focusedLink!=null&&focusedLink.equals(i.link))focus[1]=c;}
   }
   return focus;
  }
- private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
+ private TextView rowHeading(String title){TextView h=text(title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);return h;}
+ private HorizontalScrollView rowLine(Row r){
+  HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
+  LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);for(Item i:r.items)line.addView(card(i));return hs;
+ }
+ /** «Мій список» on the hero changes one row: it is redrawn in place (added after «Продовжити перегляд» or taken away), so the
+  *  other rows keep their scroll, the hero and its focus stay, and the next load sees nothing to rebuild. */
+ private void refreshLaterRow(){
+  if(!loadedOnce||content.getChildCount()<2)return;
+  Row fresh=laterRow(ProfileStore.current(this));View[] views=rowViews.get(LATER_ROW);int at=-1;for(int n=0;n<shownRows.size();n++)if(LATER_ROW.equals(shownRows.get(n).title))at=n;
+  if(fresh.items.isEmpty()){if(views!=null){content.removeView(views[0]);content.removeView(views[1]);rowViews.remove(LATER_ROW);}if(at>=0)shownRows.remove(at);}
+  else if(views!=null){LinearLayout line=(LinearLayout)((HorizontalScrollView)views[1]).getChildAt(0);line.removeAllViews();for(Item i:fresh.items)line.addView(card(i));if(at>=0)shownRows.set(at,fresh);else shownRows.add(0,fresh);}
+  else{
+   View[] resume=rowViews.get(RESUME_ROW);int index=resume!=null?content.indexOfChild(resume[1])+1:2,rowIndex=0;for(int n=0;n<shownRows.size();n++)if(RESUME_ROW.equals(shownRows.get(n).title))rowIndex=n+1;
+   TextView h=rowHeading(fresh.title);HorizontalScrollView hs=rowLine(fresh);content.addView(h,index);content.addView(hs,index+1);rowViews.put(LATER_ROW,new View[]{h,hs});shownRows.add(rowIndex,fresh);
+  }
+  shownSignature=signature(shownRows);
+ }
+ private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);shownRows.addAll(rows);shownSignature=signature(shownRows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
 
  /** A shelf card; the focused one stays at the row's left edge and the row slides under it, as on Netflix. */
  private View card(final Item i){
@@ -366,7 +389,7 @@ public final class HomeActivity extends Activity {
   box.addView(frame,new LinearLayout.LayoutParams(dp(150),dp(200)));
   TextView t=text(tr(i.title),14,0xffe6e6ea);t.setTag(new Label(i,false));t.setSingleLine(true);t.setEllipsize(TextUtils.TruncateAt.END);t.setPadding(dp(2),dp(8),dp(2),0);
   box.addView(t,new LinearLayout.LayoutParams(dp(150),-2));
-  TextView s=text(i.resume?i.sub:join(i.year,tr(i.genre)),12,GREY);s.setTag(new Label(i,true));s.setSingleLine(true);s.setEllipsize(TextUtils.TruncateAt.END);s.setPadding(dp(2),dp(2),dp(2),0);
+  TextView s=text(i.resume?i.sub:join(i.year,tr(i.genre)),12,i.resume?0xffd6d6dc:GREY);s.setTag(new Label(i,true));s.setSingleLine(true);s.setEllipsize(TextUtils.TruncateAt.END);s.setPadding(dp(2),dp(2),dp(2),0);
   box.addView(s,new LinearLayout.LayoutParams(dp(150),-2));
   frame.setContentDescription(tr(i.title));
   frame.setOnFocusChangeListener((v,f)->{
@@ -379,26 +402,39 @@ public final class HomeActivity extends Activity {
   Images.load(i.poster,img,dp(168));
   return box;
  }
- /** Long press on a card: like, dislike (the chosen one is red; pressing it again clears it) and, for a started title, remove it from history. */
+ /** Long press on a card: like, dislike, «not interested» (hides the title without judging the taste; the chosen one is red and
+  *  pressing it again clears it) and, for a started title, remove it from history. A compact dark panel over the dimmed home, which fades and grows in on its own (no system dialog animation). */
  private void rate(Item i){
   final String profile=ProfileStore.current(this);final int value=RatingStore.get(this,profile,i.link);
-  LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(28),dp(24),dp(28),dp(20));box.setClipChildren(false);box.setClipToPadding(false);
-  TextView title=text(tr(i.title),22,Color.WHITE);title.setTypeface(Typeface.DEFAULT_BOLD);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(0,0,0,dp(14));box.addView(title);
-  final android.app.AlertDialog d=Ui.dialog(this).setView(box).create();
+  final LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(8),dp(12),dp(8),dp(8));box.setBackground(Ui.menuPanel(this));
+  TextView title=text(tr(i.title),14,GREY);title.setTypeface(Typeface.DEFAULT_BOLD);title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(dp(14),0,dp(14),dp(8));box.addView(title);
+  final PopupWindow popup=new PopupWindow(box,dp(280),ViewGroup.LayoutParams.WRAP_CONTENT,true);
+  popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));popup.setOutsideTouchable(true);popup.setElevation(dp(14));popup.setAnimationStyle(0);
   TextView first=null;
-  for(final int want:new int[]{1,-1}){
-   TextView c=action(box,want>0?"Подобається":"Не подобається",new FilmActivity.ThumbIcon(dp(22),want<0));Ui.select(c,value==want);
-   c.setOnClickListener(v->{int next=value==want?0:want;boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,next);d.dismiss();if(saved){Ui.toast(this,RatingStore.said(next));load();}else Ui.toast(this,"Не вдалося зберегти оцінку");});
+  for(final int want:new int[]{1,-1,-2}){
+   TextView c=action(box,want>0?"Подобається":want<-1?"Не цікавить":"Не подобається",want<-1?new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.hide()):new FilmActivity.ThumbIcon(dp(20),want<0),value==want);
+   c.setOnClickListener(v->{int next=value==want?0:want;boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,next);popup.dismiss();if(saved){Ui.toast(this,RatingStore.said(next));load();}else Ui.toast(this,"Не вдалося зберегти оцінку");});
    if(first==null||value==want)first=c;
   }
-  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(22),FilmActivity.ThumbIcon.trash()));c.setOnClickListener(v->{Progress.remove(this,i.link);d.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
-  if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",13,GREY);hint.setPadding(dp(4),dp(8),0,0);box.addView(hint);}
-  final TextView focus=first;d.show();box.post(focus::requestFocus);
+  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.trash()),false);c.setOnClickListener(v->{Progress.remove(this,i.link);popup.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
+  // A title in «Переглянути пізніше» leaves the list from here; the row is redrawn in place, the hero button follows.
+  if(Progress.isLater(this,i.link)){TextView c=action(box,"Прибрати зі списку",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.minus()),false);c.setOnClickListener(v->{popup.dismiss();if(Progress.isLater(this,i.link))Progress.toggleLater(this,i.link,tr(i.title),i.poster,i.year,tr(i.genre));laterLinks.remove(norm(i.link));paintLater();Ui.toast(this,"Прибрано з мого списку");refreshLaterRow();});}
+  if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",12,GREY);hint.setPadding(dp(14),dp(6),dp(14),dp(4));box.addView(hint);}
+  final TextView focus=first;
+  popup.showAtLocation(root,Gravity.CENTER,0,0);
+  // The window manager dims the home behind the panel (no translucent layer of our own for the weak GPU to redraw).
+  for(ViewParent p=box.getParent();p instanceof View;p=p.getParent()){View v=(View)p;if(!(v.getLayoutParams() instanceof WindowManager.LayoutParams))continue;WindowManager.LayoutParams lp=(WindowManager.LayoutParams)v.getLayoutParams();lp.flags|=WindowManager.LayoutParams.FLAG_DIM_BEHIND;lp.dimAmount=0.62f;try{getWindowManager().updateViewLayout(v,lp);}catch(RuntimeException e){Log.w("KIK","Menu dim: "+e);}break;}
+  if(Ui.animations()){box.setAlpha(0f);box.setScaleX(0.94f);box.setScaleY(0.94f);box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(EASE).start();}
+  box.post(focus::requestFocus);
  }
- private TextView action(LinearLayout box,String label,FilmActivity.ThumbIcon icon){
-  TextView c=Ui.chip(this,label);c.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);c.setPadding(dp(20),0,dp(20),0);c.setCompoundDrawablePadding(dp(14));
-  icon.setBounds(0,0,dp(22),dp(22));c.setCompoundDrawables(icon,null,null,null);
-  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,0,0,dp(10));box.addView(c,lp);return c;
+ /** A menu row: icon and label on a transparent line, white with black text when focused; the chosen rating keeps a red icon. */
+ private TextView action(LinearLayout box,String label,FilmActivity.ThumbIcon icon,boolean chosen){
+  TextView c=new TextView(this);c.setText(label);c.setTextSize(15);c.setSingleLine(true);c.setEllipsize(TextUtils.TruncateAt.END);c.setIncludeFontPadding(false);c.setFocusable(true);c.setClickable(true);
+  c.setTypeface(chosen?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);c.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);c.setPadding(dp(14),0,dp(14),0);c.setCompoundDrawablePadding(dp(12));
+  c.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.BLACK,chosen?Color.WHITE:0xffe6e6ea}));
+  c.setBackground(Ui.states(Ui.shape(0,dp(10),0,0),Ui.shape(Color.WHITE,dp(10),0,0)));
+  icon.setBounds(0,0,dp(20),dp(20));if(chosen)icon.setColorFilter(new PorterDuffColorFilter(RED,PorterDuff.Mode.SRC_IN));c.setCompoundDrawables(icon,null,null,null);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.setMargins(0,0,0,dp(2));box.addView(c,lp);return c;
  }
  private void scrollRowIntoView(View row){
   int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
@@ -437,6 +473,18 @@ public final class HomeActivity extends Activity {
  private void showSlide(int n){slide=n;setHero(slides.get(n));paintDots();scheduleSlide();}
  private void scheduleSlide(){main.removeCallbacks(nextSlide);if(slides.size()>1)main.postDelayed(nextSlide,9000);}
  private void stopSlides(){main.removeCallbacks(nextSlide);slides.clear();paintDots();}
+ /** The show stops while a card chooses the hero. Back on the hero's buttons or the menu, or back from a title, it goes on
+  *  from the title on screen (which keeps its turn even when it is not among the picks). */
+ private void resumeSlides(){resumeSlides(false);}
+ private void resumeSlides(boolean idle){
+  if(destroyed||!foreground||!slides.isEmpty()||candidates.isEmpty()||hero==null||!idle&&!heroArea(getCurrentFocus()))return;
+  arrange();int at=slides.indexOf(hero);if(at<0){slides.add(0,hero);if(slides.size()>10)slides.remove(slides.size()-1);at=0;}
+  slide=at;paintDots();scheduleSlide();
+ }
+ private boolean heroArea(View v){return v!=null&&(v==watch||v==later||v==more||v.getParent()==menuRow);}
+ /** A card keeps the hero only while the remote is busy: after 15 s without a key the show goes on from that title. */
+ private static final long IDLE_MS=15000;private final Runnable idleResume=()->resumeSlides(true);
+ private void armIdle(){main.removeCallbacks(idleResume);main.postDelayed(idleResume,IDLE_MS);}
  /** Small pills under the buttons. The slide on screen is a wider track that fills up in white over the 9 s it stays,
  *  like Netflix; the fill only scales (a render property), so the weak GPU never redraws the hero for it. */
  private void paintDots(){dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
@@ -463,7 +511,7 @@ public final class HomeActivity extends Activity {
   if(on)laterLinks.add(norm(i.link));else laterLinks.remove(norm(i.link));
   paintLater();
   HeroActions.focus(later,later.isFocused());Ui.toast(this,on?"Додано до мого списку":"Прибрано з мого списку");
-  pendingHero=hero;load();
+  refreshLaterRow();
  }
  private void paintLater(){if(hero==null)return;boolean saved=laterLinks.contains(norm(hero.link));HeroActions.label(later,saved?"У списку":"Мій список",saved?HeroActions.CHECK:HeroActions.ADD);later.setSelected(saved);}
 
@@ -478,12 +526,12 @@ public final class HomeActivity extends Activity {
  private TextView menu(String label,View.OnClickListener l){
   TextView t=text(label,14,0xffd0d0d4);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
   t.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));t.setTextColor(Ui.buttonText(false));
-  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f)scroll.smoothScrollTo(0,0);});
+  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f){scroll.smoothScrollTo(0,0);resumeSlides();}});
   t.setOnClickListener(l);return t;
  }
  private Button action(String label,int icon,boolean primary){
   Button b=HeroActions.button(this,label,icon,primary);
-  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f)scroll.smoothScrollTo(0,0);});
+  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f){scroll.smoothScrollTo(0,0);resumeSlides();}});
   return b;
  }
  private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}

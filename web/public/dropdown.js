@@ -16,7 +16,10 @@ export function dropdown(select,label='',settings={}){
  for(const key of ['value','selectedIndex']){const d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,key);Object.defineProperty(select,key,{configurable:true,get(){return d.get.call(this);},set(v){d.set.call(this,v);paint();}});}
  new MutationObserver(()=>{paint();if(openPanel?.select===select)openPanel.hidePopover();}).observe(select,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','hidden','selected','label']});
  select.addEventListener('change',paint);
- const title=()=>label||name();trigger.onclick=()=>open(select,trigger,title(),settings);
+ const title=()=>label||name();// A tap on the pill of the open panel: the browser closes the panel at pointerup (light dismiss), so the click that follows must
+ // not reopen it; the state is read at pointerdown, before that. A click with the panel still open (keyboard) closes it here.
+ trigger.addEventListener('pointerdown',()=>{trigger.dataset.closing=openPanel?.trigger===trigger&&openPanel.matches(':popover-open')?'1':'';});
+ trigger.onclick=()=>{const closing=trigger.dataset.closing==='1';trigger.dataset.closing='';if(openPanel?.trigger===trigger&&openPanel.matches(':popover-open')){openPanel.hidePopover();return;}if(closing)return;open(select,trigger,title(),settings);};
  trigger.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();open(select,trigger,title(),settings);}};
  wrap.append(select,trigger);paint();return wrap;
 }
@@ -52,7 +55,8 @@ function open(select,trigger,title,settings={}){
 /** Prefer the field's lower edge; use the space above it when the full list will not fit. */
 function place(panel,trigger){
  const r=trigger.getBoundingClientRect(),gap=8,margin=12,below=innerHeight-r.bottom-gap-margin,above=r.top-gap-margin;
- const many=panel.querySelector('.dropdown-list.many'),width=Math.min(many?Math.max(r.width,innerWidth<=720?360:520):r.width,innerWidth-margin*2);
+ // An icon-only pill (the studio filter) is too narrow to hold names: its panel gets room for them.
+ const many=panel.querySelector('.dropdown-list.many'),base=r.width<80?Math.max(r.width,240):r.width,width=Math.min(many?Math.max(base,innerWidth<=720?360:520):base,innerWidth-margin*2);
  panel.style.width=panel.style.minWidth=width+'px';panel.style.maxHeight=(innerHeight-margin*2)+'px';
  const up=below<Math.min(panel.scrollHeight,280)&&above>below;panel.style.maxHeight=Math.max(80,up?above:below)+'px';
  const actualWidth=panel.offsetWidth,left=Math.min(Math.max(margin,r.left),innerWidth-actualWidth-margin);
