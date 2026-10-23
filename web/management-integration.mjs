@@ -41,6 +41,11 @@ let adminCookie,memberCookie,memberId;try{
  check((await req('/api/recommendations',{profile_id:p,items:candidates})).status===401,'anonymous personalized recommendations denied');
  const personal=await req('/api/recommendations',{profile_id:p,items:candidates},memberCookie);check(personal.status===200&&personal.body.mode==='standard','empty taste safely uses regular recommendations');
  check((await req('/api/admin/profiles/recommendations',{profile_id:p,enabled:false},adminCookie)).body.enabled===false,'admin deactivates enhanced mode');
+ check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:true},memberCookie)).status===403,'members cannot turn on ad skipping');
+ check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:1},adminCookie)).status===400,'ad skipping needs a boolean');
+ check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:true},adminCookie)).body.enabled===true,'admin turns on ad skipping');
+ check((await req('/api/sync',{profile_id:p,source_schema:2,records:[]},memberCookie)).body.profile.ad_skip===1&&(await req('/api/me',undefined,memberCookie)).body.profiles.find(x=>x.id===p).ad_skip===1,'ad skipping reaches the profile on web and TV');
+ check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:false},adminCookie)).body.enabled===false,'admin turns off ad skipping');
  const second=await req('/api/auth/login',{email:guestEmail,password});check((await req('/api/auth/logout-others',{},memberCookie)).status===200,'end other sessions');check((await req('/api/me',undefined,second.cookie)).body.user===null,'other session revoked');check((await req('/api/me',undefined,memberCookie)).body.user.id===memberId,'current session preserved');
  check((await req('/api/admin/users/delete',{id:adminId,confirm:adminEmail},adminCookie)).status===403,'admin cannot delete itself');
  check((await req('/api/admin/users/delete',{id:memberId,confirm:'wrong@example.invalid'},adminCookie)).status===400,'deletion needs exact email confirmation');

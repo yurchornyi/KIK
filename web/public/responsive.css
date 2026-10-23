@@ -33,9 +33,9 @@ main{min-width:0}
 .poster-title{color:#e7e7ec}
 .poster-info{color:#a3a3ae}
 .shelf:has(.shelf-line:empty){display:none}
-footer{width:calc(100% - 2 * var(--page-gutter));max-width:1748px;margin:32px auto 0;padding-bottom:max(28px,env(safe-area-inset-bottom));min-width:0}
-.foot-brand,.foot-links{min-width:0;gap:16px}
-.foot-links a,.foot-links .text-button{min-height:44px;display:inline-flex;align-items:center}
+footer{width:calc(100% - 2 * var(--page-gutter));max-width:1748px;margin:28px auto 0;padding-bottom:max(18px,env(safe-area-inset-bottom));min-width:0}
+.foot-brand,.foot-links{min-width:0;gap:6px 16px}
+.foot-links a,.foot-links .text-button{min-height:44px;display:inline-flex;align-items:center}@media (pointer:fine){.foot-links a,.foot-links .text-button{min-height:32px}}
 .text-button{min-height:44px}
 dialog{max-height:calc(100dvh - 32px);overscroll-behavior:contain;scrollbar-gutter:stable;padding-top:56px}
 dialog[open]{animation:dialog-in .16s ease-out}
@@ -48,12 +48,6 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
 .search-form .pill{flex:0 0 auto}
 .search-feedback{margin-top:16px}
 .search-feedback .actions{margin-top:12px}
-.player-modal{padding-top:56px}
-.player-modal h2{padding-right:0}
-.player-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.player-tools.series-tools{grid-template-columns:repeat(5,minmax(0,1fr))}
-.player-tools .field{min-width:0;overflow:hidden;padding:4px;margin:0 -4px}
-.player-tools select{width:100%;min-height:44px;padding-right:38px;text-overflow:ellipsis}
 .player-note{line-height:1.6;overflow-wrap:anywhere}
 .detail-actions .pill{max-width:100%}
 .settings-card .actions,.row-actions{gap:10px}
@@ -82,8 +76,6 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
  .hero-copy{width:78%}
  .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
  .settings-card{padding:22px}
- .player-tools.series-tools{grid-template-columns:repeat(4,minmax(0,1fr))}
- .series-tools .field:first-child,.series-tools .field:nth-last-child(-n+2){grid-column:span 2}
 }
 @media(max-width:650px){
  .brand img{width:58px;height:auto}
@@ -108,17 +100,14 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
  .settings-card{padding:20px}
  .manage-heading{margin-bottom:24px}
  dialog{width:calc(100% - 24px);max-height:calc(100dvh - 24px);padding:56px 20px 24px;border-radius:20px}
- .player-modal{width:calc(100% - 16px);max-width:calc(100% - 16px);padding:54px 12px 20px}
- .player-tools,.player-tools.series-tools{grid-template-columns:repeat(2,minmax(0,1fr))}
- .player-tools .field:first-child{grid-column:1/-1}
- .series-tools .field:nth-last-child(-n+2){grid-column:auto}
- .player-tools .field{font-size:12px}
- .player-tools select{font-size:16px;padding:10px 36px 10px 10px;background-position:right 12px center}
+ .player-modal{width:calc(100% - 16px);max-width:calc(100% - 16px);padding:12px 12px 16px}
+ .player-tools .dropdown{flex:1 1 calc(50% - 4px)}
+ .player-tools .dropdown:first-child{flex-basis:100%}
  .detail-poster{width:80px;margin-top:0}
  .detail-actions{gap:8px}
  .auth-kicker{padding-right:20px;letter-spacing:1.3px}
- footer{grid-template-columns:1fr;margin-top:24px}
- .foot-links{gap:8px 18px;justify-content:flex-start}
+ footer{grid-template-columns:1fr;margin-top:20px;gap:4px} .foot-brand>span+span{border-left:0;padding-left:0}
+ .foot-links{gap:0 18px;justify-content:flex-start}
 }
 @media(max-width:380px){
  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -146,3 +135,16 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
 }
 .sources-page{max-width:1000px;padding-top:40px;line-height:1.7}
 .sources-page a:not(.brand):not(.pill){text-decoration:underline;text-underline-offset:3px}
+@media(max-width:640px){
+ dialog.detail-modal{padding:0}
+ .detail-body{grid-template-columns:96px minmax(0,1fr);gap:16px 18px;padding:54px 18px 20px}
+ .detail-modal h2.detail-title{font-size:24px;padding-right:0;margin-top:0}
+ .detail-modal .detail-actions,.detail-overview,.detail-more,.detail-info>.text-button:not(.detail-more){grid-column:1/-1}
+ .detail-info{display:contents}
+ .detail-info>h2,.detail-info>.detail-meta{grid-column:2}
+ .detail-modal .detail-poster{grid-row:1/span 2}
+ .detail-modal .detail-actions{margin:4px 0 0;flex-wrap:wrap}
+ .detail-modal .detail-actions .pill.primary{flex:1}
+ .detail-more,.detail-info>.text-button{justify-self:start}
+ .detail-modal .source-metadata{margin:0 18px 20px}
+}

@@ -19,8 +19,8 @@ const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{stat
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 
 function origin(request){const o=request.headers.get("Origin");if(o&&o!==new URL(request.url).origin)fail("Запит з іншого сайту відхилено",403);if(request.headers.get("Sec-Fetch-Site")==="cross-site")fail("Запит з іншого сайту відхилено",403);}
-async function owned(db,user,id){if(typeof id!=="string")fail("Виберіть профіль");const p=await db.prepare("SELECT id,name,avatar,enhanced_recs FROM profiles WHERE id=? AND user_id=?").bind(id,user.id).first();if(!p)fail("Профіль недоступний",404);return p;}
-async function profiles(db,user){return (await db.prepare("SELECT id,name,avatar,enhanced_recs FROM profiles WHERE user_id=? ORDER BY created_at,id").bind(user.id).all()).results;}
+async function owned(db,user,id){if(typeof id!=="string")fail("Виберіть профіль");const p=await db.prepare("SELECT id,name,avatar,enhanced_recs,ad_skip FROM profiles WHERE id=? AND user_id=?").bind(id,user.id).first();if(!p)fail("Профіль недоступний",404);return p;}
+async function profiles(db,user){return (await db.prepare("SELECT id,name,avatar,enhanced_recs,ad_skip FROM profiles WHERE user_id=? ORDER BY created_at,id").bind(user.id).all()).results;}
 async function api(request,env,ctx){
  const url=new URL(request.url),path=url.pathname,db=env.DB,ip=request.headers.get("CF-Connecting-IP")||"local";
  if(path==="/api/avatars")return json({avatars:AVATARS});
@@ -125,7 +125,7 @@ async function api(request,env,ctx){
   const result=await db.prepare("UPDATE pairs SET user_id=?,profile_id=?,approved_session_hash=? WHERE user_code=? AND expires_at>? AND user_id IS NULL AND consumed=0").bind(user.id,b.profile_id,await hash(requestToken(request)),code,Date.now()).run();if(!result.meta.changes)fail("Код недійсний або вже використаний",410);return json({ok:true});
  }
  if(path==="/api/profiles"&&request.method==="POST"){
-  const b=await body(request,8192),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");if((await profiles(db,user)).length>=8)fail("Доступно до 8 профілів");const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");const id=crypto.randomUUID();await db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(id,user.id,name,avatar,Date.now()).run();return json({id,name,avatar,enhanced_recs:0},201);
+  const b=await body(request,8192),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");if((await profiles(db,user)).length>=8)fail("Доступно до 8 профілів");const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");const id=crypto.randomUUID();await db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(id,user.id,name,avatar,Date.now()).run();return json({id,name,avatar,enhanced_recs:0,ad_skip:0},201);
  }
  if(path==="/api/sync"&&request.method==="POST"){
   const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[])).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:Date.now()});

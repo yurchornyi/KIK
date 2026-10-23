@@ -173,7 +173,7 @@ public final class KikPlayerActivity extends Activity {
      resumeAt=Math.max(resumeAt,PlaybackPolicy.introMs(playing.name));
      subGeneration++;cues.clear();subIndex=-1;subtitle.setText("");
      play();
-     ads=null;hints=null;showHint(-1);if(PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
+     ads=null;hints=null;showHint(-1);if(CloudSync.adSkip(this,profileId)&&PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
     });
    }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
   });

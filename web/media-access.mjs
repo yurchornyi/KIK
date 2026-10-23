@@ -1,4 +1,4 @@
-import {hash, requestToken, SESSION_ABSOLUTE_MS} from './auth.mjs';
+import {hash, requestToken} from './auth.mjs';
 import {mediaUrl} from './public/playback-recovery.js';
 
 const enc = new TextEncoder();
@@ -112,7 +112,7 @@ function revocableBody(body, db, sessionHash) {
     async pull(controller) {
       try {
         if (Date.now() >= checkAt) {
-          const active = await db.prepare('SELECT 1 AS active FROM sessions WHERE token_hash=? AND expires_at>? AND created_at>?').bind(sessionHash, Date.now(), Date.now()-SESSION_ABSOLUTE_MS).first();
+          const active = await db.prepare('SELECT 1 AS active FROM sessions WHERE token_hash=? AND expires_at>?').bind(sessionHash, Date.now()).first();
           if (!active) { await reader.cancel(); controller.error(Error('Session revoked')); return; }
           checkAt = Date.now() + 10000;
         }

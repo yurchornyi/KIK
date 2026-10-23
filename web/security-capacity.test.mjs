@@ -17,7 +17,7 @@ test('database limits retain readable and updatable records and bound profile cr
     db.exec("INSERT INTO records VALUES('profile','later','1',NULL,2) ON CONFLICT(profile_id,kind,item_key) DO UPDATE SET updated_at=excluded.updated_at");
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM records').get().n,5000);
     assert.equal(db.prepare("SELECT updated_at FROM records WHERE item_key='1'").get().updated_at,2);
-    db.exec("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<7) INSERT INTO profiles SELECT CAST(x AS TEXT),'qa','QA','bear',1,0 FROM n");
+    db.exec("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<7) INSERT INTO profiles SELECT CAST(x AS TEXT),'qa','QA','bear',1,0,0 FROM n");
     assert.throws(()=>db.exec("INSERT INTO profiles(id,user_id,name,created_at) VALUES('overflow','qa','QA',1)"),/Account profile limit/);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM profiles').get().n,8);
   } finally {db.close();}
