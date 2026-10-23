@@ -26,6 +26,7 @@ PY
 rm -rf localized/smali_classes2;cp -R work/helper-decoded/smali localized/smali_classes2
 # The player's KIK ident, the same clip the web uses.
 mkdir -p localized/assets/kik;cp web/kik-intro.mp4 localized/assets/kik/intro.mp4
+cp localization/kik-wait.png localized/assets/kik/wait.png;cp localization/kik-wait-logo.png localized/assets/kik/wait-logo.png;cp localization/kik-wait-emblem.png localized/assets/kik/wait-emblem.png
 "$JAVA_HOME/bin/java" -jar work/tools/apktool.jar b localized -o work/RezkaTV-UA-unsigned.apk
 "$BT/zipalign" -f -p 4 work/RezkaTV-UA-unsigned.apk work/RezkaTV-UA-aligned.apk
 mkdir -p work/signing outputs

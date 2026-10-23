@@ -40,11 +40,11 @@ public final class KikPlayerActivity extends Activity {
  /** Buffer: start after 1.5 s, refill to 5 s after a stall, keep up to 2 min but no more than 48 MB of heap. */
  private static final int MIN_BUFFER=30000,MAX_BUFFER=120000,START_BUFFER=1500,REBUFFER=5000,BUFFER_BYTES=48*1024*1024;
  /** Buffering longer than this, or a picture that does not move, counts as a dead stream. */
- private static final long STALL_MS=30000,FROZEN_MS=15000,RETRY_MS=20000,ENDED_SLACK_MS=90000,WARM_MS=180000,SHORT_HLS_MS=180000;
+ private static final long STALL_MS=30000,FROZEN_MS=15000,RETRY_MS=20000,ENDED_SLACK_MS=90000,INTRO_HOLD_MS=2550,WARM_MS=180000,SHORT_HLS_MS=180000;
  private String season,episode,title,poster,profileId;private Site.Stream stream;private String quality;private float speed=1f;private boolean manualQuality;
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
- private FrameLayout root;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
+ private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
  private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
@@ -82,7 +82,16 @@ public final class KikPlayerActivity extends Activity {
   screen.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol||b-t!=ob-ot)fit();});
   subtitle=Ui.text(this,"",26,Color.WHITE);subtitle.setGravity(Gravity.CENTER);subtitle.setShadowLayer(8,0,2,Color.BLACK);subtitle.setPadding(dp(80),0,dp(80),0);
   FrameLayout.LayoutParams sl=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);sl.bottomMargin=dp(48);root.addView(subtitle,sl);
-  loading=Ui.text(this,"Підготовка відео…",18,Color.WHITE);loading.setGravity(Gravity.CENTER);loading.setShadowLayer(8,0,2,Color.BLACK);root.addView(loading,new FrameLayout.LayoutParams(dp(680),-2,Gravity.CENTER));
+  // KIK's waiting screen: the intro's settled frame (logo, «Створено Чорним» below), with what is happening under the logo.
+  wait=new FrameLayout(this);wait.setBackgroundColor(Color.BLACK);ImageView mark=new ImageView(this);mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+  mark.setImageBitmap(asset("kik/wait.png"));wait.addView(mark,new FrameLayout.LayoutParams(-1,-1));
+  // The logo itself breathes: a small separate layer, so the weak GPU never redraws the whole screen.
+  pulse=new ImageView(this);pulse.setScaleType(ImageView.ScaleType.FIT_XY);pulse.setImageBitmap(asset("kik/wait-logo.png"));wait.addView(pulse,new FrameLayout.LayoutParams(0,0));
+  // The half-circle by «Створено Чорним» turns slowly, as on the web (6 s a turn).
+  emblem=new ImageView(this);emblem.setScaleType(ImageView.ScaleType.FIT_XY);emblem.setImageBitmap(asset("kik/wait-emblem.png"));wait.addView(emblem,new FrameLayout.LayoutParams(0,0));
+  wait.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->placeLogo());root.addView(wait,new FrameLayout.LayoutParams(-1,-1));
+  loading=Ui.text(this,"Підготовка відео",14,0xffbdb9c6);loading.setGravity(Gravity.CENTER);FrameLayout.LayoutParams ll=new FrameLayout.LayoutParams(dp(680),-2,Gravity.CENTER);ll.topMargin=dp(92);root.addView(loading,ll);
+  dots=new Dots(this);FrameLayout.LayoutParams dl=new FrameLayout.LayoutParams(dp(44),dp(10),Gravity.CENTER);dl.topMargin=dp(128);root.addView(dots,dl);
   buildControls();
   player=createPlayer();player.setVideoSurfaceView(surface);
   watchNetwork();
@@ -115,7 +124,7 @@ public final class KikPlayerActivity extends Activity {
  private boolean online(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);NetworkInfo n=cm.getActiveNetworkInfo();return n!=null&&n.isConnected();}catch(Exception e){return true;}}
  @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}}
  @Override protected void onPause(){super.onPause();active=false;endIntro();save();CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
- @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
+ @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
 
  private long pos(){return player==null?0:Math.max(0,player.getCurrentPosition());}
  /** For the device audits: position, duration and whether frames are advancing right now. */
@@ -131,7 +140,7 @@ public final class KikPlayerActivity extends Activity {
   h.removeCallbacks(retry);
   if(!recovering){recovery.reset();failedVoices.clear();refreshAttempt=0;voiceAttempt=0;sameAttempt=0;earlyEnds=0;rebuffers.clear();recoveryStarted=SystemClock.elapsedRealtime();}
   lastMovement=SystemClock.elapsedRealtime();bufferingSince=0;playGeneration++;final int gen=++generation;final Site.Film selectedFilm=film;final Site.Voice selected=voice;final String ss=season,ee=episode;
-  final long keep=prepared?pos():resumeAt;if(player!=null)player.setPlayWhenReady(false);if(fromHistory)playWhenReady=true;prepared=false;failed=false;loading.setText(recovering?loading.getText():"Підготовка відео…");loading.setVisibility(View.VISIBLE);
+  final long keep=prepared?pos():resumeAt;if(player!=null)player.setPlayWhenReady(false);if(fromHistory)playWhenReady=true;prepared=false;failed=false;loading.setText(recovering?loading.getText():"Підготовка відео");waiting(true);
   name.setText(title);paintSub();
   Ui.bg(()->{
    try{
@@ -160,7 +169,7 @@ public final class KikPlayerActivity extends Activity {
  }
  /** Shows the problem; unless the viewer has to choose, retries by itself every 20 s for 10 minutes. */
  private void failure(String message,boolean auto){
-  prepared=false;failed=true;focus=1;progressFocus=false;menu=null;options.setVisibility(View.GONE);loading.setText(message);loading.setVisibility(View.VISIBLE);show(true);
+  prepared=false;failed=true;focus=1;progressFocus=false;menu=null;options.setVisibility(View.GONE);loading.setText(message);waiting(true);show(true);
   h.removeCallbacks(retry);if(auto&&autoRetry<30){autoRetry++;h.postDelayed(retry,RETRY_MS);}
  }
  /** Starts over with a fresh recovery budget at the same moment of the same episode. */
@@ -195,7 +204,7 @@ public final class KikPlayerActivity extends Activity {
   if(destroyed)return;long now=SystemClock.elapsedRealtime();
   if(state==Player.STATE_READY){
    if(!prepared&&truncated())return;
-   boolean first=!prepared;prepared=true;failed=false;offline=false;h.removeCallbacks(retry);seeking=false;bufferingSince=0;autoRetry=0;loading.setVisibility(View.GONE);lastMovement=now;lastPosition=pos();
+   boolean first=!prepared;prepared=true;failed=false;offline=false;h.removeCallbacks(retry);seeking=false;bufferingSince=0;autoRetry=0;waiting(false);lastMovement=now;lastPosition=pos();
    if(first){if(!active)player.setPlayWhenReady(false);show(true);TvChannels.played(this,profileId);Log.d("KIK.Player","Prepared quality="+quality+" playing="+player.isPlaying()+" speed="+speed+" after "+(now-recoveryStarted)+" ms");}
    update();
   }else if(state==Player.STATE_BUFFERING){
@@ -222,17 +231,17 @@ public final class KikPlayerActivity extends Activity {
   // An expired or missing link will not come back: go straight for fresh links. A network blip: same address once more.
   boolean expired=http==401||http==403||http==410||http==451,missing=http==404||code==PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND;
   if(io&&!expired&&!missing&&error!=null&&sameAttempt<2){sameAttempt++;retrySame();return;}
-  if(expired&&recovery.refresh()){refreshAttempt++;recovering=true;loading.setText("Оновлюємо посилання…");loading.setVisibility(View.VISIBLE);start(false);return;}
+  if(expired&&recovery.refresh()){refreshAttempt++;recovering=true;loading.setText("Оновлюємо посилання");waiting(true);start(false);return;}
   LinkedHashMap<String,List<String>> options=new LinkedHashMap<String,List<String>>();if(stream!=null)for(String q:stream.qualities.keySet()){List<String> urls=stream.alternatives.get(q);options.put(q,urls==null?Arrays.asList(stream.qualities.get(q)):urls);}
-  String candidate=recovery.next(options,quality);if(candidate!=null){String[] parts=candidate.split("\n",2);quality=parts[0];stream.qualities.put(quality,parts[1]);loading.setText("Відновлюємо потік…");loading.setVisibility(View.VISIBLE);play();return;}
-  if(recovery.refresh()){refreshAttempt++;recovering=true;loading.setText("Шукаємо резервну адресу…");loading.setVisibility(View.VISIBLE);start(false);return;}
+  String candidate=recovery.next(options,quality);if(candidate!=null){String[] parts=candidate.split("\n",2);quality=parts[0];stream.qualities.put(quality,parts[1]);loading.setText("Відновлюємо потік");waiting(true);play();return;}
+  if(recovery.refresh()){refreshAttempt++;recovering=true;loading.setText("Шукаємо резервну адресу");waiting(true);start(false);return;}
   failedVoices.add(voice.id);if(voiceAttempt<1){String language=PlaybackPolicy.lang(voice.name);for(Site.Voice v:film.voices)if(!v.premium&&!v.ads&&!failedVoices.contains(v.id)&&PlaybackPolicy.lang(v.name).equals(language)){voice=v;voiceAttempt++;recovering=true;start(false);return;}}
   failure("Відео тимчасово недоступне. Пробуємо ще раз автоматично…\nOK — повторити зараз або виберіть іншу мову.",true);
  }
  /** Re-open the same address at the same moment; ExoPlayer keeps the decoders and continues where it stopped. */
  private void retrySame(){
   if(player==null||stream==null){retryNow();return;}
-  failed=false;loading.setText("Відновлюємо з'єднання…");loading.setVisibility(View.VISIBLE);bufferingSince=0;lastMovement=SystemClock.elapsedRealtime();
+  failed=false;loading.setText("Відновлюємо з'єднання");waiting(true);bufferingSince=0;lastMovement=SystemClock.elapsedRealtime();
   Log.d("KIK.Player","Retry same address at "+resumeAt+" attempt="+sameAttempt);
   if(player.getPlayerError()!=null){player.seekTo(resumeAt);player.setPlayWhenReady(wanted());player.prepare();}else play();
  }
@@ -255,13 +264,13 @@ public final class KikPlayerActivity extends Activity {
     @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED)endIntro();}
     @Override public void onPlayerError(PlaybackException error){Log.w("KIK.Player","Intro",error);endIntro();}
    });
-   intro.setMediaItem(MediaItem.fromUri("asset:///kik/intro.mp4"));intro.setPlayWhenReady(true);intro.prepare();
-   h.postDelayed(introTimeout,6000);
+   intro.setMediaItem(MediaItem.fromUri("asset:///kik/intro.mp4"));intro.setPlayWhenReady(true);intro.prepare();paintWait();
+   h.postDelayed(introTimeout,6000);h.postDelayed(introWatch,100);
   }catch(Exception e){Log.w("KIK.Player","Intro",e);endIntro();}
  }
  private void endIntro(){
   if(intro==null&&introSurface==null)return;h.removeCallbacks(introTimeout);
-  if(intro!=null){intro.release();intro=null;}if(introSurface!=null){root.removeView(introSurface);introSurface=null;}
+  if(intro!=null){intro.release();intro=null;}paintWait();if(introSurface!=null){root.removeView(introSurface);introSurface=null;}
   if(player!=null&&!destroyed)player.setPlayWhenReady(wanted());lastMovement=SystemClock.elapsedRealtime();
  }
  /** Without premium the source serves a one-minute preview for its top quality: drop it and play the next one down. */
@@ -270,6 +279,45 @@ public final class KikPlayerActivity extends Activity {
   String lower=null;boolean past=false;for(String q:stream.qualities.keySet()){if(past){lower=q;break;}if(q.equals(quality))past=true;}
   if(lower==null)return false;Log.w("KIK.Player",quality+" is a "+d+" ms preview, switching to "+lower);
   stream.qualities.remove(quality);stream.alternatives.remove(quality);quality=lower;resumeAt=Math.max(resumeAt,pos());play();return true;
+ }
+ private Bitmap asset(String name){try(InputStream in=getAssets().open(name)){BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;return BitmapFactory.decodeStream(in,null,o);}catch(Exception e){Log.w("KIK","Wait screen "+name,e);return null;}}
+ /** The logo crop sits exactly where it was cut from the 1280×720 frame, as the background is scaled. */
+ private void placeLogo(){
+  int w=wait.getWidth(),hh=wait.getHeight();if(w==0||hh==0)return;float k=Math.min(w/1280f,hh/720f);float x0=(w-1280*k)/2,y0=(hh-720*k)/2;
+  FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)pulse.getLayoutParams();int lw=Math.round(440*k),lh=Math.round(230*k),lx=Math.round(x0+420*k),ly=Math.round(y0+244*k);
+  // The line and the dots sit on the frame's own grid: between the logo (bottom 432) and the credit (668), centred on 486 and 522.
+  FrameLayout.LayoutParams tl=(FrameLayout.LayoutParams)loading.getLayoutParams(),dl=(FrameLayout.LayoutParams)dots.getLayoutParams();int tm=Math.round((486-360)*k),dm=Math.round((522-360)*k);
+  if(tl.topMargin!=tm){tl.topMargin=tm;loading.setLayoutParams(tl);}if(dl.topMargin!=dm){dl.topMargin=dm;dots.setLayoutParams(dl);}
+  FrameLayout.LayoutParams el=(FrameLayout.LayoutParams)emblem.getLayoutParams();int es=Math.round(18*k),ex=Math.round(x0+551*k),ey=Math.round(y0+668*k);
+  if(el.width!=es||el.leftMargin!=ex||el.topMargin!=ey){el.width=es;el.height=es;el.leftMargin=ex;el.topMargin=ey;el.gravity=Gravity.TOP|Gravity.START;emblem.setLayoutParams(el);}
+  if(lp.width==lw&&lp.height==lh&&lp.leftMargin==lx&&lp.topMargin==ly)return;lp.width=lw;lp.height=lh;lp.leftMargin=lx;lp.topMargin=ly;lp.gravity=Gravity.TOP|Gravity.START;pulse.setLayoutParams(lp);
+ }
+ private void waiting(boolean on){waiting(on,true);}
+ private void waiting(boolean on,boolean branded){waitOn=on;waitBranded=branded;paintWait();}
+ /** The intro runs first; the waiting screen only takes over from it, never shows before it. */
+ private void paintWait(){
+  boolean on=waitOn&&intro==null;if(on&&loading.getVisibility()!=View.VISIBLE){loading.setAlpha(0f);loading.animate().alpha(1f).setDuration(350).start();}
+  loading.setVisibility(on?View.VISIBLE:View.GONE);boolean show=on&&waitBranded;wait.setVisibility(show?View.VISIBLE:View.GONE);dots.setVisibility(show&&!failed?View.VISIBLE:View.GONE);
+  // On the KIK screen the line reads like the credit below it (small caps, wide tracking, its grey); over the picture it needs a shadow.
+  boolean quiet=show&&!failed;loading.setAllCaps(quiet);loading.setLetterSpacing(quiet?0.22f:0.02f);loading.setTextColor(quiet?0xff9d9aa6:0xffe6e3ea);loading.setTextSize(quiet?13:17);
+  if(show)loading.setShadowLayer(0,0,0,0);else loading.setShadowLayer(8,0,2,Color.BLACK);
+  if(show&&breathing==null){pulse.setLayerType(View.LAYER_TYPE_HARDWARE,null);breathing=android.animation.ObjectAnimator.ofPropertyValuesHolder(pulse,android.animation.PropertyValuesHolder.ofFloat(View.ALPHA,1f,0.55f),android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X,1f,0.96f),android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y,1f,0.96f));
+   breathing.setDuration(1100);breathing.setRepeatCount(android.animation.ValueAnimator.INFINITE);breathing.setRepeatMode(android.animation.ValueAnimator.REVERSE);breathing.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());breathing.start();
+   turning=android.animation.ObjectAnimator.ofFloat(emblem,View.ROTATION,0f,360f);turning.setDuration(6000);turning.setRepeatCount(android.animation.ValueAnimator.INFINITE);turning.setInterpolator(new android.view.animation.LinearInterpolator());turning.start();}
+  else if(!show&&breathing!=null){breathing.cancel();breathing=null;if(turning!=null){turning.cancel();turning=null;}pulse.setAlpha(1f);pulse.setScaleX(1f);pulse.setScaleY(1f);pulse.setLayerType(View.LAYER_TYPE_NONE,null);}
+ }
+ /** Cut the intro on its settled frame when the video is not ready yet: the waiting screen continues it seamlessly. */
+ private final Runnable introWatch=new Runnable(){public void run(){if(intro==null)return;if(!prepared&&intro.getCurrentPosition()>=INTRO_HOLD_MS){endIntro();return;}h.postDelayed(this,100);}};
+ /** Three small red dots that brighten one after another under the waiting line; only this strip redraws. */
+ static final class Dots extends View{
+  private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+  Dots(Context c){super(c);paint.setColor(Ui.RED);}
+  @Override protected void onDraw(Canvas canvas){
+   float r=getHeight()*0.28f,gap=getWidth()/3f,t=(android.os.SystemClock.uptimeMillis()%1200)/1200f;
+   for(int i=0;i<3;i++){float phase=(t-i*0.18f+1f)%1f;float v=(float)Math.max(0,Math.sin(phase*Math.PI));paint.setAlpha((int)(60+195*v));canvas.drawCircle(gap*(i+0.5f),getHeight()/2f,r*(0.75f+0.25f*v),paint);}
+   if(getVisibility()==VISIBLE)postInvalidateOnAnimation();
+  }
+  @Override protected void onVisibilityChanged(View v,int visibility){super.onVisibilityChanged(v,visibility);if(visibility==VISIBLE)postInvalidateOnAnimation();}
  }
  private boolean wanted(){return playWhenReady&&active&&intro==null;}
  private void onEnded(){
@@ -361,7 +409,7 @@ public final class KikPlayerActivity extends Activity {
  }
  private void openQualities(){
   if(stream==null||!prepared)return;List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  for(final String q:stream.qualities.keySet()){if(q.equals(quality))sel=l.size();l.add(q);a.add(()->{if(q.equals(quality))return;resumeAt=prepared?pos():resumeAt;prepared=false;quality=q;manualQuality=true;rebuffers.clear();paintSub();loading.setText("Підготовка відео…");loading.setVisibility(View.VISIBLE);play();});}
+  for(final String q:stream.qualities.keySet()){if(q.equals(quality))sel=l.size();l.add(q);a.add(()->{if(q.equals(quality))return;resumeAt=prepared?pos():resumeAt;prepared=false;quality=q;manualQuality=true;rebuffers.clear();paintSub();loading.setText("Підготовка відео");waiting(true);play();});}
   openMenu("quality",l,a,sel);
  }
  private void openSpeeds(){List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=1;for(int i=0;i<SPEEDS.length;i++){final float s=SPEEDS[i];if(s==speed)sel=i;l.add((s==(int)s?String.valueOf((int)s):String.valueOf(s))+"x");a.add(()->{speed=s;applySpeed();});}openMenu("speed",l,a,sel);}
@@ -401,7 +449,8 @@ public final class KikPlayerActivity extends Activity {
    int state=player.getPlaybackState();long position=pos();
    if(state==Player.STATE_BUFFERING||state==Player.STATE_IDLE&&player.getPlayerError()==null){
     if(bufferingSince==0)bufferingSince=now;long waited=now-bufferingSince;
-    if(waited>800){loading.setText(!prepared?"Підготовка відео…":now-seekAt<3000?"Перемотування…":"Завантаження… "+bufferedPercent());loading.setVisibility(View.VISIBLE);}
+    // A seek or a short dip keeps the picture with a line of text; a real stall gets the KIK waiting screen.
+    if(waited>800){boolean seek=prepared&&now-seekAt<3000;loading.setText(!prepared?"Підготовка відео":seek?"Перемотування…":"Зачекайте, завантажуємо відео · "+bufferedPercent());waiting(true,!prepared||!seek&&waited>2000);}
     if(waited>STALL_MS){Log.w("KIK.Player","Stalled "+waited+" ms in state "+state);recover(null);}
    }else if(state==Player.STATE_READY){
     if(position>lastPosition+50||position<lastPosition-500){lastMovement=now;lastPosition=position;recovery.progress(now);if(stableSince==0)stableSince=now;if(now-stableSince>30000){sameAttempt=0;voiceAttempt=0;failedVoices.clear();recoveryStarted=now;stableSince=now;}}
