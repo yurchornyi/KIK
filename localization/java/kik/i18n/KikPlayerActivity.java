@@ -24,6 +24,7 @@ public final class KikPlayerActivity extends Activity {
  private FrameLayout root;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
+ private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt;private final Set<String> failedVoices=new HashSet<String>();private long lastMovement,lastPosition,recoveryStarted;
  private String menu;private int optFocus,optSelected;private List<String> optLabels=new ArrayList<String>();private List<Runnable> optActions=new ArrayList<Runnable>();
  private List<Object[]> cues=new ArrayList<Object[]>();private int subIndex=-1;
  private final Handler h=new Handler(Looper.getMainLooper());
@@ -49,7 +50,7 @@ public final class KikPlayerActivity extends Activity {
    p.setOnSeekCompleteListener(x->{if(destroyed||x!=mp)return;seeking=false;loading.setVisibility(View.GONE);if(!playWhenReady||!active)video.pause();mp.setVolume(1f,1f);update();Log.d("KIK.Player","Seek complete position="+video.getCurrentPosition()+" requested="+resumeAt);});
    if(!playWhenReady||!active)p.setVolume(0f,0f);applySpeed();if(seeking){if(active)video.start();if(Build.VERSION.SDK_INT>=26)p.seekTo(resumeAt,MediaPlayer.SEEK_CLOSEST);else video.seekTo((int)resumeAt);}else{if(playWhenReady&&active)video.start();else video.pause();p.setVolume(1f,1f);}show(true);Log.d("KIK.Player","Prepared quality="+quality+" playing="+video.isPlaying()+" speed="+speed);});
   video.setOnCompletionListener(p->onEnded());
-  video.setOnErrorListener((p,what,extra)->{Log.w("KIK","Player error "+what+"/"+extra);failure("Не вдалося відтворити відео. OK — повторити.\nМожна вибрати іншу якість або озвучку.");return true;});
+  video.setOnErrorListener((p,what,extra)->{Log.w("KIK","Player error "+what+"/"+extra);recover();return true;});
   h.post(tick);h.postDelayed(saver,5000);
   start(true);
  }
@@ -63,7 +64,8 @@ public final class KikPlayerActivity extends Activity {
   start(fromHistory,false);
  }
  private void start(final boolean fromHistory,final boolean refreshEpisodes){
-  final int gen=++generation;final Site.Film selectedFilm=film;final Site.Voice selected=voice;final String ss=season,ee=episode;
+  if(!recovering){recovery.reset();failedVoices.clear();refreshAttempt=0;voiceAttempt=0;recoveryStarted=SystemClock.elapsedRealtime();}
+  lastMovement=SystemClock.elapsedRealtime();final int gen=++generation;final Site.Film selectedFilm=film;final Site.Voice selected=voice;final String ss=season,ee=episode;
   final long keep=prepared&&!seeking?video.getCurrentPosition():resumeAt;if(prepared)video.pause();if(fromHistory)playWhenReady=true;prepared=false;mp=null;failed=false;loading.setText("Підготовка відео…");loading.setVisibility(View.VISIBLE);
   name.setText(title);paintSub();
   Ui.bg(()->{
@@ -71,9 +73,9 @@ public final class KikPlayerActivity extends Activity {
     Site.Film updated=null;if(refreshEpisodes&&selectedFilm.series){Site.Film copy=new Site.Film();copy.id=selectedFilm.id;copy.favs=selectedFilm.favs;copy.origin=selectedFilm.origin;try{Site.episodesFor(copy,selected.id);if(!copy.episodes.isEmpty())updated=copy;}catch(Exception e){Log.w("KIK","Voice episodes",e);}}
     final Site.Film episodeData=updated;
     Site.Voice use=selected;
-    if(selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,refreshEpisodes?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
+    if(selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,(refreshEpisodes||recovering)?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
     final Site.Voice playing=use;
-    final Site.Stream s=Site.stream(selectedFilm,playing,ss,ee);
+    final Site.Stream s=Site.stream(selectedFilm,playing,ss,ee,recovering);
     final List<Object[]> parsed=new ArrayList<Object[]>();
     h.post(()->{
      if(destroyed||gen!=generation)return;
@@ -82,19 +84,31 @@ public final class KikPlayerActivity extends Activity {
       // Say so only when the episode is not in the language the viewer wants (their choice, else the best one offered).
       String chosen=Progress.voice(this,selectedFilm.link),desired=null;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&(chosen==null?desired==null:v.id.equals(chosen)))desired=PlaybackPolicy.lang(v.name);
       String got=PlaybackPolicy.lang(playing.name);if(desired!=null&&!desired.equals(got))Ui.toast(this,PlaybackPolicy.label(desired)+" озвучка для цієї серії недоступна. Увімкнено: "+PlaybackPolicy.label(got).toLowerCase(Locale.ROOT)+".");}
-     stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.");return;}
+     recovering=false;stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.");return;}
      quality=!fromHistory&&quality!=null&&s.qualities.containsKey(quality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
      subGeneration++;cues.clear();subIndex=-1;subtitle.setText("");
      play();
     });
-   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;failure("Не вдалося підготувати відео.\nПеревірте інтернет. OK — повторити.");});}
+   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;recover();});}
   });
  }
  private void failure(String message){prepared=false;failed=true;focus=1;progressFocus=false;menu=null;options.setVisibility(View.GONE);loading.setText(message);loading.setVisibility(View.VISIBLE);show(true);}
  private void play(){
   seeking=false;String url=stream.qualities.get(quality);Map<String,String> headers=new HashMap<String,String>();headers.put("User-Agent",Site.UA);
-  video.setVideoURI(Uri.parse(url),headers);
+  recovery.used(url);lastMovement=SystemClock.elapsedRealtime();lastPosition=resumeAt;video.stopPlayback();video.setVideoURI(Uri.parse(url),headers);
+ }
+ /** Preserve the same episode, language, position, speed and pause state across failures. */
+ private void recover(){
+  if(destroyed||recovering||!profileId.equals(ProfileStore.current(this)))return;
+  if(prepared&&!seeking){long current=video.getCurrentPosition();resumeAt=current>0?current:lastPosition;save();}prepared=false;mp=null;seeking=false;recovery.interrupted();
+  if(recoveryStarted==0)recoveryStarted=SystemClock.elapsedRealtime();
+  if(SystemClock.elapsedRealtime()-recoveryStarted>90000){failure("Резервні потоки недоступні. OK — спробувати ще раз.");return;}
+  LinkedHashMap<String,List<String>> options=new LinkedHashMap<String,List<String>>();if(stream!=null)for(String q:stream.qualities.keySet()){List<String> urls=stream.alternatives.get(q);options.put(q,urls==null?Arrays.asList(stream.qualities.get(q)):urls);}
+  String candidate=recovery.next(options,quality);if(candidate!=null){String[] parts=candidate.split("\n",2);quality=parts[0];stream.qualities.put(quality,parts[1]);loading.setText("Відновлюємо потік…");loading.setVisibility(View.VISIBLE);play();return;}
+  if(recovery.refresh()){refreshAttempt++;recovering=true;loading.setText("Шукаємо резервну адресу…");start(false);return;}
+  failedVoices.add(voice.id);if(voiceAttempt<1){String language=PlaybackPolicy.lang(voice.name);for(Site.Voice v:film.voices)if(!v.premium&&!v.ads&&!failedVoices.contains(v.id)&&PlaybackPolicy.lang(v.name).equals(language)){voice=v;voiceAttempt++;recovering=true;start(false);return;}}
+  failure("Резервні потоки недоступні. OK — повторити або виберіть іншу мову.");
  }
  private String pickQuality(Site.Stream s){
   String want=getSharedPreferences("settings",0).getString("default_quality","1080p");int target=num(want);String best=null;int bestN=-1;
@@ -226,6 +240,7 @@ public final class KikPlayerActivity extends Activity {
  }
  private void pulse(String s){flash.setText(s);flash.animate().cancel();flash.setScaleX(0.9f);flash.setScaleY(0.9f);flash.animate().alpha(1).scaleX(1).scaleY(1).setDuration(200).setInterpolator(Ui.EASE).withEndAction(()->flash.animate().alpha(0).setStartDelay(500).setDuration(300).start()).start();}
  private void update(){
+  long now=SystemClock.elapsedRealtime();if(!destroyed&&!failed&&!recovering&&active&&playWhenReady){long position=prepared?video.getCurrentPosition():resumeAt;if(prepared&&!seeking&&position<lastPosition-500){lastPosition=position;lastMovement=now;recovery.interrupted();}if(prepared&&!seeking&&position>lastPosition+50){recovery.progress(now);lastMovement=now;lastPosition=position;if(now-recoveryStarted>30000){recoveryStarted=now;voiceAttempt=0;failedVoices.clear();}}else if(lastMovement>0&&now-lastMovement>20000){lastMovement=now;recover();}}
   if(video!=null)watchedPending+=watchTracker.sample(SystemClock.elapsedRealtime(),prepared?video.getCurrentPosition():0,prepared&&!seeking&&active&&playWhenReady&&video.isPlaying());
   if(prepared){
    long p=seeking?resumeAt:video.getCurrentPosition(),d=video.getDuration();left.setText(Ui.time(p));right.setText(d>0?"-"+Ui.time(d-p):"");
@@ -254,7 +269,7 @@ public final class KikPlayerActivity extends Activity {
    case KeyEvent.KEYCODE_MEDIA_REWIND:seek(-10000);pulse("« 10");return true;
   }
   boolean center=k==KeyEvent.KEYCODE_DPAD_CENTER||k==KeyEvent.KEYCODE_ENTER;
-  if(failed&&center&&menu==null&&focus==1){start(false);return true;}
+  if(failed&&center&&menu==null&&focus==1){recovering=false;start(false);return true;}
   if(!visible){
    if(k==KeyEvent.KEYCODE_DPAD_LEFT){seek(-10000);pulse("« 10");return true;}
    if(k==KeyEvent.KEYCODE_DPAD_RIGHT){seek(10000);pulse("10 »");return true;}

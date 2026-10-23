@@ -255,6 +255,12 @@ m=re.search(r'\s*<activity [^>]*android:name="rezkatv\.web\.app\.MainActivity"[^
 s=s.replace(m[0],'')
 assert 'rezkatv.web.app.MainActivity' not in s and 'kik.i18n.HomeActivity' in s
 s=s.replace('    </application>','    <activity-alias android:name="rezkatv.web.app.MainActivity" android:targetActivity="kik.i18n.HomeActivity" android:exported="false"/>\n    <activity android:name="kik.i18n.OpenTitleActivity" android:exported="true" android:screenOrientation="landscape" android:taskAffinity="rezkatv.web.app.uk.open" android:theme="@android:style/Theme.Material.NoActionBar" android:noHistory="true" android:excludeFromRecents="true"><intent-filter><action android:name="kik.intent.action.OPEN_TITLE"/><category android:name="android.intent.category.DEFAULT"/></intent-filter><intent-filter><action android:name="android.intent.action.SEARCH"/><category android:name="android.intent.category.DEFAULT"/></intent-filter></activity>\n    </application>',1)
+# Legacy playback intents must never resurrect upstream screens either.
+m=re.search(r'\s*<activity [^>]*android:name="rezkatv\.web\.app\.PlayerActivity"[^>]*?(?:/>|>.*?</activity>)',s,re.S)
+assert m, 'Upstream player declaration missing'
+s=s.replace(m[0],'')
+assert re.search(r'<activity [^>]*android:name="kik\.i18n\.HomeActivity"',s), 'KIK launcher must remain declared'
+s=s.replace('    </application>','    <activity-alias android:name="rezkatv.web.app.PlayerActivity" android:targetActivity="kik.i18n.HomeActivity" android:exported="false"/>\n    </application>',1)
 p.write_text(s);changes.append('manifest:old_screen_removed_open_title')
 (ROOT/'localization/simplification-summary.json').write_text(json.dumps({'version':release['version_name'],'patches':changes,'trailers':'removed','rating':'IMDb then HDRezka then Kinopoisk; one badge','genres':2,'quality_default':'1080p','player':'internal','updates':'KIK GitHub Releases; upstream disabled','descriptions':'machine-translated to Ukrainian, cached','profiles':'local, separate history and resume'},indent=2))
 print('Simplification overlay:',len(changes),'patches')
