@@ -56,7 +56,7 @@ async function api(request,env,ctx){
  // Ad clips inside sponsored voice tracks: players read them, the scanner PC fills them in.
  if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams)));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
- if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
+ if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150);return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk1"),86400,async()=>({aliases:await aliases(query)}));}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.

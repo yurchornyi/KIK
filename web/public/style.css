@@ -128,3 +128,4 @@ dialog.search-modal{width:min(980px,94vw)}
 .hero.settled .hero-copy,.manage-page.settled{animation:none}
 .author.paused svg{animation-play-state:paused}
 dialog.detail-loading #modal-content{min-height:min(420px,70dvh);padding:36px 28px;display:flex;flex-direction:column;justify-content:center}
+.search-live:empty{display:none}.search-more{margin-top:18px}

@@ -157,7 +157,18 @@ for(const b of document.querySelectorAll('[data-tab]'))b.onclick=()=>navigate(b.
 function searchKey(){return state.user&&state.profile?'kik:'+state.user.id+':searches:'+state.profile.id:'kik-searches:guest';}
 function recentSearches(){try{const a=JSON.parse(storage.getItem(searchKey())||'[]');return Array.isArray(a)?a.filter(q=>typeof q==='string').slice(0,8):[];}catch{return [];}}
 function rememberSearch(q){storage.setItem(searchKey(),JSON.stringify([q,...recentSearches().filter(x=>x.toLowerCase()!==q.toLowerCase())].slice(0,8)));}
-function searchDialog(){const input=el('input',{type:'search',value:state.query,placeholder:'Назва фільму або серіалу',required:true,'aria-label':'Пошук',maxlength:150}),form=el('form',{class:'search-form'},input,el('button',{class:'pill red',type:'submit'},'Знайти')),go=q=>{q=q.trim();if(!q)return;rememberSearch(q);modal.close();runSearch(q,true);};const tile=i=>{const c=card(i,false,()=>openDetails(i));c.classList.add('search-tile');return c;},block=(title,body,extra)=>body?el('section',{class:'search-block'},el('div',{class:'search-block-head'},el('h3',{},title),extra||null),body):null;const recent=recentSearches(),clear=button('Очистити',()=>{storage.removeItem(searchKey());searchDialog();},'text-button'),watched=uniqueTitles(historyItems()).slice(0,6),suggested=uniqueTitles(recommendations()).filter(i=>!watched.some(w=>keyOf(w.link)===keyOf(i.link))).slice(0,12);showModal(...[el('h2',{},'Знайдемо щось ваше'),form,block('Останні запити',recent.length?el('div',{class:'search-chips'},recent.map(q=>button(q,()=>go(q),'search-chip'))):null,clear),block('Нещодавно дивилися',watched.length?el('div',{class:'search-grid'},watched.map(tile)):null),block(state.user?'Рекомендовано для вас':'Популярне зараз',suggested.length?el('div',{class:'search-grid'},suggested.map(tile)):null)].filter(Boolean));modal.classList.add('search-modal');input.focus();form.onsubmit=e=>{e.preventDefault();go(input.value);};}
+function searchDialog(){const input=el('input',{type:'search',value:state.query,placeholder:'Назва фільму або серіалу',required:true,'aria-label':'Пошук',maxlength:150}),form=el('form',{class:'search-form'},input,el('button',{class:'pill red',type:'submit'},'Знайти')),go=q=>{q=q.trim();if(!q)return;rememberSearch(q);modal.close();runSearch(q,true);};const tile=i=>{const c=card(i,false,()=>openDetails(i));c.classList.add('search-tile');return c;},block=(title,body,extra)=>body?el('section',{class:'search-block'},el('div',{class:'search-block-head'},el('h3',{},title),extra||null),body):null;const live=el('div',{class:'search-live','aria-live':'polite'});const recent=recentSearches(),clear=button('Очистити',()=>{storage.removeItem(searchKey());searchDialog();},'text-button'),watched=uniqueTitles(historyItems()).slice(0,6),suggested=uniqueTitles(recommendations()).filter(i=>!watched.some(w=>keyOf(w.link)===keyOf(i.link))).slice(0,12);showModal(...[el('h2',{},'Знайдемо щось ваше'),form,live,block('Останні запити',recent.length?el('div',{class:'search-chips'},recent.map(q=>button(q,()=>go(q),'search-chip'))):null,clear),block('Нещодавно дивилися',watched.length?el('div',{class:'search-grid'},watched.map(tile)):null),block(state.user?'Рекомендовано для вас':'Популярне зараз',suggested.length?el('div',{class:'search-grid'},suggested.map(tile)):null)].filter(Boolean));modal.classList.add('search-modal');input.focus();form.onsubmit=e=>{e.preventDefault();go(input.value);};
+ // Results while typing: titles already loaded at once, then the source's answer, which «Знайти» reuses.
+ const generation=modalGeneration,others=[...modalContent.querySelectorAll('.search-block')];let timer=0,typed='';
+ const show=(q,items,searching)=>{if(generation!==modalGeneration||typed!==q)return;const list=allowed(items).slice(0,12);for(const b of others)b.hidden=true;live.replaceChildren(block(searching&&!list.length?'Шукаємо…':list.length?'Результати':'Нічого не знайшли',list.length?el('div',{},el('div',{class:'search-grid'},list.map(tile)),searching?el('p',{class:'subtle search-more',role:'status'},'Шукаємо ще…'):null):el('p',{class:'subtle'},searching?'Перевіряємо джерела…':'Спробуйте іншу назву або натисніть «Знайти».'),list.length?button('Усі результати',()=>go(q),'text-button'):null));};
+ input.addEventListener('input',()=>{clearTimeout(timer);const q=input.value.trim();typed=q;if(q.length<2){live.replaceChildren();for(const b of others)b.hidden=false;return;}
+  const local=localMatches(q);show(q,local,true);
+  timer=setTimeout(async()=>{let items=[];try{items=await searchSource(q,'');}catch{}const seen=new Set(items.map(i=>keyOf(i.link)));show(q,[...items,...local.filter(i=>!seen.has(keyOf(i.link)))],false);},280);});}
+/** Search answers per query and source, fresh for 3 minutes: typing, «Знайти», back and forward share them. */
+const searchCache=new Map();
+function searchSource(q,source){const key=source+'\n'+q.toLowerCase(),hit=searchCache.get(key);if(hit&&Date.now()-hit.at<180000)return hit.task;const task=api('/api/catalogue?query='+encodeURIComponent(q)+(source?'&source='+source:'')).then(r=>uniqueTitles(r.items||[]).filter(i=>!i.external));task.catch(()=>searchCache.delete(key));searchCache.set(key,{task,at:Date.now()});if(searchCache.size>60)searchCache.delete(searchCache.keys().next().value);return task;}
+const fold=s=>String(s||'').toLowerCase().replace(/ё/g,'е').replace(/[’'`ʼ]/g,'');
+function localMatches(q){const f=fold(q);return state.pool.filter(i=>fold(i.title).includes(f)||fold(i.original).includes(f)).slice(0,6);}
 $('#search-open').onclick=searchDialog;
 async function runSearch(query,push=false){
  const q=String(query||'').trim().slice(0,150),gen=++pageGeneration;state.tab='search';state.query=q;
@@ -165,15 +176,20 @@ async function runSearch(query,push=false){
  for(const n of document.querySelectorAll('[data-tab]')){n.classList.remove('active');n.removeAttribute('aria-current');}
  if(!q){gridPage('Пошук',[],'Введіть назву фільму або серіалу.');main.querySelector('.grid-page').append(button('Знайти фільм',searchDialog,'pill primary'));return;}
  gridPage('Шукаємо «'+q+'»…',[],'Завантаження результатів…');main.setAttribute('aria-busy','true');
- const found=new Map();let successes=0;
- const add=items=>{for(const i of uniqueTitles(items||[]).filter(i=>!i.external)){const key=keyOf(i.link),old=found.get(key);if(!old||i.uaLink&&!old.uaLink)found.set(key,i);}};
+ const found=new Map();let successes=0,pending=2;
+ const add=items=>{for(const i of items||[]){const key=keyOf(i.link),old=found.get(key);if(!old||i.uaLink&&!old.uaLink)found.set(key,i);}};
+ // Each source shows its titles as soon as it answers; the slower one joins in after (new titles go to the end).
+ const paint=()=>{if(gen!==pageGeneration)return;const items=allowed([...found.values()]);if(pending&&!items.length)return;gridPage('Результати для «'+q+'»',items,pending?'Завантаження результатів…':successes?'Нічого не знайшли. Спробуйте іншу назву.':'Не вдалося завантажити результати. Перевірте інтернет.');const page=main.querySelector('.grid-page');if(pending)page.append(el('p',{class:'subtle search-more',role:'status'},'Шукаємо ще в інших джерелах…'));else page.append(el('div',{class:'actions search-feedback'},button('Змінити запит',searchDialog),!successes?button('Спробувати ще',()=>runSearch(q),'pill primary'):null));};
+ const aliasSearch=async()=>{try{const extra=await api('/api/search-aliases?query='+encodeURIComponent(q));await Promise.allSettled((extra.aliases||[]).slice(0,2).map(async name=>{add(await searchSource(name,''));successes++;}));}catch{}};
  try{
-  await Promise.allSettled(['','&source=uaserials'].map(async source=>{const result=await api('/api/catalogue?query='+encodeURIComponent(q)+source);successes++;add(result.items);}));
+  let alias=null;
+  await Promise.allSettled(['','uaserials'].map(async source=>{try{add(await searchSource(q,source));successes++;
+   // Nothing on the main source: other names of the title are looked up while the second source is still searching.
+   if(!source&&!found.size)alias=aliasSearch();}finally{pending--;if(pending)paint();}}));
   if(gen!==pageGeneration)return;
-  if(!found.size)try{const extra=await api('/api/search-aliases?query='+encodeURIComponent(q));await Promise.allSettled((extra.aliases||[]).slice(0,2).map(async name=>{const r=await api('/api/catalogue?query='+encodeURIComponent(name));successes++;add(r.items);}));}catch{}
+  if(!found.size)await (alias||aliasSearch());
   if(gen!==pageGeneration)return;
-  gridPage('Результати для «'+q+'»',allowed([...found.values()]),successes?'Нічого не знайшли. Спробуйте іншу назву.':'Не вдалося завантажити результати. Перевірте інтернет.');
-  main.querySelector('.grid-page').append(el('div',{class:'actions search-feedback'},button('Змінити запит',searchDialog),!successes?button('Спробувати ще',()=>runSearch(q),'pill primary'):null));
+  paint();
  }finally{if(gen===pageGeneration)main.removeAttribute('aria-busy');}
 }
 
