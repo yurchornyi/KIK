@@ -26,7 +26,8 @@ final class Recommendations {
   for(Progress.Entry e:Progress.recent(c,profile)){
    long engagement=e.observed?e.watchedMs:e.pos;boolean meaningful=RecommendationRanker.meaningful(engagement,e.dur);if(meaningful)s.excluded.add(e.link);
    // A brief accidental launch is not a preference. Finished short titles still count.
-   double weight=RecommendationRanker.watchedWeight(engagement,e.dur,e.ts,now);if(count>=20||weight<=0||rated.contains(RecommendationRanker.key(e.link)))continue;
+   boolean first=e.season==null||"1".equals(e.season)&&"1".equals(e.episode);
+   double weight=e.observed&&RecommendationRanker.abandoned(e.watchedMs,e.pos,e.dur,e.ts,now,first)?RecommendationRanker.ABANDONED:RecommendationRanker.watchedWeight(engagement,e.dur,e.ts,now);if(weight<0)s.excluded.add(e.link);if(count>=20||weight==0||rated.contains(RecommendationRanker.key(e.link)))continue;
    s.titles.put(RecommendationRanker.key(e.link),e.title);
    s.signals.add(new RecommendationRanker.Signal(e.link,null,weight));count++;
   }

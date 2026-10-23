@@ -40,6 +40,12 @@ public final class RecommendationCheck {
   long now=1_800_000_000_000L;
   check("Accidental short start is not a taste signal",RecommendationRanker.watchedWeight(30_000,7_200_000,now,now)==0);
   check("Sustained watching is a taste signal",RecommendationRanker.watchedWeight(180_000,7_200_000,now,now)>0);
+  long days=86_400_000L;
+  check("Given up after 6 minutes and not resumed is a mild dislike",RecommendationRanker.abandoned(360_000,400_000,6_600_000,now-5*days,now,true));
+  check("A recent stop is not yet given up",!RecommendationRanker.abandoned(360_000,400_000,6_600_000,now-days,now,true));
+  check("A glance or a seek is never given up",!RecommendationRanker.abandoned(10_000,3_000_000,6_600_000,now-5*days,now,true));
+  check("Later episodes of a series are never given up",!RecommendationRanker.abandoned(360_000,400_000,2_700_000,now-5*days,now,false));
+  check("A quarter of the film is not giving up",!RecommendationRanker.abandoned(600_000,1_700_000,6_600_000,now-5*days,now,true));
   check("Short completed video counts",RecommendationRanker.watchedWeight(50_000,52_000,now,now)>0);
   check("Completed title is stronger than partial watching",RecommendationRanker.watchedWeight(7_000_000,7_200_000,now,now)>RecommendationRanker.watchedWeight(180_000,7_200_000,now,now));
   check("Recent interest outweighs old interest",RecommendationRanker.watchedWeight(180_000,7_200_000,now,now)>RecommendationRanker.watchedWeight(180_000,7_200_000,now-60L*24*60*60_000,now));

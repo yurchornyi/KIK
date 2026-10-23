@@ -27,6 +27,12 @@ final class RecommendationRanker {
   long weeks=Math.max(0,now-timestamp)/(7*24*60*60_000L);
   return (duration>0&&position>duration*0.93?4d:3d)/(1+Math.min(8,weeks)*0.25);
  }
+ /** Given up within the first minutes and not resumed for three days: a mild dislike. Same rule as watching.js on the web;
+  *  `watched` is real playing time, so a seek never counts. A series only counts at its first episode. */
+ static boolean abandoned(long watched,long position,long duration,long timestamp,long now,boolean firstItem){
+  return firstItem&&watched>=30_000&&watched<15*60_000L&&!(duration>0&&position>=duration/4)&&now-timestamp>=3*86_400_000L;
+ }
+ static final double ABANDONED=-2;
  static boolean meaningful(long position,long duration){return position>=120_000||(duration>0&&position>=duration*0.1);}
  private static String path(String link){
   if(link==null)return "";
