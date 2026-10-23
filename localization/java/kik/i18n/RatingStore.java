@@ -17,6 +17,8 @@ final class RatingStore {
  }
  /** What a tap did, in the same words on the TV and the web. */
  static String said(int value){return value>0?"Подобається · покажемо більше схожого":value<0?"Не подобається · сховаємо це й схоже":"Оцінку скасовано";}
+ /** The card's answer after 👍 / 👎: «Дякуємо! Покажемо більше схожого». */
+ static String thanks(int value){String s=said(value).replaceFirst("^[^·]*· ","");return "Дякуємо! "+Character.toUpperCase(s.charAt(0))+s.substring(1);}
  static synchronized int get(Context c,String profile,String link){for(Rating r:list(c,profile))if(RecommendationRanker.key(r.link).equals(RecommendationRanker.key(link)))return r.value;return 0;}
  static synchronized boolean set(Context c,String profile,String link,String title,String poster,String genre,int value){
   if(!profile.equals(ProfileStore.current(c))||ProfileStore.nameOf(c,profile)==null||RecommendationRanker.parts(link)[0].isEmpty())return false;

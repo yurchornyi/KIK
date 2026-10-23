@@ -495,7 +495,7 @@ public final class KikPlayerActivity extends Activity {
   if(value==0){hideAsk(true);return;}
   boolean saved=RatingStore.set(this,profileId,film.link,title,poster,TextUtils.join(", ",film.genres),value);
   View chosen=askChoices.get(value>0?0:1);chosen.animate().cancel();chosen.setAlpha(1);chosen.setTranslationX(0);chosen.animate().setStartDelay(0).scaleX(1.3f).scaleY(1.3f).setDuration(140).withEndAction(()->chosen.animate().scaleX(1).scaleY(1).setDuration(180).start()).start();askTimer.animate().cancel();askTimer.setVisibility(View.GONE);
-  askTitle.setText(saved?"Дякуємо! "+RatingStore.said(value).replaceFirst("^[^·]*· ",""):"Не вдалося зберегти оцінку");for(int i=0;i<askChoices.size();i++)if(i!=(value>0?0:1))askChoices.get(i).setVisibility(View.GONE);h.postDelayed(askHide,2200);
+  askTitle.setText(saved?RatingStore.thanks(value):"Не вдалося зберегти оцінку");for(int i=0;i<askChoices.size();i++)if(i!=(value>0?0:1))askChoices.get(i).setVisibility(View.GONE);h.postDelayed(askHide,2200);
  }
  private void hideAsk(boolean fade){
   askOn=false;h.removeCallbacks(askHide);if(ask==null)return;ask.animate().cancel();
