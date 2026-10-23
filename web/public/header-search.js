@@ -46,7 +46,7 @@ export function createHeaderSearch({trigger,header,el,button,storage,context,sug
  function place(){
   // The wrapper already has its final layout while the field animates independently.
   positionFrame=0;if(!opened)return;const rect=root.getBoundingClientRect(),viewport=window.visualViewport;
-  const left=viewport?.offsetLeft||0,bottom=(viewport?.offsetTop||0)+(viewport?.height||innerHeight),margin=12,width=Math.min(Math.max(rect.width,360),560,(viewport?.width||innerWidth)-margin*2);
+  const left=viewport?.offsetLeft||0,bottom=(viewport?.offsetTop||0)+(viewport?.height||innerHeight),margin=12,width=Math.min(Math.max(rect.width,320),(viewport?.width||innerWidth)-margin*2);
   if(rect.bottom<0||rect.top>bottom){close(false);return;}
   panel.style.width=width+'px';panel.style.left=Math.max(left+margin,Math.min(rect.left,left+(viewport?.width||innerWidth)-width-margin))+'px';
   panel.style.top=(rect.bottom+9)+'px';panel.style.maxHeight=Math.max(120,bottom-rect.bottom-9-margin)+'px';
