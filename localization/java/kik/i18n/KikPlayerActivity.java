@@ -44,7 +44,7 @@ public final class KikPlayerActivity extends Activity {
  private String season,episode,title,poster,profileId;private Site.Stream stream;private String quality;private float speed=1f;private boolean manualQuality;
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
- private FrameLayout root,wait;private ImageView pulse;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
+ private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
  private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
@@ -87,6 +87,8 @@ public final class KikPlayerActivity extends Activity {
   mark.setImageBitmap(asset("kik/wait.png"));wait.addView(mark,new FrameLayout.LayoutParams(-1,-1));
   // The logo itself breathes: a small separate layer, so the weak GPU never redraws the whole screen.
   pulse=new ImageView(this);pulse.setScaleType(ImageView.ScaleType.FIT_XY);pulse.setImageBitmap(asset("kik/wait-logo.png"));wait.addView(pulse,new FrameLayout.LayoutParams(0,0));
+  // The half-circle by «Створено Чорним» turns slowly, as on the web (6 s a turn).
+  emblem=new ImageView(this);emblem.setScaleType(ImageView.ScaleType.FIT_XY);emblem.setImageBitmap(asset("kik/wait-emblem.png"));wait.addView(emblem,new FrameLayout.LayoutParams(0,0));
   wait.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->placeLogo());root.addView(wait,new FrameLayout.LayoutParams(-1,-1));
   loading=Ui.text(this,"Підготовка відео",14,0xffbdb9c6);loading.setGravity(Gravity.CENTER);FrameLayout.LayoutParams ll=new FrameLayout.LayoutParams(dp(680),-2,Gravity.CENTER);ll.topMargin=dp(92);root.addView(loading,ll);
   dots=new Dots(this);FrameLayout.LayoutParams dl=new FrameLayout.LayoutParams(dp(44),dp(10),Gravity.CENTER);dl.topMargin=dp(128);root.addView(dots,dl);
@@ -122,7 +124,7 @@ public final class KikPlayerActivity extends Activity {
  private boolean online(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);NetworkInfo n=cm.getActiveNetworkInfo();return n!=null&&n.isConnected();}catch(Exception e){return true;}}
  @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}}
  @Override protected void onPause(){super.onPause();active=false;endIntro();save();CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
- @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
+ @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
 
  private long pos(){return player==null?0:Math.max(0,player.getCurrentPosition());}
  /** For the device audits: position, duration and whether frames are advancing right now. */
@@ -286,6 +288,8 @@ public final class KikPlayerActivity extends Activity {
   // The line and the dots sit on the frame's own grid: between the logo (bottom 432) and the credit (668), centred on 486 and 522.
   FrameLayout.LayoutParams tl=(FrameLayout.LayoutParams)loading.getLayoutParams(),dl=(FrameLayout.LayoutParams)dots.getLayoutParams();int tm=Math.round((486-360)*k),dm=Math.round((522-360)*k);
   if(tl.topMargin!=tm){tl.topMargin=tm;loading.setLayoutParams(tl);}if(dl.topMargin!=dm){dl.topMargin=dm;dots.setLayoutParams(dl);}
+  FrameLayout.LayoutParams el=(FrameLayout.LayoutParams)emblem.getLayoutParams();int es=Math.round(18*k),ex=Math.round(x0+551*k),ey=Math.round(y0+668*k);
+  if(el.width!=es||el.leftMargin!=ex||el.topMargin!=ey){el.width=es;el.height=es;el.leftMargin=ex;el.topMargin=ey;el.gravity=Gravity.TOP|Gravity.START;emblem.setLayoutParams(el);}
   if(lp.width==lw&&lp.height==lh&&lp.leftMargin==lx&&lp.topMargin==ly)return;lp.width=lw;lp.height=lh;lp.leftMargin=lx;lp.topMargin=ly;lp.gravity=Gravity.TOP|Gravity.START;pulse.setLayoutParams(lp);
  }
  private void waiting(boolean on){waiting(on,true);}
@@ -298,8 +302,9 @@ public final class KikPlayerActivity extends Activity {
   boolean quiet=show&&!failed;loading.setAllCaps(quiet);loading.setLetterSpacing(quiet?0.22f:0.02f);loading.setTextColor(quiet?0xff9d9aa6:0xffe6e3ea);loading.setTextSize(quiet?13:17);
   if(show)loading.setShadowLayer(0,0,0,0);else loading.setShadowLayer(8,0,2,Color.BLACK);
   if(show&&breathing==null){pulse.setLayerType(View.LAYER_TYPE_HARDWARE,null);breathing=android.animation.ObjectAnimator.ofPropertyValuesHolder(pulse,android.animation.PropertyValuesHolder.ofFloat(View.ALPHA,1f,0.55f),android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X,1f,0.96f),android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y,1f,0.96f));
-   breathing.setDuration(1100);breathing.setRepeatCount(android.animation.ValueAnimator.INFINITE);breathing.setRepeatMode(android.animation.ValueAnimator.REVERSE);breathing.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());breathing.start();}
-  else if(!show&&breathing!=null){breathing.cancel();breathing=null;pulse.setAlpha(1f);pulse.setScaleX(1f);pulse.setScaleY(1f);pulse.setLayerType(View.LAYER_TYPE_NONE,null);}
+   breathing.setDuration(1100);breathing.setRepeatCount(android.animation.ValueAnimator.INFINITE);breathing.setRepeatMode(android.animation.ValueAnimator.REVERSE);breathing.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());breathing.start();
+   turning=android.animation.ObjectAnimator.ofFloat(emblem,View.ROTATION,0f,360f);turning.setDuration(6000);turning.setRepeatCount(android.animation.ValueAnimator.INFINITE);turning.setInterpolator(new android.view.animation.LinearInterpolator());turning.start();}
+  else if(!show&&breathing!=null){breathing.cancel();breathing=null;if(turning!=null){turning.cancel();turning=null;}pulse.setAlpha(1f);pulse.setScaleX(1f);pulse.setScaleY(1f);pulse.setLayerType(View.LAYER_TYPE_NONE,null);}
  }
  /** Cut the intro on its settled frame when the video is not ready yet: the waiting screen continues it seamlessly. */
  private final Runnable introWatch=new Runnable(){public void run(){if(intro==null)return;if(!prepared&&intro.getCurrentPosition()>=INTRO_HOLD_MS){endIntro();return;}h.postDelayed(this,100);}};
