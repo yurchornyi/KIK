@@ -1,4 +1,5 @@
 /** The website's Catalogue section: categories, source genres, sorting and explicit pagination. */
+import {dropdown} from './dropdown.js';
 export const CATEGORIES=[['films','Фільми'],['series','Серіали'],['cartoons','Мультфільми'],['animation','Аніме']];
 export const SORTS=[['popular','Популярні'],['last','Нові надходження'],['watching','Зараз дивляться']];
 export const MAX_PAGE=100;
@@ -49,7 +50,7 @@ export class CataloguePages {
  */
 export function createCatalogueView({main,el,button,card,keyOf,api,visible=items=>items,isActive,onSelection=()=>{},skip=4}){
  const models=new Map(),genreCache=new Map();
- let model,section,list,note,more,count,genreSelect,genreRetry,sort,categories,shownKeys=new Set(),painted=0,genreRequest=0;
+ let model,section,list,note,more,count,genreSelect,genreRetry,sort,categories,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null;
  const fetchPage=(params,signal)=>api('/api/catalogue?'+new URLSearchParams(params),undefined,{signal});
  const live=()=>!!section?.isConnected&&isActive();
  const label=category=>CATEGORIES.find(([key])=>key===category)?.[1]||'Каталог';
@@ -75,6 +76,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   note.classList.toggle('error',!!model.error);
   more.hidden=(model.end&&!model.error)||!model.page&&model.loading;more.disabled=model.loading;
   more.textContent=model.loading?'Завантаження…':model.error?'Спробувати ще':'Показати ще';
+  if(!model.loading&&typeof requestAnimationFrame==='function')requestAnimationFrame(autoMore);
   return first;
  }
  /** One user request: the next page, plus a few more while the country filter hides everything new. */
@@ -108,6 +110,12 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   sort.value=model.filter;section.querySelector('h1').textContent=label(model.category);
   paint();if(!model.page&&!model.loading)load();else if(model.loading)watch(model);
  }
+ /** Infinite scroll: the next page comes while «Показати ще» is still a screen away; the button stays for errors and keyboards. */
+ function autoMore(){
+  if(!live()||!model.page||model.loading||model.end||model.error||more.hidden)return;
+  if(more.getBoundingClientRect().top>innerHeight+900)return;
+  load();
+ }
  /** Repaints when a request started before the page was rebuilt finishes. */
  async function watch(current){while(current.loading&&current===model)await new Promise(r=>setTimeout(r,120));if(current===model)paint();}
  /** Shows the catalogue for a selection; the same selection already on screen is kept as is (scroll, focus, cards). */
@@ -124,9 +132,10 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   more=button('Показати ще',()=>load(true),'pill primary');
   section=el('section',{class:'grid-page catalogue-page'},
    el('div',{class:'page-head'},el('div',{},el('div',{class:'eyebrow'},'КАТАЛОГ KIK'),el('h1',{},label(model.category))),count),
-   el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},el('label',{class:'catalogue-sort'},'Жанр',genreSelect),el('label',{class:'catalogue-sort'},'Порядок',sort),genreRetry)),
+   el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},dropdown(genreSelect,'Жанр'),dropdown(sort,'Порядок'),genreRetry)),
    list,el('div',{class:'catalogue-bottom'},note,more));
   shownKeys=new Set();painted=0;main.replaceChildren(section);onSelection(selection());paint();loadGenres();
+  watcher?.disconnect();if(typeof IntersectionObserver!=='undefined'){watcher=new IntersectionObserver(e=>{if(e.some(x=>x.isIntersecting))autoMore();},{rootMargin:'0px 0px 900px 0px'});watcher.observe(more);}
   if(!model.page&&!model.loading)load();else if(model.loading)watch(model);
   return true;
  }
