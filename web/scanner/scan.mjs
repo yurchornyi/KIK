@@ -7,6 +7,7 @@ import {film,stream,voiceOrder} from '../catalogue.mjs';import {titleKey} from '
 import {fingerprint,RATE,toBase64,fromBase64} from '../ad-fingerprint.mjs';import {FPS,SIZE} from '../ad-align.mjs';
 import {fromLibrary,discover,fromReference,merge,suggest,IDENT,CREDITS} from '../ad-detect.mjs';import {SPONSORED} from '../ad-breaks.mjs';
 const ORIGIN=process.env.KIK_ORIGIN||'https://kik.basic-175.workers.dev',TOKEN=process.env.KIK_SCANNER_TOKEN||'',FFMPEG=process.env.FFMPEG||'ffmpeg';
+if(new URL(ORIGIN).origin!==ORIGIN||!ORIGIN.startsWith('https://'))throw Error('KIK_ORIGIN must be an HTTPS origin');
 const AI=process.env.KIK_SCANNER_AI!=='0',DATA=process.env.KIK_SCANNER_DATA||path.join(os.homedir(),'.kik-ad-scanner'),POOL=40,IDLE=5*60_000;
 const log=(...a)=>console.log(new Date().toISOString().slice(0,19),...a);
 const retry=async(what,n=4)=>{let last;for(let i=0;i<n;i++)try{return await what();}catch(e){last=e;await new Promise(r=>setTimeout(r,2000*(i+1)));}throw last;};
@@ -32,9 +33,9 @@ function remember(e){const n=path.join(DATA,'pool',poolName(e));fs.writeFileSync
 const SAMPLE=4;
 function features(url,{audio=true,samples=false}={}){return new Promise((resolve,reject)=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'kik-scan-')),pcm=path.join(tmp,'a.pcm'),gray=path.join(tmp,'v.gray'),done=()=>fs.rmSync(tmp,{recursive:true,force:true});
- const args=['-nostdin','-loglevel','error','-rw_timeout','30000000','-i',url,...(audio?['-map','0:a:0','-ac','1','-ar',String(RATE),'-f','s16le','-y',pcm]:[]),'-map','0:v:0','-vf',`fps=${FPS},crop=iw*0.7:ih*0.7,scale=12:9,format=gray`,'-f','rawvideo','-y',gray,
+ const args=['-nostdin','-loglevel','error','-rw_timeout','30000000','-protocol_whitelist','https,tls,tcp,crypto','-t','21600','-i',url,...(audio?['-map','0:a:0','-ac','1','-ar',String(RATE),'-f','s16le','-y',pcm]:[]),'-map','0:v:0','-vf',`fps=${FPS},crop=iw*0.7:ih*0.7,scale=12:9,format=gray`,'-f','rawvideo','-y',gray,
   ...(samples?['-map','0:v:0','-vf',`fps=1/${SAMPLE},crop=iw:ih*0.84:0:ih*0.08,scale=352:-2`,'-pix_fmt','yuvj420p','-q:v','6','-y',path.join(tmp,'s%05d.jpg')]:[])];
- const p=spawn(FFMPEG,args,{stdio:['ignore','ignore','pipe']});let err='';p.stderr.on('data',d=>err+=d);
+ const p=spawn(FFMPEG,args,{stdio:['ignore','ignore','pipe'],timeout:20*60_000});let err='';p.stderr.on('data',d=>err=(err+d).slice(-4096));
  p.on('error',e=>{done();reject(e);});p.on('close',code=>{try{if(code)throw Error('ffmpeg '+code+': '+err.slice(-300));
   const g=new Uint8Array(fs.readFileSync(gray));let a=null;if(audio){const b=fs.readFileSync(pcm);a=fingerprint(new Int16Array(b.buffer,b.byteOffset,b.length>>1));}
   const jpegs=samples?fs.readdirSync(tmp).filter(n=>/^s\d+\.jpg$/.test(n)).sort().map((n,i)=>({t:i*SAMPLE+SAMPLE/2,file:path.join(tmp,n)})):[];
@@ -73,7 +74,7 @@ async function analyse(item,f,key,e){
   savePool();}
  remember(e);return reports;
 }
-async function call(p,body){const r=await fetch(ORIGIN+p,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:JSON.stringify(body)});if(!r.ok)throw Error(p+' '+r.status);return r.json();}
+async function call(p,body){const r=await fetch(ORIGIN+p,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:JSON.stringify(body),redirect:'manual',signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error(p+' '+r.status);return r.json();}
 const span=l=>l.map(([s,e])=>s.toFixed(1)+'–'+e.toFixed(1)).join(', ');
 const show=r=>`${titleKey(r.link)} ${r.season||'-'}x${r.episode||'-'} v${r.voice}: ${span(r.breaks)||'no ads'}${r.suggested?.length?' · AI hint '+span(r.suggested):''}`;
 if(process.argv[2]){const [link,season='',episode='',voice='35']=process.argv.slice(2);for(const r of await scan({link,voice,season,episode}))log(show(r));process.exit(0);}
