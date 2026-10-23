@@ -10,12 +10,17 @@ def vector(width,height,mark_width,bg=False):
  paths=''.join(f'<path android:fillColor="#00000000" android:strokeColor="{brand["color"]}" android:strokeWidth="{brand["stroke"]}" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="{p}"/>' for p in brand['paths'])
  back=f'<path android:fillColor="#0D0D0F" android:pathData="M0,0h{width}v{height}H0Z"/>' if bg else ''
  return f'<?xml version="1.0" encoding="utf-8"?>\n<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="{width}dp" android:height="{height}dp" android:viewportWidth="{width}" android:viewportHeight="{height}">{back}<group android:translateX="{x}" android:translateY="{y}" android:scaleX="{scale}" android:scaleY="{scale}">{paths}</group></vector>\n'
-for filename,w,h,m,bg in [('kik_icon_fg',108,108,66,False),('kik_banner',320,180,150,True),('kik_splash',320,180,150,False)]:
+for filename,w,h,m,bg in [('kik_splash',320,180,150,False)]:
  (D/f'res/drawable/{filename}.xml').write_text(vector(w,h,m,bg))
-(D/'res/drawable/kik_icon_bg.xml').write_text('<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="#0D0D0F"/></shape>')
+# Launcher icon and TV banner: the phone icon's style, rendered by scripts/tv-icons.py into localization/.
+import shutil
+for folder,source,target in [('drawable-xxxhdpi','kik-icon.png','kik_icon.png'),('drawable-xhdpi','kik-banner.png','kik_banner.png')]:
+ (D/'res'/folder).mkdir(parents=True,exist_ok=True);shutil.copy(ROOT/'localization'/source,D/'res'/folder/target)
+(D/'res/drawable/kik_icon_fg.xml').write_text('<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="#00000000"/></shape>')
 for name in ['ic_launcher','ic_launcher_round']:
  f=D/f'res/mipmap-anydpi-v26/{name}.xml'
- if f.exists():f.write_text('<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/kik_icon_bg"/><foreground android:drawable="@drawable/kik_icon_fg"/></adaptive-icon>')
+ if f.exists():f.write_text('<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/kik_icon"/><foreground android:drawable="@drawable/kik_icon_fg"/></adaptive-icon>')
+ for p in list((D/'res').glob(f'mipmap-*dpi/{name}.png'))+list((D/'res').glob(f'mipmap-*dpi/{name}.webp')):p.unlink();shutil.copy(ROOT/'localization/kik-icon-legacy.png',p.with_suffix('.png'))
 p=D/'AndroidManifest.xml';p.write_text(p.read_text().replace('android:banner="@mipmap/ic_banner"','android:banner="@drawable/kik_banner"'))
 for p in (D/'res').glob('values*/strings.xml'):p.write_text(re.sub(r'(<string name="app_name">).*?(</string>)',r'\1KIK\2',p.read_text()))
 (D/'res/drawable/splash_background.xml').write_text('<layer-list xmlns:android="http://schemas.android.com/apk/res/android"><item><color android:color="#0D0D0F"/></item><item android:gravity="center" android:width="320dp" android:height="180dp" android:drawable="@drawable/kik_splash"/></layer-list>')
