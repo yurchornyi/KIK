@@ -27,19 +27,22 @@ const server=createServer(async(req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin=`http://127.0.0.1:${server.address().port}`;
 const report={mode:'local deterministic API fixtures; viewport emulation, not physical Apple devices',samples:[],failures:[]};
-async function fixture(context,{guest=false,delay=0,failCatalogue=false,slowSeries=0,filmDelay=0,profileCount=1,profileName=profile.name}={}){
+let activePage,activeErrors=[];
+async function trackedPage(context){const page=await context.newPage(),errors=[];activePage=page;activeErrors=errors;page.on('pageerror',e=>errors.push(e.message));return page;}
+async function fixture(context,{guest=false,delay=0,failCatalogue=false,slowSeries=0,filmDelay=0,settingsGate,profileCount=1,profileName=profile.name}={}){
  const profiles=Array.from({length:profileCount},(_,i)=>({...profile,id:i?`audit-profile-${i+1}`:profile.id,name:i?`Профіль ${i+1}`:profileName,avatar:i%2?'ninja':profile.avatar}));
  const lifecycle={seriesComplete:false};await context.route('**/api/**',async route=>{
   const url=new URL(route.request().url()),p=url.pathname;
   if(delay&&p==='/api/catalogue')await new Promise(r=>setTimeout(r,delay));
   if(slowSeries&&p==='/api/catalogue'&&url.searchParams.get('category')==='series')await new Promise(r=>setTimeout(r,slowSeries));
   if(filmDelay&&p==='/api/film')await new Promise(r=>setTimeout(r,filmDelay));
+  if(settingsGate&&p==='/api/settings'&&route.request().method()==='GET')await settingsGate;
   let body={};
   if(p==='/api/me')body={user:guest?null:user,profiles:guest?[]:profiles,server_time:Date.now()};
   else if(p==='/api/settings')body={settings:{quality:'1080p',audio:'uk',speed:1,autoplay:true}};
   else if(p==='/api/sync')body={records,profile:profiles.find(p=>p.id===route.request().postDataJSON()?.profile_id)||profiles[0],server_time:Date.now()};
   else if(p==='/api/catalogue'){if(failCatalogue){await route.fulfill({status:503,json:{error:'Offline fixture'}});return;}body={items:url.searchParams.get('category')==='series'?items.filter((_,i)=>i%2):url.searchParams.get('category')==='films'?items.filter((_,i)=>!(i%2)):items};}
-  else if(p==='/api/film'){const item=items.find(i=>i.link===url.searchParams.get('link'))||items[0];body={...item,description:'Це довгий опис історії. '.repeat(18),genres:['Драма','Пригоди','Наукова фантастика'],duration:'120 хв',rating:'8.2',series:item.link.includes('/series/'),voices:[{id:'1',name:'Українська — дуже довга назва студії озвучення',lang:'uk'}],episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}],related:[]};}
+  else if(p==='/api/film'){const item=items.find(i=>i.link===url.searchParams.get('link'))||items[0];body={...item,description:'Це довгий опис історії. '.repeat(18),genres:['Драма','Пригоди','Наукова фантастика'],duration:'120 хв',rating:'8.2',series:item.link.includes('/series/'),voices:[{id:'1',name:'Українська — дуже довга назва студії озвучення',lang:'uk'},{id:'2',name:'Original',lang:'en'}],episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}],related:[]};}
   else if(p==='/api/episodes')body={episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}]};
   else if(p==='/api/stream')body={qualities:[{label:'1080p',url:origin+'/missing.mp4'}]};
   else if(p==='/api/artwork/batch')body={configured:true,results:Object.fromEntries(items.map(i=>[i.link.split('.sh/')[1],{poster:origin+'/fixture.svg',posterLarge:origin+'/fixture.svg',backdrop:origin+'/fixture.svg',studios:['hbo']}]))};
@@ -73,12 +76,30 @@ async function inspect(page,label,extra={}){
 }
 const sizes=process.env.KIK_AUDIT_SIZES?process.env.KIK_AUDIT_SIZES.split(',').map(s=>s.split('x').map(Number)):[[320,568],[375,667],[390,844],[430,932],[667,375],[768,1024],[820,1180],[1024,768],[1180,820],[1280,720],[1440,900],[1920,1080],[2560,1440],[3840,2160]];
 function check(engine,label,passed,details={}){const sample={engine,label,passed,...details};report.samples.push(sample);if(!passed)report.failures.push(sample);}
+const dropdownTrigger=(page,label)=>page.getByRole('button',{name:new RegExp('^'+label+':')});
+async function choose(page,label,value){await dropdownTrigger(page,label).click();await page.getByRole('option',{name:value,exact:true}).click();await page.locator('.dropdown-panel').waitFor({state:'detached'});}
+async function auditSettings(page,engine,width){
+ check(engine,'settings-use-custom-dropdowns',await page.locator('.settings-fields .dropdown').count()===3&&await page.locator('.settings-fields select:not(.dropdown-native)').count()===0,{width});
+ for(const label of ['Якість відео','Бажана мова','Швидкість']){await dropdownTrigger(page,label).click();await page.locator('.dropdown-panel').waitFor();await inspect(page,'settings-options-'+label,{engine});if(label==='Якість відео'&&engine==='chromium'&&(width===390||width===1440))await page.screenshot({path:path.join(output,`${engine}-${width}-settings-sheet.png`),animations:'disabled'});await page.keyboard.press('Escape');await page.locator('.dropdown-panel').waitFor({state:'detached'});check(engine,'settings-dropdown-restores-focus',await dropdownTrigger(page,label).evaluate(e=>e===document.activeElement),{width,field:label});}
+ await dropdownTrigger(page,'Якість відео').focus();await page.keyboard.press('ArrowDown');await page.locator('.dropdown-panel').waitFor();await page.keyboard.press('Tab');await page.locator('.dropdown-panel').waitFor({state:'detached'});check(engine,'dropdown-tab-moves-to-next-field',await dropdownTrigger(page,'Бажана мова').evaluate(e=>e===document.activeElement),{width});
+ await choose(page,'Якість відео','HD · 720p');await choose(page,'Бажана мова','Англійська');await choose(page,'Швидкість','1.5×');const sent=page.waitForRequest(r=>r.url().endsWith('/api/settings')&&r.method()==='POST');await page.getByRole('button',{name:'Зберегти налаштування',exact:true}).click();const body=(await sent).postDataJSON();check(engine,'custom-settings-submit-selected-values',body.profile_id===profile.id&&body.settings.quality==='720p'&&body.settings.audio==='en'&&body.settings.speed===1.5,{width});
+}
+async function auditPair(page,engine,width){
+ await dropdownTrigger(page,'Профіль для TV').click();await page.locator('.dropdown-panel').waitFor();await inspect(page,'tv-profile-options',{engine});check(engine,'tv-profile-panel-stays-in-dialog',await page.locator('.dropdown-panel').evaluate(p=>p.closest('dialog')?.id==='modal'&&p.matches(':popover-open')),{width});
+ const menu=await page.locator('.dropdown-panel').evaluate(p=>{const t=document.querySelector('select[aria-label="Профіль для TV"]').closest('.dropdown').querySelector('button').getBoundingClientRect(),r=p.getBoundingClientRect();return {width:r.width,fieldWidth:t.width,attached:Math.min(Math.abs(r.top-t.bottom-8),Math.abs(t.top-r.bottom-8))<1,avatars:p.querySelectorAll('.dropdown-avatar').length,handle:getComputedStyle(p,'::before').content};});check(engine,'profile-menu-is-compact-with-avatars',menu.attached&&Math.abs(menu.width-menu.fieldWidth)<1&&menu.avatars===2&&['none','normal'].includes(menu.handle),{width,...menu});
+ if(engine==='chromium'&&(width===390||width===1440))await page.screenshot({path:path.join(output,`${engine}-${width}-tv-profile-sheet.png`),animations:'disabled'});await page.getByRole('option',{name:'Профіль 2',exact:true}).click();await page.locator('.dropdown-panel').waitFor({state:'detached'});await page.getByRole('textbox',{name:'Код із TV',exact:true}).fill('ABCD EFGH');const sent=page.waitForRequest(r=>r.url().endsWith('/api/pair/claim'));await page.locator('#modal').getByRole('button',{name:'Прив’язати TV',exact:true}).click();const body=(await sent).postDataJSON();check(engine,'pairing-uses-chosen-profile',body.profile_id==='audit-profile-2'&&body.code==='ABCD EFGH',{width});await page.getByRole('heading',{name:'TV прив’язано',exact:true}).waitFor();
+}
+async function auditPlayer(page,engine,width,series){
+ check(engine,'player-uses-custom-dropdowns',await page.locator('.player-tools .dropdown').count()===(series?5:3)&&await page.locator('.player-tools select:not(.dropdown-native)').count()===0,{width,series});
+ for(const label of ['Озвучення',...(series?['Сезон','Серія']:[]),'Якість','Швидкість']){await dropdownTrigger(page,label).click();await page.locator('.dropdown-panel').waitFor();await inspect(page,'player-options-'+label,{engine});if(label==='Озвучення'){check(engine,'keyboard-skips-unavailable-voice',await page.getByRole('option',{name:'Російська',exact:true}).isDisabled(),{width,series});await page.keyboard.press('Home');await page.keyboard.press('ArrowDown');check(engine,'keyboard-reaches-next-available-voice',await page.getByRole('option',{name:'Англійська',exact:true}).evaluate(e=>e===document.activeElement),{width,series});}if(label==='Серія'&&engine==='chromium'&&(width===390||width===1440))await page.screenshot({path:path.join(output,`${engine}-${width}-episode-sheet.png`),animations:'disabled'});await page.keyboard.press('Escape');await page.locator('.dropdown-panel').waitFor({state:'detached'});check(engine,'player-sheet-escape-keeps-player-open',await page.locator('#player-modal').evaluate(d=>d.open)&&await dropdownTrigger(page,label).evaluate(e=>e===document.activeElement),{width,field:label,series});}
+ await choose(page,'Швидкість','1.25×');check(engine,'custom-player-speed-changes-playback-rate',await page.locator('#player-modal video').evaluate(v=>v.playbackRate===1.25),{width,series});
+}
 try{
  for(const [engine,type] of Object.entries({chromium,webkit})){
   const browser=await type.launch({headless:true});
   for(const [width,height] of sizes){
-   const context=await browser.newContext({viewport:{width,height},deviceScaleFactor:width<1200?2:1,hasTouch:width<1200,isMobile:width<768,reducedMotion:'reduce'});await fixture(context);
-   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+   const context=await browser.newContext({viewport:{width,height},deviceScaleFactor:width<1200?2:1,hasTouch:width<1200,isMobile:width<768,reducedMotion:'reduce'});await fixture(context,{profileCount:2});
+   const page=await trackedPage(context),errors=[];activePage=page;activeErrors=errors;page.on('pageerror',e=>errors.push(e.message));
    const started=performance.now();await page.goto(origin);await page.locator('.shelf').first().waitFor();await page.locator('[data-tab=admin]').waitFor();
    await inspect(page,'home',{engine,readyMs:Math.round(performance.now()-started)});
    if((width===390||width===820||width===1440)&&engine==='chromium')await page.screenshot({path:path.join(output,`${engine}-${width}-home.png`),animations:'disabled'});
@@ -89,7 +110,7 @@ try{
    check(engine,'hero-removes-from-my-list',await page.locator('.hero-list').evaluate(e=>e.getAttribute('aria-pressed')==='false'&&e.textContent==='Мій список')&&await page.evaluate(title=>!JSON.parse(localStorage.getItem('kik:audit-user:audit-profile')||'{}').records?.some(r=>r.kind==='later'&&r.data?.title===title),heroTitle),{width});
    await page.locator('.hero-details').click();await page.locator('.detail-actions').waitFor();check(engine,'hero-info-opens-title-details',(await page.locator('#modal h2').textContent())===heroTitle,{width});await page.locator('#modal .close').click();
    for(const tab of ['catalogue','later','history','settings','admin']){
-    const t=performance.now();await page.locator(`[data-tab=${tab}]`).click();await page.locator(tab==='admin'?'.admin-stats':tab==='settings'?'.settings-card':'.grid-page').first().waitFor();await inspect(page,tab,{engine,switchMs:Math.round(performance.now()-t)});
+    const t=performance.now();await page.locator(`[data-tab=${tab}]`).click();await page.locator(tab==='admin'?'.admin-stats':tab==='settings'?'.settings-card':'.grid-page').first().waitFor();await inspect(page,tab,{engine,switchMs:Math.round(performance.now()-t)});if(tab==='settings')await auditSettings(page,engine,width);
    }
    await page.locator('[data-tab=catalogue]').click();await page.locator('.studio-filter').click();await page.locator('.dropdown-panel').waitFor();await inspect(page,'studio-picker',{engine});
    if(engine==='chromium'&&(width===390||width===1440))await page.screenshot({path:path.join(output,`${engine}-${width}-studio-picker.png`),animations:'disabled'});
@@ -111,7 +132,7 @@ try{
     ['countries',async()=>{await page.locator('[data-tab=settings]').click();await page.getByRole('button',{name:'Приховані країни',exact:true}).click();}],
     ['avatars',()=>page.getByRole('button',{name:'Змінити аватарку',exact:true}).click()],
     ['taste',()=>page.getByRole('button',{name:'Налаштувати смак',exact:true}).click()],
-   ]){await open();await page.locator('#modal[open]').waitFor();await inspect(page,label,{engine});await page.locator('#modal .close').click();}
+   ]){await open();await page.locator('#modal[open]').waitFor();await inspect(page,label,{engine});if(label==='pair')await auditPair(page,engine,width);await page.locator('#modal .close').click();}
    await page.evaluate(()=>localStorage.setItem('kik:search:audit-user:audit-profile',JSON.stringify(['Дюна','Шерлок'])));await page.locator('#search-open').click();await page.locator('.header-search-panel').waitFor();await page.waitForFunction(()=>document.querySelector('#header-search-input')?.getBoundingClientRect().width>80);await inspect(page,'header-search',{engine});
    check(engine,'header-search-focus',await page.locator('#header-search-input').evaluate(e=>e===document.activeElement),{width});check(engine,'search-has-history-and-posters',await page.locator('.search-history-row').count()===2&&await page.locator('.search-suggestion').count()===3,{width});
    if(width>=1280){const metrics=await page.evaluate(()=>{const form=document.querySelector('.header-search-form').getBoundingClientRect(),nav=document.querySelector('.header nav').getBoundingClientRect(),panel=document.querySelector('.header-search-panel').getBoundingClientRect();return {gap:form.left-nav.right,width:form.width,panelLeft:panel.left,formLeft:form.left};});check(engine,'search-expands-next-to-navigation',metrics.gap>=16&&metrics.gap<=32&&metrics.width>400&&Math.abs(metrics.panelLeft-metrics.formLeft)<1,{width,...metrics});}
@@ -119,15 +140,18 @@ try{
 
    await page.keyboard.press('Escape');await page.locator('.header-search-panel').waitFor({state:'hidden'});check(engine,'header-search-escape',await page.locator('#search-open').evaluate(e=>e===document.activeElement),{width});
    await page.locator('#search-open').click();await page.getByRole('button',{name:'Прибрати запит «Дюна»',exact:true}).click();check(engine,'remove-search-history',await page.locator('.search-history-row').count()===1,{width});await page.locator('.search-history-pick').click();await page.waitForFunction(()=>document.querySelector('#main h1')?.textContent==='Результати для «Шерлок»');check(engine,'repeat-saved-query',new URL(page.url()).hash.includes(encodeURIComponent('Шерлок')),{width});await page.locator('#search-open').click();await page.locator('.search-clear-history').click();check(engine,'clear-search-history',await page.locator('.search-history-row').count()===0,{width});await page.mouse.click(2,height-2);check(engine,'search-outside-click',await page.locator('.header-search-panel').evaluate(e=>e.hidden),{width});
-   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=films]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await inspect(page,'details',{engine});await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'player',{engine});await page.locator('#player-modal .close').click();
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=films]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await inspect(page,'details',{engine});await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'player',{engine});await auditPlayer(page,engine,width,false);await page.locator('#player-modal .close').click();
    await page.locator('#search-open').click();await page.locator('#header-search-input').fill('Історія');await page.locator('#header-search-input').press('Enter');await page.waitForFunction(()=>document.querySelector('#main h1')?.textContent.startsWith('Результати'));await inspect(page,'search-results',{engine});check(engine,'search-query-remembered',await page.evaluate(()=>JSON.parse(localStorage.getItem('kik:search:audit-user:audit-profile')||'[]')[0])==='Історія',{width});
-   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=series]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'series-player',{engine});await page.locator('#player-modal .close').click();await page.goto(origin+'/sources.html');await inspect(page,'sources',{engine});
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=series]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'series-player',{engine});await auditPlayer(page,engine,width,true);await page.locator('#player-modal .close').click();await page.goto(origin+'/sources.html');await inspect(page,'sources',{engine});
    if(errors.length)report.failures.push({engine,width,height,label:'runtime',errors});
    await context.close();
   }
+  {
+   let release;const settingsGate=new Promise(r=>release=r),context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});await fixture(context,{settingsGate});const page=await trackedPage(context),loaded=page.waitForResponse(r=>r.url().includes('/api/settings')&&r.request().method()==='GET');await page.goto(origin);await page.locator('.hero-list').waitFor();await page.locator('[data-tab=settings]').click();await choose(page,'Якість відео','HD · 720p');release();await loaded;await page.waitForTimeout(60);check(engine,'late-settings-load-keeps-user-selection',await dropdownTrigger(page,'Якість відео').textContent().then(t=>t.includes('HD · 720p')));await context.close();
+  }
   // Sample actual animation frames: reduced-motion checks cannot catch a moving anchor.
   for(const width of [390,820,1440]){
-   const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'no-preference'});await fixture(context);const page=await context.newPage();await page.goto(origin);await page.locator('.shelf').first().waitFor();await page.locator('[data-tab=admin]').waitFor();
+   const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'no-preference'});await fixture(context);const page=await trackedPage(context);await page.goto(origin);await page.locator('.shelf').first().waitFor();await page.locator('[data-tab=admin]').waitFor();
    await page.evaluate(()=>localStorage.setItem('kik:search:audit-user:audit-profile',JSON.stringify(['Дюна','Шерлок'])));
    const frames=await page.evaluate(async()=>{
     const trigger=document.querySelector('#search-open'),root=document.querySelector('.header-search'),panel=document.querySelector('.header-search-panel'),form=document.querySelector('.header-search-form'),before=trigger.getBoundingClientRect(),samples=[],started=performance.now();trigger.click();
@@ -153,14 +177,14 @@ try{
    await page.locator('#search-open').click();await page.locator('#header-search-input').fill('Дюна');await page.mouse.move(2,842);await page.clock.fastForward(60000);check(engine,'search-keeps-an-unfinished-query',await page.locator('#header-search-input').evaluate(e=>!e.disabled&&e.value==='Дюна'&&e===document.activeElement),{width});await context.close();
   }
   for(const state of [{guest:true},{failCatalogue:true},{delay:900}]){
-   const context=await browser.newContext({viewport:{width:375,height:667}});await fixture(context,state);const page=await context.newPage();await page.goto(origin);
+   const context=await browser.newContext({viewport:{width:375,height:667}});await fixture(context,state);const page=await trackedPage(context);await page.goto(origin);
    if(state.guest){await page.locator('.hero-list').waitFor();await page.locator('.hero-list').click();await page.locator('input[type=email]').waitFor();check(engine,'guest-hero-list-requests-sign-in',await page.locator('.hero-list').getAttribute('aria-pressed')==='false'&&await page.evaluate(()=>!localStorage.getItem('kik:audit-user:audit-profile')));await inspect(page,'login',{engine});await page.getByRole('button',{name:'Вперше тут? Створити обліковий запис',exact:true}).click();await inspect(page,'register',{engine});}
    else if(state.failCatalogue){await page.getByRole('button',{name:'Спробувати ще',exact:true}).waitFor();await inspect(page,'offline',{engine});}
    else{await inspect(page,'loading',{engine});await page.locator('.shelf').first().waitFor();}
    await context.close();
   }
   for(const profileCount of [1,8])for(const width of [320,390,1440]){
-   const context=await browser.newContext({viewport:{width,height:width===1440?900:844},reducedMotion:'reduce'});await fixture(context,{profileCount,profileName:profileCount===1?'Yuriy':profile.name});const page=await context.newPage();await page.goto(origin);await page.locator('[data-tab=admin]').waitFor();await page.locator('#account').click();await page.locator('.profile-modal').waitFor();
+   const context=await browser.newContext({viewport:{width,height:width===1440?900:844},reducedMotion:'reduce'});await fixture(context,{profileCount,profileName:profileCount===1?'Yuriy':profile.name});const page=await trackedPage(context);await page.goto(origin);await page.locator('[data-tab=admin]').waitFor();await page.locator('#account').click();await page.locator('.profile-modal').waitFor();
    await inspect(page,'profile-picker-'+profileCount,{engine,width});check(engine,'profile-picker-count',await page.locator('.profile-tile[aria-pressed]').count()===profileCount,{width,profileCount});
    check(engine,'profile-picker-focus',await page.locator('.profile-tile[aria-pressed=true]').evaluate(e=>e===document.activeElement),{width,profileCount});
    check(engine,'profile-limit',await page.locator('.profile-tile-add').count()===(profileCount<8?1:0),{width,profileCount});
@@ -173,7 +197,7 @@ try{
   }
   // Behavior checks catch failures that cannot be found by bounding boxes alone.
   {
-   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});const lifecycle=await fixture(context,{slowSeries:3000,filmDelay:400});const page=await context.newPage();let hlsDownloads=0;page.on('request',r=>{if(r.url().endsWith('/hls.min.js'))hlsDownloads++;});
+   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});const lifecycle=await fixture(context,{slowSeries:3000,filmDelay:400});const page=await trackedPage(context);let hlsDownloads=0;page.on('request',r=>{if(r.url().endsWith('/hls.min.js'))hlsDownloads++;});
    const started=performance.now();await page.goto(origin);await page.locator('.shelf').first().waitFor();const firstShelfMs=Math.round(performance.now()-started);check(engine,'first catalogue usable while another category is slow',!lifecycle.seriesComplete,{firstShelfMs});
    await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=series]').click();await page.locator('.grid .poster').first().waitFor();
    await page.locator('[data-tab=home]').click();await page.locator('.shelf-line .poster').first().focus();await page.evaluate(()=>window.auditFocused=document.activeElement);
@@ -189,10 +213,10 @@ try{
    await context.close();
   }
   {
-   const context=await browser.newContext({viewport:{width:375,height:667},reducedMotion:'reduce'});await fixture(context,{failCatalogue:true});const page=await context.newPage();await page.goto(origin+'/#search?q=offline');await page.getByRole('button',{name:'Спробувати ще',exact:true}).waitFor();check(engine,'search failure offers retry',await page.getByRole('button',{name:'Спробувати ще',exact:true}).isVisible());await context.close();
+   const context=await browser.newContext({viewport:{width:375,height:667},reducedMotion:'reduce'});await fixture(context,{failCatalogue:true});const page=await trackedPage(context);await page.goto(origin+'/#search?q=offline');await page.getByRole('button',{name:'Спробувати ще',exact:true}).waitFor();check(engine,'search failure offers retry',await page.getByRole('button',{name:'Спробувати ще',exact:true}).isVisible());await context.close();
   }
   await browser.close();
  }
-}finally{await new Promise(r=>server.close(r));await writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2));}
+}catch(error){if(activePage&&!activePage.isClosed()){report.failures.push({label:'audit-exception',error:error.message,errors:activeErrors,state:await activePage.evaluate(()=>({url:location.href,heading:document.querySelector('#main h1')?.textContent,focus:document.activeElement?.outerHTML?.slice(0,200),dialogs:[...document.querySelectorAll('dialog[open]')].map(d=>d.id)}))});await activePage.screenshot({path:path.join(output,'audit-failure.png'),animations:'disabled'});}throw error;}finally{await new Promise(r=>server.close(r));await writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2));}
 console.log(JSON.stringify({samples:report.samples.length,failures:report.failures.length,details:report.failures.slice(0,12),output},null,2));
 if(report.failures.length)process.exitCode=1;

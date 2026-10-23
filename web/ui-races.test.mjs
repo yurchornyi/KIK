@@ -19,6 +19,7 @@ function controller(){
  const memory=new Map(),storage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>{memory.set(k,v);return true;},removeItem:k=>memory.delete(k),keys:()=>[...memory.keys()]};
  const toasts=[],context=vm.createContext({...modules,Node,document,storage,toasts,window:{addEventListener(){},scrollTo(){}},matchMedia:()=>({matches:true}),history:{pushState(){},replaceState(){}},location:{hash:'',href:'http://localhost/',pathname:'/'},URL,URLSearchParams,AbortController,AbortSignal,Blob,performance,console,Promise,scrollY:0,setTimeout,clearTimeout,setInterval(){},navigator:{},fetch(){throw Error('Unexpected network');},
   createHeaderSearch:()=>({open(){},close(){},refresh(){}}),
+  dropdown:select=>select,
   createManagement:()=>({load:async()=>{},settings:{quality:'1080p',speed:1,audio:'uk',autoplay:true},reset(){},renderSettings(){},renderAdmin(){}})});
  vm.runInContext(source,context);vm.runInContext("toast=m=>toasts.push(m);",context);
  return {run:code=>vm.runInContext(code,context),context,nodes};

@@ -31,26 +31,30 @@
 .dropdown-value{flex:1;min-width:0;white-space:nowrap;line-height:20px;overflow:hidden;text-overflow:ellipsis}
 .dropdown-arrow{display:grid;place-items:center;flex:0 0 12px;opacity:.8;transition:transform .15s}
 .dropdown-trigger[aria-expanded=true] .dropdown-arrow{transform:rotate(180deg)}
-.dropdown-panel{position:fixed;inset:auto;margin:0;padding:6px;border:1px solid #ffffff28;border-radius:14px;background:#18181a;color:#eee;box-shadow:0 14px 40px #0009;overflow-y:auto;overscroll-behavior:contain;max-width:min(620px,calc(100vw - 24px))}
+.field>.dropdown{display:flex;width:100%}
+.field .dropdown-trigger{height:52px;min-height:52px;padding:0 16px;border-radius:16px;background:#25252c;font-size:16px}
+.player-tools .dropdown-trigger{height:44px;min-height:44px;font-size:13px;padding:0 12px}
+.field .dropdown-native{width:1px;min-height:0;padding:0}
+.dropdown-panel{position:fixed;inset:auto;z-index:10;box-sizing:border-box;margin:0;padding:6px;border:1px solid #ffffff1c;border-radius:16px;background:linear-gradient(145deg,#222226,#19191c);color:#eee;box-shadow:0 14px 40px #0008;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;max-width:min(620px,calc(100vw - 24px));animation:dropdown-in .16s ease-out}
+.dropdown-panel.up{animation-name:dropdown-up-in}
+@keyframes dropdown-in{from{opacity:0;transform:translateY(-4px)}}
+@keyframes dropdown-up-in{from{opacity:0;transform:translateY(4px)}}
 .dropdown-panel::backdrop{background:transparent}
 .dropdown-head{display:none}
-.dropdown-list{display:flex;flex-direction:column;gap:2px}
+.dropdown-list{display:flex;flex-direction:column;gap:3px}
 .dropdown-list.many{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr))}
-.dropdown-option{display:flex;align-items:center;gap:12px;position:relative;min-height:40px;padding:9px 14px 9px 30px;border:0;border-radius:8px;background:transparent;color:#c9c9cf;font:inherit;font-size:13px;text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
-.dropdown-option:hover,.dropdown-option:focus-visible{background:#ffffff12;color:#fff;outline:none}
-.dropdown-option[aria-selected=true]{color:#fff;font-weight:600}
-.dropdown-option[aria-selected=true]::before{content:'';position:absolute;left:12px;top:50%;width:5px;height:5px;margin-top:-2px;background:var(--red);border-radius:50%}
-.dropdown-option:disabled{opacity:.4;cursor:default}
+.dropdown-option{display:flex;align-items:center;gap:10px;position:relative;min-height:42px;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:#bdbdc6;font:inherit;font-size:13px;font-weight:400;text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.dropdown-option:hover,.dropdown-option:focus-visible{background:#ffffff0b;color:#fff;outline:none}
+.dropdown-option[aria-selected=true]{background:#ffffff08;color:#f6f6f8;font-weight:500}
+.dropdown-option::after{content:'';flex:0 0 5px;width:5px;height:9px;margin-left:auto;margin-right:4px;border-right:1.6px solid transparent;border-bottom:1.6px solid transparent;transform:rotate(45deg)}
+.dropdown-option[aria-selected=true]::after{border-color:#eee}
+.dropdown-option:disabled{opacity:.35;cursor:default}
 .dropdown-option .studio-badge{position:static;display:inline-flex;align-items:center;justify-content:center;width:45px;min-height:24px;padding:0;background:transparent;border:0;flex-shrink:0}
 .studio-all{display:inline-block;width:45px;text-align:center;color:#999;font-size:20px;flex-shrink:0}
-@media(max-width:720px){
- .dropdown-panel{left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;max-height:72dvh;border-radius:20px 20px 0 0;border-width:1px 0 0;padding:12px 12px calc(16px + env(safe-area-inset-bottom))}
- .dropdown-panel::backdrop{background:#0009}
- .dropdown-panel::before{content:'';display:block;width:32px;height:3px;border-radius:2px;background:#ffffff38;margin:0 auto 12px}
- .dropdown-head{display:block;padding:0 12px 10px;color:#aaa;font-size:13px}
- .dropdown-list.many{grid-template-columns:repeat(2,minmax(0,1fr))}
- .dropdown-option{min-height:46px;font-size:14px}
-}
+.dropdown-avatar{display:block;flex:0 0 28px;width:28px;height:28px;border-radius:9px;object-fit:cover}
+.dropdown-option-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dropdown-value:has(.dropdown-avatar){display:flex;align-items:center;gap:10px}
+@media(max-width:720px){.dropdown-list.many{grid-template-columns:repeat(2,minmax(0,1fr))}.dropdown-option{min-height:44px;font-size:14px}}
 /* Profile picker: avatar tiles and secondary account actions. */
 dialog.profile-modal{width:min(560px,calc(100vw - 32px));padding:30px 32px 22px;border-radius:24px;scrollbar-gutter:auto;background:#171719;border-color:#ffffff16}
 .profile-modal .close{width:32px;height:32px;top:14px;right:14px;background:#ffffff08;color:#aaa;border:0;font-size:20px}
