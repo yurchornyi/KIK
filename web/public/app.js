@@ -5,6 +5,8 @@ import {AVATARS,avatarUrl} from './avatars.js';
 import {preferredQuality} from './preferences.js';
 import {createManagement} from './manage.js';
 const $=s=>document.querySelector(s),main=$('#main'),modal=$('#modal'),modalContent=$('#modal-content'),playerModal=$('#player-modal');
+// Like an app: no pinch zoom (Safari ignores user-scalable=no, so its gesture events are cancelled too).
+for(const t of ['gesturestart','gesturechange'])document.addEventListener(t,e=>e.preventDefault(),{passive:false});
 const state={user:null,profiles:[],profile:null,records:new Map(),pending:new Map(),pool:[],ukrainian:[],films:[],series:[],tab:'home',query:'',syncing:false,clockOffset:0,ready:false};
 let pageGeneration=0,toastTimer,player=null;
 const pageTabs=['home','films','series','later','history','settings','admin'];if(pageTabs.includes(location.hash.slice(1)))state.tab=location.hash.slice(1);
