@@ -5,7 +5,7 @@ import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './l
 import {recommendations} from './recommendations.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
-import {admin,registrationAllowed,invitationState,normalizeInvitation,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
+import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -47,31 +47,40 @@ async function api(request,env,ctx){
  if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
+ // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
+ // An admin adds the email; the person then picks a password. A reset password is created again the same way.
  if(path==="/api/auth/check"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email))fail("Введіть коректну email-адресу");
-  if(await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first())return json({email,state:"password"});
-  const invite=await invitationState(db,email);if(invite==="none")fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
-  if(invite==="expired")fail("Запрошення для цієї пошти прострочене. Попросіть адміністратора створити нове.",403);
-  return json({email,state:"create",invitation:true});
+  const known=await db.prepare("SELECT role,password_hash FROM users WHERE email=?").bind(email).first(),allowed=await registrationAllowed(db,email);
+  if(known&&known.role!=="admin"&&!allowed)fail("Доступ до KIK для цієї пошти відкликано. Зверніться до адміністратора.",403);
+  if(!known&&!allowed)fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
+  return json({email,state:known?.password_hash?"password":"create"});
  }
  if(path==="/api/auth/register"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
-  // The invitation code is short enough to type with a remote, so guesses are limited per address as well as per IP.
-  if(env.LOGIN_LIMIT&&!(await env.LOGIN_LIMIT.limit({key:await hash("invite:"+email)})).success)fail("Забагато спроб. Зачекайте хвилину.",429);
-  if(!await registrationAllowed(db,email,b.invitation))fail("Код запрошення не підходить або прострочений. Перевірте його чи попросіть адміністратора створити новий.",403);
-  const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
+  if(env.LOGIN_LIMIT&&!(await env.LOGIN_LIMIT.limit({key:await hash("register:"+email)})).success)fail("Забагато спроб. Зачекайте хвилину.",429);
+  if(!await registrationAllowed(db,email))fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
+  const salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now();
+  const known=await db.prepare("SELECT id,role,password_hash FROM users WHERE email=?").bind(email).first();
+  if(known){
+   // After an admin reset the account keeps its profiles and history; only the password is new.
+   if(known.password_hash)fail("Ця пошта вже зареєстрована",409);
+   if(!(await db.prepare("UPDATE users SET salt=?,password_hash=? WHERE id=? AND password_hash=''").bind(salt,password_hash,known.id).run()).meta.changes)fail("Ця пошта вже зареєстрована",409);
+   const token=await session(db,known.id);return json({user:{id:known.id,email,role:known.role},profiles:await profiles(db,{id:known.id}),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
+  }
   const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");
-  // The TV creates the account first and asks for the profile name on the next screen. The invitation is spent in the same batch.
-  const id=crypto.randomUUID(),salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40),withProfile=b.profile!==false;
-  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=? AND invite_hash=? AND invite_expires_at>?)").bind(id,email,email,salt,password_hash,now,email,await hash(normalizeInvitation(b.invitation)),now),...withProfile?[db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=?)").bind(crypto.randomUUID(),id,name,avatar,now,id)]:[],db.prepare("UPDATE registration_access SET invite_hash=NULL,invite_expires_at=NULL WHERE email=? AND EXISTS(SELECT 1 FROM users WHERE id=?)").bind(email,id)]);}catch{fail("Ця пошта вже зареєстрована",409);}
-  if(!await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first())fail("Потрібне чинне запрошення адміністратора для цієї пошти.",403);
+  // The TV creates the account first and asks for the profile name on the next screen.
+  const id=crypto.randomUUID(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40),withProfile=b.profile!==false;
+  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),...withProfile?[db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=?)").bind(crypto.randomUUID(),id,name,avatar,now,id)]:[]]);}catch{fail("Ця пошта вже зареєстрована",409);}
+  if(!await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first())fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
   const token=await session(db,id);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id}),...b.device===true?{token}:{}},201,{"Set-Cookie":cookie(token)});
  }
  if(path==="/api/auth/login"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email),legacy=typeof b.username==="string"?b.username.trim().toLowerCase():"";if((!validEmail(email)&&!validUsername(legacy))||typeof b.password!=="string"||b.password.length>256)fail("Неправильна пошта або пароль",401);
   const loginEmail=validEmail(email)?email:"",loginLegacy=loginEmail?"":legacy;
   if(env.LOGIN_LIMIT&&!(await env.LOGIN_LIMIT.limit({key:await hash(loginEmail||loginLegacy)})).success)fail("Забагато спроб входу. Зачекайте хвилину.",429);
-  const user=await db.prepare("SELECT * FROM users WHERE email=? OR (email IS NULL AND username=?)").bind(loginEmail,loginLegacy).first();const digest=await passwordHash(b.password,user?.salt||"invalid-account-timing-padding");if(!user||!equal(digest,user.password_hash))fail("Неправильна пошта або пароль",401);
+  const user=await db.prepare("SELECT * FROM users WHERE email=? OR (email IS NULL AND username=?)").bind(loginEmail,loginLegacy).first();if(user&&!user.password_hash)fail("Пароль скинув адміністратор. Натисніть «Вперше тут? Створити обліковий запис» з цією поштою й задайте новий пароль.",403);const digest=await passwordHash(b.password,user?.salt||"invalid-account-timing-padding");if(!user||!equal(digest,user.password_hash))fail("Неправильна пошта або пароль",401);
+  if(user.role!=="admin"&&user.email&&!await registrationAllowed(db,user.email))fail("Доступ до KIK для цієї пошти відкликано. Зверніться до адміністратора.",403);
   const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
  }
  const user=await identity(request,db);

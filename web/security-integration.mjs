@@ -31,7 +31,8 @@ await sql(`INSERT INTO users(id,username,email,salt,password_hash,created_at,rol
 ('${adminId}','${adminEmail}','${adminEmail}','${salt}','${digest}',${Date.now()},'admin'),
 ('${memberId}','${memberEmail}','${memberEmail}','${salt}','${memberDigest}',${Date.now()},'user');
 INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES
-('${profileId}','${memberId}','QA security','bear',${Date.now()}),('${adminProfile}','${adminId}','QA admin','bear',${Date.now()});`);
+('${profileId}','${memberId}','QA security','bear',${Date.now()}),('${adminProfile}','${adminId}','QA admin','bear',${Date.now()});
+INSERT INTO registration_access(email,created_at) VALUES('${memberEmail}',${Date.now()});`);
 try {
   const admin = await req('/api/auth/login',{email:adminEmail,password});
   const member = await req('/api/auth/login',{email:memberEmail,password:memberPassword});
@@ -44,24 +45,21 @@ try {
   check((await req('/api/admin/users?q='+encodeURIComponent("' OR 1=1 --"),undefined,privileged)).body.users.length === 0, 'SQL metacharacters are data in admin search');
   check((await req('/api/auth/login',{username:"' OR 1=1 --",password})).status === 401, 'SQL injection cannot authenticate');
 
-  let invite = await req('/api/admin/access',{email:invitedEmail,action:'reissue'},privileged);
-  const originalInvite = invite.body.invitation.code;
-  check(invite.status === 200 && /^[A-HJ-NP-Z2-9]{8}$/.test(originalInvite), 'admin creates an 8-character invitation code');
-  const stored = (await sql(`SELECT invite_hash,invite_expires_at FROM registration_access WHERE email='${invitedEmail}';`))[0].results[0];
-  check(stored.invite_hash === await hash(originalInvite) && stored.invite_hash !== originalInvite, 'only the invitation hash is stored');
-  check((await req('/api/auth/register',{email:invitedEmail,password})).status === 403, 'knowing an invited email cannot squat the account');
-  check((await req('/api/auth/register',{email:invitedEmail,password,invitation:randomToken()})).status === 403, 'wrong invitation rejected');
-  check((await req('/api/auth/register',{email:memberEmail,password,invitation:originalInvite})).status === 403, 'invitation is email-bound');
-  await sql(`UPDATE registration_access SET invite_expires_at=${Date.now()-1000} WHERE email='${invitedEmail}';`);
-  check((await req('/api/auth/register',{email:invitedEmail,password,invitation:originalInvite})).status === 403, 'expired invitation rejected');
-  invite = await req('/api/admin/access',{email:invitedEmail,action:'reissue'},privileged);
-  check((await req('/api/auth/register',{email:invitedEmail,password,invitation:originalInvite})).status === 403, 'reissuing an invitation revokes the old token');
-  check((await req('/api/auth/register',{email:invitedEmail,password:'12345',invitation:invite.body.invitation.code})).status === 400, 'passwords under 6 characters rejected without changing existing passwords');
-  const registration = await req('/api/auth/register',{email:invitedEmail,password,invitation:invite.body.invitation.code,role:'admin'});
+  // The admin's allow-list is the gate: an allowed email signs up with a password once; strangers are refused.
+  await req('/api/admin/access',{email:invitedEmail,action:'allow'},privileged);
+  check((await req('/api/auth/register',{email:run+'_stranger@example.invalid',password})).status === 403, 'an email that is not on the list cannot sign up');
+  check((await req('/api/auth/register',{email:invitedEmail,password:'12345'})).status === 400, 'passwords under 6 characters rejected');
+  const registration = await req('/api/auth/register',{email:invitedEmail,password,role:'admin'});
   invitedId = registration.body.user?.id;
-  check(registration.status === 201 && registration.body.user.role === 'user', 'a valid invitation registers only an ordinary account');
-  check((await req('/api/auth/register',{email:invitedEmail,password,invitation:invite.body.invitation.code})).status === 403, 'invitation cannot be replayed');
+  check(registration.status === 201 && registration.body.user.role === 'user', 'an allowed email registers only an ordinary account');
+  check((await req('/api/auth/register',{email:invitedEmail,password})).status === 409, 'a registered email cannot be taken again');
   check(!JSON.stringify(registration.body).includes(digest) && !JSON.stringify(registration.body).includes(salt), 'password hashes and salts stay out of API responses');
+  check((await req('/api/admin/users/reset-password',{id:invitedId},owner)).status === 403, 'ordinary account cannot reset passwords');
+  check((await req('/api/admin/users/reset-password',{id:invitedId},privileged)).status === 200, 'admin resets a forgotten password');
+  check((await req('/api/auth/login',{email:invitedEmail,password})).status === 403, 'the old password stops working after a reset');
+  check((await req('/api/auth/register',{email:invitedEmail,password:'new-pass-1'})).status === 200, 'after a reset the person sets a new password');
+  check((await req('/api/admin/access',{email:invitedEmail,action:'revoke'},privileged)).status === 200, 'admin revokes access');
+  check((await req('/api/auth/login',{email:invitedEmail,password:'new-pass-1'})).status === 403, 'a revoked account cannot sign in');
 
   for (const [path,data] of [
     ['/api/sync',{profile_id:adminProfile,records:[]}],
@@ -120,6 +118,6 @@ INSERT INTO records(profile_id,kind,item_key,data,updated_at) SELECT '${profileI
   console.log(JSON.stringify({passed:true,checks,environment:'local'}));
 } finally {
   await sql(`DELETE FROM pairs WHERE user_id IN ('${adminId}','${memberId}'${invitedId?",'"+invitedId+"'":''});
-DELETE FROM registration_access WHERE email='${invitedEmail}'; DELETE FROM admin_events WHERE actor_id='${adminId}';
+DELETE FROM registration_access WHERE email IN ('${invitedEmail}','${memberEmail}'); DELETE FROM admin_events WHERE actor_id='${adminId}';
 DELETE FROM users WHERE id IN ('${adminId}','${memberId}'${invitedId?",'"+invitedId+"'":''});`);
 }
