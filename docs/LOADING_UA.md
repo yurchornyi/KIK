@@ -30,4 +30,4 @@
 
 Повторити вимір: `KIK_AUDIT_MODE=loading bash scripts/audit-device.sh`. Скрипт збирає й встановлює допоміжний APK, виконує вимір, зберігає результат і видаляє допоміжний пакет `kik.audit`.
 
-Первинні результати: `outputs/design-audit/loading-before.json` та `outputs/design-audit/loading-final.json`. Попередній APK для повернення: `backup/loading-20261022/RezkaTV-UA-1.2.7.apk`.
+Первинні результати: `outputs/design-audit/loading-before.json` та `outputs/design-audit/loading-final.json`. Попередній APK для повернення: `backup/loading-20261022/KIK-1.2.7.apk`.

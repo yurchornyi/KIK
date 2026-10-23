@@ -43,6 +43,8 @@ public final class KikPlayerActivity extends Activity {
  private static final long STALL_MS=30000,FROZEN_MS=15000,RETRY_MS=20000,ENDED_SLACK_MS=90000,INTRO_HOLD_MS=2550,WARM_MS=180000,SHORT_HLS_MS=180000;
  private String season,episode,title,poster,profileId;private Site.Stream stream;private String quality;private float speed=1f;private boolean manualQuality;
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
+ /** Ad clips of the playing file (AdBreaks): confirmed ones are jumped over, AI hints get the «Пропустити рекламу» button. */
+ private double[] ads,hints;private long hintTo=-1;private TextView skipAd;
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
  private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
@@ -82,6 +84,8 @@ public final class KikPlayerActivity extends Activity {
   screen.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol||b-t!=ob-ot)fit();});
   subtitle=Ui.text(this,"",26,Color.WHITE);subtitle.setGravity(Gravity.CENTER);subtitle.setShadowLayer(8,0,2,Color.BLACK);subtitle.setPadding(dp(80),0,dp(80),0);
   FrameLayout.LayoutParams sl=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);sl.bottomMargin=dp(48);root.addView(subtitle,sl);
+  skipAd=Ui.text(this,"Пропустити рекламу",20,Color.BLACK);skipAd.setGravity(Gravity.CENTER);skipAd.setIncludeFontPadding(false);skipAd.setMinHeight(dp(52));skipAd.setPadding(dp(30),0,dp(30),0);skipAd.setBackground(Ui.shape(0xffffffff,dp(26),0,0));skipAd.setVisibility(View.GONE);
+  FrameLayout.LayoutParams kl=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);kl.rightMargin=dp(56);kl.bottomMargin=dp(52);root.addView(skipAd,kl);
   // KIK's waiting screen: the intro's settled frame (logo, «Створено Чорним» below), with what is happening under the logo.
   wait=new FrameLayout(this);wait.setBackgroundColor(Color.BLACK);ImageView mark=new ImageView(this);mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
   mark.setImageBitmap(asset("kik/wait.png"));wait.addView(mark,new FrameLayout.LayoutParams(-1,-1));
@@ -161,8 +165,11 @@ public final class KikPlayerActivity extends Activity {
      recovering=false;stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.",false);return;}
      quality=quality!=null&&s.qualities.containsKey(quality)&&(!fromHistory||manualQuality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
+     // Start after the voice studio's ident: the film begins at once, as on Netflix.
+     resumeAt=Math.max(resumeAt,PlaybackPolicy.introMs(playing.name));
      subGeneration++;cues.clear();subIndex=-1;subtitle.setText("");
      play();
+     ads=null;hints=null;showHint(-1);if(PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
     });
    }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
   });
@@ -442,6 +449,9 @@ public final class KikPlayerActivity extends Activity {
   if(on){v.setVisibility(View.VISIBLE);v.setTranslationY(v==top?-dp(12):dp(12));v.animate().alpha(1).translationY(0).setDuration(300).setInterpolator(Ui.EASE).start();}
   else v.animate().alpha(0).translationY(v==top?-dp(12):dp(12)).setDuration(320).withEndAction(()->v.setVisibility(View.GONE)).start();
  }
+ /** The «Пропустити рекламу» button for an AI hint: shown while playback is inside the clip, OK jumps to its end. */
+ private void showHint(long to){hintTo=to;if(skipAd==null)return;int v=to>0?View.VISIBLE:View.GONE;if(skipAd.getVisibility()!=v)skipAd.setVisibility(v);}
+ private void skipHint(){long to=hintTo;showHint(-1);if(player==null||to<=0)return;Log.d("KIK.Player","Ad hint skipped "+pos()+" -> "+to);resumeAt=to;seekAt=SystemClock.elapsedRealtime();lastMovement=seekAt;player.seekTo(to);}
  private void pulse(String s){flash.setText(s);flash.animate().cancel();flash.setScaleX(0.9f);flash.setScaleY(0.9f);flash.animate().alpha(1).scaleX(1).scaleY(1).setDuration(200).setInterpolator(Ui.EASE).withEndAction(()->flash.animate().alpha(0).setStartDelay(500).setDuration(300).start()).start();}
  private void update(){
   long now=SystemClock.elapsedRealtime();
@@ -453,6 +463,10 @@ public final class KikPlayerActivity extends Activity {
     if(waited>800){boolean seek=prepared&&now-seekAt<3000;loading.setText(!prepared?"Підготовка відео":seek?"Перемотування…":"Зачекайте, завантажуємо відео · "+bufferedPercent());waiting(true,!prepared||!seek&&waited>2000);}
     if(waited>STALL_MS){Log.w("KIK.Player","Stalled "+waited+" ms in state "+state);recover(null);}
    }else if(state==Player.STATE_READY){
+    // Jump over an ad clip spliced into a sponsored voice track; a plain seek, nothing is drawn.
+    long skip=seeking?-1:PlaybackPolicy.adSkip(ads,position,dur());if(skip>0){Log.d("KIK.Player","Ad skipped "+position+" -> "+skip);resumeAt=skip;seekAt=now;lastMovement=now;player.seekTo(skip);Ui.toast(this,"Рекламу пропущено");return;}
+    // A clip only the AI saw is never skipped on its own: the viewer decides with OK.
+    showHint(seeking?-1:PlaybackPolicy.adSkip(hints,position,dur()));
     if(position>lastPosition+50||position<lastPosition-500){lastMovement=now;lastPosition=position;recovery.progress(now);if(stableSince==0)stableSince=now;if(now-stableSince>30000){sameAttempt=0;voiceAttempt=0;failedVoices.clear();recoveryStarted=now;stableSince=now;}}
     else if(player.isPlaying()&&now-lastMovement>FROZEN_MS){Log.w("KIK.Player","Picture frozen at "+position);lastMovement=now;recover(null);}
    }
@@ -489,6 +503,8 @@ public final class KikPlayerActivity extends Activity {
   }
   boolean center=k==KeyEvent.KEYCODE_DPAD_CENTER||k==KeyEvent.KEYCODE_ENTER;
   if(failed&&center&&menu==null&&focus==1){autoRetry=0;offline=false;retryNow();return true;}
+  // While «Пропустити рекламу» is on screen, OK always means it, whatever the controls have in focus.
+  if(center&&hintTo>0&&menu==null&&!failed){skipHint();return true;}
   if(!visible){
    if(k==KeyEvent.KEYCODE_DPAD_LEFT){seek(-10000);pulse("« 10");return true;}
    if(k==KeyEvent.KEYCODE_DPAD_RIGHT){seek(10000);pulse("10 »");return true;}

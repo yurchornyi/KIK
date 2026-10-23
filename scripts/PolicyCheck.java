@@ -36,6 +36,10 @@ public class PolicyCheck {
   if(!(PlaybackPolicy.order("Дубляж",true,false)>PlaybackPolicy.order("Дубляж",false,false)))throw new AssertionError("Camrip lower");
   if(!"en".equals(PlaybackPolicy.lang("Оригинал (+субтитры)"))||!"ru".equals(PlaybackPolicy.lang("Red Head Sound"))||!"uk".equals(PlaybackPolicy.lang("Украинский многоголосый (Украинский)"))||!"other".equals(PlaybackPolicy.lang("Грузинский многоголосый (Грузинский)")))throw new AssertionError("Language groups");
   if(!PlaybackPolicy.langs(Arrays.asList("Оригинал (+субтитры)","Дубляж","Coldfilm","Украинский многоголосый (Украинский)","Грузинский (Грузинский)")).equals(Arrays.asList("uk","ru","en")))throw new AssertionError("Three languages, best first, third languages hidden");
-  System.out.println("Playback policy checks passed: 15");
+  double[] ads={2500,900,920.6,1740,1770};
+  if(PlaybackPolicy.adSkip(ads,899_900,2_500_000)!=-1||PlaybackPolicy.adSkip(ads,900_000,2_500_000)!=920_600||PlaybackPolicy.adSkip(ads,1750_000,2_501_500)!=1_770_000)throw new AssertionError("Jump over a known ad clip");
+  if(PlaybackPolicy.adSkip(ads,919_500,2_500_000)!=-1||PlaybackPolicy.adSkip(ads,910_000,2_510_000)!=-1||PlaybackPolicy.adSkip(null,910_000,2_500_000)!=-1||PlaybackPolicy.adSkip(ads,910_000,0)!=-1)throw new AssertionError("Never skip on another cut, at the very end or without data");
+  if(!PlaybackPolicy.sponsoredVoice("колдфильм (Coldfilm)")||PlaybackPolicy.sponsoredVoice("TVShows"))throw new AssertionError("Sponsored voices");
+  System.out.println("Playback policy checks passed: 18");
  }
 }

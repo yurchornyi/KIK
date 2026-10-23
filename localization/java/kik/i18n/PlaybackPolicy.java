@@ -43,8 +43,25 @@ public final class PlaybackPolicy {
  /** Full order for every track: language first (Ukrainian, then Russian, then the rest), then studio quality. */
  public static int order(String title,boolean camrip,boolean ads) {
   String s=title==null?"":title.toLowerCase(Locale.ROOT);
-  return language(title)*1000+studio(s)+(camrip?400:0)+(ads?60:0);
+  return language(title)*1000+studio(s)+(camrip?400:0)+(ads?60:0)+(sponsored(s)?600:0);
  }
+ /** Studios that burn betting logos or ad clips into the video: chosen only when the language has nothing else. */
+ static boolean sponsored(String s){return s.contains("coldfilm")||s.contains("колдфильм")||s.contains("1win");}
+ /** Length of the studio ident at the start of every video, ending inside the black gap that follows it (measured 2026-10). */
+ public static long introMs(String title){
+  String s=title==null?"":title.toLowerCase(Locale.ROOT);
+  if(s.contains("rezka studio"))return 9500;
+  if(s.contains("coldfilm")||s.contains("колдфильм"))return 13500;
+  return 0;
+ }
+ /** Where to jump from posMs over a known ad clip, or -1. ads = {scanned duration, start, end…} in seconds (AdBreaks);
+  *  only for the very file that was scanned (same length to 2 s), so a re-upload can never make KIK skip the film. Same rule as ad-skip.js on the web. */
+ public static long adSkip(double[] ads,long posMs,long durMs){
+  if(ads==null||ads.length<3||durMs<=0||Math.abs(durMs/1000.0-ads[0])>2)return -1;double t=posMs/1000.0;
+  for(int i=1;i+1<ads.length;i+=2)if(t>=ads[i]&&t<ads[i+1]-1.5)return (long)(ads[i+1]*1000);
+  return -1;
+ }
+ public static boolean sponsoredVoice(String title){return sponsored(title==null?"":title.toLowerCase(Locale.ROOT));}
  /** Automatic choice never starts original or third-language audio. */
  public static int rank(String title) {
   int language=language(title);

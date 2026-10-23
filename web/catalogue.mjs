@@ -38,7 +38,7 @@ const UK=/укра|ukrain|украї|1\+1|постмодерн|postmodern|le doy
 const ORIGINAL=/оригин|оригін|original|англи|англі|english|субтитр/i;
 export function voiceLang(name=""){return UK.test(name)?"uk":ORIGINAL.test(name)?"en":FOREIGN.test(name)?"other":"ru";}
 export function voiceOrder(v){const s=(v.name||"").toLowerCase();let n=/дубляж|дубльован/.test(s)?0:/hdrezka|rezka studio/.test(s)?15:/lostfilm/.test(s)?25:/newstudio|кубик в кубе|baibako|coldfilm|tvshows|jaskier|red head sound|amedia|кураж|постмодерн|postmodern|le doyen|1\+1/.test(s)?30:/многоголос|багатоголос/.test(s)?35:/студия|студія|studio/.test(s)?45:/двухголос|двоголос/.test(s)?80:/одноголос|авторск|автор/.test(s)?150:100;
- if(/любител|аматор/.test(s))n+=200;if(/camrip|экран|екран/.test(s)||v.camrip)n+=400;if(v.ads)n+=60;return {uk:0,ru:1000,en:2000,other:2000}[voiceLang(s)]+n;}
+ if(/любител|аматор/.test(s))n+=200;if(/camrip|экран|екран/.test(s)||v.camrip)n+=400;if(v.ads)n+=60;if(/coldfilm|колдфильм|1win/.test(s))n+=600;return {uk:0,ru:1000,en:2000,other:2000}[voiceLang(s)]+n;}
 export function qualityOrder(label=""){const s=label.toLowerCase();let n=Number(s.match(/\d+/)?.[0]||0)*2;if(s.includes("4k"))n=4320;else if(s.includes("2k"))n=2880;return n+(s.includes("ultra")?1:0);}
 const fold=s=>(s||"").toLowerCase().replace(/ї|і/g,"и").replace(/є|э/g,"е").replace(/ґ/g,"г").replace(/ё/g,"е").replace(/ы/g,"и").replace(/['’ʼ]/g,"").replace(/[^\p{L}\p{N}]+/gu," ").trim();
 export const searchForm=q=>q.toLowerCase().trim().replace(/ї|і/g,"и").replace(/є/g,"е").replace(/ґ/g,"г").replace(/['’ʼ]/g,"");

@@ -17,6 +17,9 @@ public final class TitleTranslate {
  private static final Map<String,String> MEM=new HashMap<String,String>();
  private static final LinkedHashSet<String> QUEUE=new LinkedHashSet<String>();
  private static final Set<String> TRIED=new HashSet<String>();
+ /** Strings the translation service has already answered (or failed) for: only these may show untranslated. */
+ private static final Set<String> DONE=new HashSet<String>();
+ private static final java.util.concurrent.ExecutorService POOL=java.util.concurrent.Executors.newFixedThreadPool(4,r->{Thread t=new Thread(r,"kik-titles-batch");t.setDaemon(true);return t;});
  private static boolean loaded,scheduled,running;
  private static Object state;
  private static int version;
@@ -44,12 +47,29 @@ public final class TitleTranslate {
  public static Map<String,String> resolve(Collection<String> texts){
   Map<String,String> out=new HashMap<String,String>();List<String> miss=new ArrayList<String>();
   synchronized(MEM){load();for(String s:texts){if(!candidate(s))continue;String hit=MEM.get(s);if(hit!=null)out.put(s,hit);else if(!miss.contains(s))miss.add(s);}}
-  for(int i=0;i<miss.size();i+=40){
-   Map<String,String> got=fetch(miss.subList(i,Math.min(miss.size(),i+40)));
-   synchronized(MEM){MEM.putAll(got);SharedPreferences.Editor e=prefs().edit();for(Map.Entry<String,String> x:got.entrySet())e.putString(x.getKey(),x.getValue());e.apply();}
-   out.putAll(got);
+  // Batches go out together: a screen with many new titles waits for one round trip, not one per 40 strings.
+  List<List<String>> parts=new ArrayList<List<String>>();List<java.util.concurrent.Future<Map<String,String>>> calls=new ArrayList<java.util.concurrent.Future<Map<String,String>>>();
+  for(int i=0;i<miss.size();i+=40){final List<String> part=new ArrayList<String>(miss.subList(i,Math.min(miss.size(),i+40)));parts.add(part);calls.add(POOL.submit(()->fetch(part)));}
+  for(int i=0;i<parts.size();i++){
+   Map<String,String> got;try{got=calls.get(i).get();}catch(Exception e){got=new HashMap<String,String>();}
+   remember(parts.get(i),got);out.putAll(got);
   }
   return out;
+ }
+
+ /** What a screen may show for catalogue text it has no translation for: nothing while the translation is still on its way, so Russian never flashes first. */
+ public static String shown(String s){
+  if(s==null)return null;
+  synchronized(MEM){if(!candidate(s))return s;load();if(MEM.containsKey(s)||DONE.contains(s))return s;}
+  return "";
+ }
+ private static void remember(List<String> batch,Map<String,String> got){
+  synchronized(MEM){
+   DONE.addAll(batch);if(got.isEmpty())return;
+   SharedPreferences.Editor e=prefs().edit();
+   for(Map.Entry<String,String> x:got.entrySet()){MEM.put(x.getKey(),x.getValue());MEM.put(x.getValue(),x.getValue());e.putString(x.getKey(),x.getValue());}
+   e.apply();
+  }
  }
 
  /** Bounded blocking variant for text about to appear (off the main thread): waits at most ms so screens show Ukrainian from the start; on a slow network the rest arrives later. */
@@ -71,7 +91,8 @@ public final class TitleTranslate {
  private static SharedPreferences prefs(){return UiRuntime.app.getSharedPreferences("kik_title_uk",0);}
  private static void load(){
   if(loaded)return;loaded=true;
-  for(Map.Entry<String,?> e:prefs().getAll().entrySet())if(e.getValue() instanceof String)MEM.put(e.getKey(),(String)e.getValue());
+  // A translation is its own translation: Ukrainian titles saved in history are not sent again.
+  for(Map.Entry<String,?> e:prefs().getAll().entrySet())if(e.getValue() instanceof String){MEM.put(e.getKey(),(String)e.getValue());MEM.putIfAbsent((String)e.getValue(),(String)e.getValue());}
  }
  private static void schedule(){
   if(scheduled||running)return;scheduled=true;
@@ -84,9 +105,9 @@ public final class TitleTranslate {
   running=true;
   new Thread(new Runnable(){public void run(){
    Map<String,String> got=fetch(batch);
+   remember(batch,got);
    synchronized(MEM){
     running=false;
-    if(!got.isEmpty()){MEM.putAll(got);SharedPreferences.Editor e=prefs().edit();for(Map.Entry<String,String> x:got.entrySet())e.putString(x.getKey(),x.getValue());e.apply();}
     if(!QUEUE.isEmpty())MAIN.post(new Runnable(){public void run(){schedule();}});
    }
    if(!got.isEmpty())MAIN.post(new Runnable(){public void run(){bump();}});
