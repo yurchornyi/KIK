@@ -18,6 +18,7 @@ function controller(){
  const nodes=new Map(),body=new Node(),document={body,activeElement:body,documentElement:new Node(),head:new Node(),querySelector:s=>{if(!nodes.has(s))nodes.set(s,new Node());return nodes.get(s);},querySelectorAll:()=>[],createElement:t=>new Node(t),createTextNode:t=>new Node('#text',t),addEventListener(){},removeEventListener(){}};
  const memory=new Map(),storage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>{memory.set(k,v);return true;},removeItem:k=>memory.delete(k),keys:()=>[...memory.keys()]};
  const toasts=[],context=vm.createContext({...modules,Node,document,storage,toasts,window:{addEventListener(){},scrollTo(){}},matchMedia:()=>({matches:true}),history:{pushState(){},replaceState(){}},location:{hash:'',href:'http://localhost/',pathname:'/'},URL,URLSearchParams,AbortController,AbortSignal,Blob,performance,console,Promise,scrollY:0,setTimeout,clearTimeout,setInterval(){},navigator:{},fetch(){throw Error('Unexpected network');},
+  createHeaderSearch:()=>({open(){},close(){},refresh(){}}),
   createManagement:()=>({load:async()=>{},settings:{quality:'1080p',speed:1,audio:'uk',autoplay:true},reset(){},renderSettings(){},renderAdmin(){}})});
  vm.runInContext(source,context);vm.runInContext("toast=m=>toasts.push(m);",context);
  return {run:code=>vm.runInContext(code,context),context,nodes};
