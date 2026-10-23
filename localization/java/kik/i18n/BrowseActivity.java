@@ -185,7 +185,10 @@ public final class BrowseActivity extends Activity {
  private Intent voiceIntent(){return new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
   .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"uk-UA").putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"Скажіть назву фільму або серіалу").putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS,1);}
  private boolean voiceAvailable(){return voiceIntent().resolveActivity(getPackageManager())!=null;}
- private void listen(){try{startActivityForResult(voiceIntent(),VOICE);}catch(Exception e){Ui.toast(this,"Голосовий пошук недоступний");}}
+ private void listen(){
+  // Google TV's own voice screen (the Google app's) when there is one, not the chooser between it and the speech module.
+  Intent i=voiceIntent();for(android.content.pm.ResolveInfo r:getPackageManager().queryIntentActivities(i,0))if(r.activityInfo!=null&&"com.google.android.katniss".equals(r.activityInfo.packageName)){i.setClassName(r.activityInfo.packageName,r.activityInfo.name);break;}
+  try{startActivityForResult(i,VOICE);}catch(Exception e){Ui.toast(this,"Голосовий пошук недоступний");}}
  /** What was said goes into the field and is searched at once; the first result takes focus, as from the launcher. */
  @Override protected void onActivityResult(int request,int result,Intent data){
   super.onActivityResult(request,result,data);if(request!=VOICE||result!=RESULT_OK||data==null||query==null)return;
