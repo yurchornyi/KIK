@@ -35,7 +35,8 @@ final class SiteReport {
   if("tls".equals(kind)||"other".equals(kind)){Throwable t=e;while(t.getCause()!=null&&t.getCause()!=t)t=t.getCause();return host+" "+kind+" "+t.getClass().getSimpleName();}
   return host+" "+kind;
  }
- static void ok(String host){report("ok",host,"");}
+ /** bypassed: the provider's DNS blocks the mirror and KIK reached it through DNS-over-HTTPS. */
+ static void ok(String host,boolean bypassed){report(bypassed?"doh":"ok",host,"");}
  static void failed(String status,String host,String detail){report(status,host,detail);}
 
  private static synchronized void report(String status,String host,String detail){

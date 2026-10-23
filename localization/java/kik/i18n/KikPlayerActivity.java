@@ -193,7 +193,7 @@ public final class KikPlayerActivity extends Activity {
  private void load(String url){
   DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent(Site.UA).setConnectTimeoutMs(12000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(true);
   DefaultLoadErrorHandlingPolicy retries=new Retries();
-  DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
+  DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,Doh.media(http));
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);
   Log.d("KIK.Player","Play quality="+quality+" hls="+hls(url)+" at="+resumeAt+" alternatives="+stream.alternatives.get(quality));
   player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
@@ -431,7 +431,7 @@ public final class KikPlayerActivity extends Activity {
   openMenu("subs",l,a,subIndex+1);
  }
  private void loadSubtitles(final String url,final int index){
-  final int gen=++subGeneration;Ui.bg(()->{HttpURLConnection c=null;try{c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setRequestProperty("User-Agent",Site.UA);String body=Site.read(c.getInputStream());final List<Object[]> parsed=vtt(body);h.post(()->{if(destroyed||gen!=subGeneration)return;cues=parsed;subIndex=index;update();});}
+  final int gen=++subGeneration;Ui.bg(()->{HttpURLConnection c=null;try{c=Doh.open(url);c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setRequestProperty("User-Agent",Site.UA);String body=Site.read(c.getInputStream());final List<Object[]> parsed=vtt(body);h.post(()->{if(destroyed||gen!=subGeneration)return;cues=parsed;subIndex=index;update();});}
    catch(Exception e){h.post(()->{if(!destroyed&&gen==subGeneration)Ui.toast(this,"Не вдалося завантажити субтитри");});}finally{if(c!=null)c.disconnect();}});
  }
  private static List<Object[]> vtt(String body){
