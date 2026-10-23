@@ -82,6 +82,12 @@ try{
    const started=performance.now();await page.goto(origin);await page.locator('.shelf').first().waitFor();await page.locator('[data-tab=admin]').waitFor();
    await inspect(page,'home',{engine,readyMs:Math.round(performance.now()-started)});
    if((width===390||width===820||width===1440)&&engine==='chromium')await page.screenshot({path:path.join(output,`${engine}-${width}-home.png`),animations:'disabled'});
+   check(engine,'hero-has-three-vector-actions',await page.locator('.hero-actions button').count()===3&&await page.locator('.hero-actions .hero-action-icon svg').count()===3,{width});
+   const heroTitle=await page.locator('.hero h1').textContent();await page.locator('.hero-list').click();
+   check(engine,'hero-adds-to-my-list',await page.locator('.hero-list').evaluate(e=>e.getAttribute('aria-pressed')==='true'&&e.textContent==='У списку'&&e===document.activeElement)&&await page.evaluate(title=>JSON.parse(localStorage.getItem('kik:audit-user:audit-profile')||'{}').records?.some(r=>r.kind==='later'&&r.data?.title===title),heroTitle),{width});
+   check(engine,'saving-keeps-the-featured-title',(await page.locator('.hero h1').textContent())===heroTitle,{width});await page.locator('.hero-list').click();
+   check(engine,'hero-removes-from-my-list',await page.locator('.hero-list').evaluate(e=>e.getAttribute('aria-pressed')==='false'&&e.textContent==='Мій список')&&await page.evaluate(title=>!JSON.parse(localStorage.getItem('kik:audit-user:audit-profile')||'{}').records?.some(r=>r.kind==='later'&&r.data?.title===title),heroTitle),{width});
+   await page.locator('.hero-details').click();await page.locator('.detail-actions').waitFor();check(engine,'hero-info-opens-title-details',(await page.locator('#modal h2').textContent())===heroTitle,{width});await page.locator('#modal .close').click();
    for(const tab of ['catalogue','later','history','settings','admin']){
     const t=performance.now();await page.locator(`[data-tab=${tab}]`).click();await page.locator(tab==='admin'?'.admin-stats':tab==='settings'?'.settings-card':'.grid-page').first().waitFor();await inspect(page,tab,{engine,switchMs:Math.round(performance.now()-t)});
    }
@@ -148,7 +154,7 @@ try{
   }
   for(const state of [{guest:true},{failCatalogue:true},{delay:900}]){
    const context=await browser.newContext({viewport:{width:375,height:667}});await fixture(context,state);const page=await context.newPage();await page.goto(origin);
-   if(state.guest){await page.locator('#account').click();await inspect(page,'login',{engine});await page.getByRole('button',{name:'Вперше тут? Створити обліковий запис',exact:true}).click();await inspect(page,'register',{engine});}
+   if(state.guest){await page.locator('.hero-list').waitFor();await page.locator('.hero-list').click();await page.locator('input[type=email]').waitFor();check(engine,'guest-hero-list-requests-sign-in',await page.locator('.hero-list').getAttribute('aria-pressed')==='false'&&await page.evaluate(()=>!localStorage.getItem('kik:audit-user:audit-profile')));await inspect(page,'login',{engine});await page.getByRole('button',{name:'Вперше тут? Створити обліковий запис',exact:true}).click();await inspect(page,'register',{engine});}
    else if(state.failCatalogue){await page.getByRole('button',{name:'Спробувати ще',exact:true}).waitFor();await inspect(page,'offline',{engine});}
    else{await inspect(page,'loading',{engine});await page.locator('.shelf').first().waitFor();}
    await context.close();

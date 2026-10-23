@@ -90,6 +90,11 @@ dialog.profile-modal{width:min(560px,calc(100vw - 32px));padding:30px 32px 22px;
  .profile-dialog-tools .profile-tool{padding:8px 12px}
 }
 @media(prefers-reduced-motion:reduce){.profile-avatar{transition:none}.profile-tile:hover .profile-avatar{transform:none}}
+/* Shared vector icons and saved state mirror the TV hero actions. */
+.hero-actions .pill{white-space:nowrap}
+.hero-action-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px}
+.hero-action-icon svg{display:block;width:100%;height:100%}
+.hero-actions .hero-list[aria-pressed=true]{background:#e5091418;border-color:#e5091450;color:#f7eff0}
 /* Header search settles its layout once, then reveals a compact attached panel. */
 .header-search{position:relative;flex-shrink:0}
 .header.search-active nav{flex-shrink:0}
