@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""TV launcher icon and Android TV banner in the phone icon's style (web/public/icon.svg), rendered by headless Chrome."""
+"""TV launcher icon and Android TV banner: the phone icon's mark (web/public/icon.svg) on the flat #1c1c1c of the
+Netflix tile beside it, so the TV row reads as one set. Rendered by headless Chrome."""
+TILE='#1c1c1c'
 import re,subprocess,sys,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
@@ -10,7 +12,7 @@ mark=re.search(r'<g transform="translate\(72\.4 169\.6\) scale\(3\.6\)"[^>]*>(.*
 def page(w,h,scale):
  x,y,k=(w-102*scale)/2,(h-48*scale)/2,scale/3.6
  return ('<!doctype html><html><body style="margin:0"><svg xmlns="http://www.w3.org/2000/svg" width="%s" height="%s" viewBox="0 0 %s %s">'%(w,h,w,h)+defs+
-  '<rect width="%s" height="%s" fill="url(#bg)"/><rect width="%s" height="%s" fill="url(#sheen)"/>'%(w,h,w,h)+
+  '<rect width="%s" height="%s" fill="%s"/>'%(w,h,TILE)+
   '<ellipse cx="%s" cy="%s" rx="%s" ry="%s" fill="#e50914" opacity=".09" filter="url(#glow)"/>'%(w/2,h/2+6*k,170*k,80*k)+
   '<g transform="translate(%s %s) scale(%s)" fill="none" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round">%s</g></svg></body></html>'%(x,y,scale,mark))
 # Adaptive icon: 108dp at 4x; the mark stays inside the 66dp safe zone. Legacy icon: 48dp at 4x. Banner: 320x180dp at 2x.
