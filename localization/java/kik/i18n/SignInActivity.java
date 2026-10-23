@@ -139,7 +139,7 @@ public final class SignInActivity extends Activity {
  private interface Done{void run(JSONObject result)throws Exception;}
  /** Runs a request off the main thread; a refusal shows the server's reason, a 401 goes to {@code denied}. */
  private void call(Button button,String path,JSONObject data,String token,Done done,Runnable denied){
-  final int at=step;final CharSequence label=button==null?null:button.getText();working=true;
+  final int at=step;final CharSequence label=button==null?null:button.getTag() instanceof CharSequence?(CharSequence)button.getTag():button.getText();working=true;
   io.execute(()->{
    String failure;Runnable fallback=null;
    try{final JSONObject result=CloudSync.request(path,data,token);main.post(()->{working=false;if(destroyed)return;try{done.run(result);}catch(Exception e){show(at);error("Не вдалося завершити вхід. Спробуйте ще раз.");}});return;}
@@ -170,7 +170,7 @@ public final class SignInActivity extends Activity {
  private void submit(EditText field,Button button){field.setOnEditorActionListener((v,a,e)->{if(button.isEnabled())button.performClick();return true;});}
  private void errorLine(){space(10);error=text("",16);error.setTextColor(0xffff7a7f);error.setMinHeight(dp(24));content.addView(error,new LinearLayout.LayoutParams(dp(640),-2));space(10);}
  private void error(String message){if(error!=null)error.setText(message);}
- private void busy(Button b,String label){b.setEnabled(false);b.setText(label);error("");}
+ private void busy(Button b,String label){if(b.isEnabled())b.setTag(b.getText());b.setEnabled(false);b.setText(label);error("");}
  private Button primary(String label){LinearLayout row=actions();return button(row,label,true);}
  private LinearLayout actions(){LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);row.setClipChildren(false);row.setClipToPadding(false);content.addView(row);return row;}
  private Button button(LinearLayout row,String label,boolean primary){Button b=Ui.pill(this,label,primary);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(52));lp.setMargins(dp(8),0,dp(8),0);b.setMinWidth(dp(200));row.addView(b,lp);return b;}
