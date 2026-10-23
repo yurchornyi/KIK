@@ -39,6 +39,20 @@ public final class Ui {
  public static TextView bold(Context c,String s,int size){TextView t=text(c,s,size,Color.WHITE);t.setTypeface(Typeface.DEFAULT_BOLD);return t;}
  public static void space(LinearLayout l,int h){l.addView(new View(l.getContext()),new LinearLayout.LayoutParams(1,dp(l.getContext(),h)));}
  public static GradientDrawable shape(int fill,int radius,int stroke,int strokeColor){GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(radius);if(stroke>0)d.setStroke(stroke,strokeColor);return d;}
+ // Netflix-style dropdowns: a near-black panel with a thin grey edge; items are grey text that turns white on a soft highlight.
+ public static GradientDrawable menuPanel(Context c){return shape(0xff141414,dp(c,16),dp(c,1),0x40ffffff);}
+ public static TextView menuItem(Context c,String label,boolean chosen){
+  TextView t=new TextView(c);t.setText(label);t.setTextSize(16);t.setSingleLine(true);t.setEllipsize(TextUtils.TruncateAt.END);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);
+  t.setTypeface(chosen?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(c,16),dp(c,11),dp(c,16),dp(c,11));
+  t.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.WHITE,chosen?Color.WHITE:0xffb3b3b3}));
+  t.setBackground(states(shape(0,dp(c,12),0,0),shape(0x33ffffff,dp(c,12),0,0)));return t;
+ }
+ /** The button that opens such a dropdown: black with a thin white edge, white when focused. */
+ public static TextView dropButton(Context c,String label){
+  TextView t=new TextView(c);t.setText(label+"  ▾");t.setTextSize(16);t.setSingleLine(true);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(c,16),0,dp(c,14),0);
+  t.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{0xff141414,Color.WHITE}));
+  t.setBackground(states(shape(0xcc000000,dp(c,22),dp(c,1),0xb3ffffff),shape(Color.WHITE,dp(c,22),dp(c,1),Color.WHITE)));return t;
+ }
  public static StateListDrawable states(Drawable normal,Drawable focused){StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},focused);s.addState(new int[]{},normal);return s;}
  public static android.content.res.ColorStateList buttonText(boolean primary){return new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_selected},new int[]{}},new int[]{GREY,Color.BLACK,Color.WHITE,primary?Color.BLACK:Color.WHITE});}
  public static StateListDrawable buttonBackground(Context c,boolean primary){

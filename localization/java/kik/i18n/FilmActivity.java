@@ -13,7 +13,7 @@ import java.util.*;
 public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
- private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private TextView forget;private ImageView backdrop;
+ private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private ImageView backdrop;
  private LinearLayout body,voices,seasons,episodes;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
@@ -51,7 +51,6 @@ public final class FilmActivity extends Activity {
   voiceChip=Ui.chip(this,"Озвучка");LinearLayout.LayoutParams lv=new LinearLayout.LayoutParams(-2,dp(48));lv.setMargins(dp(12),0,0,0);buttons.addView(voiceChip,lv);voiceChip.setVisibility(View.GONE);
   tasteChip=thumb(false);LinearLayout.LayoutParams tasteLp=new LinearLayout.LayoutParams(dp(56),dp(48));tasteLp.setMargins(dp(12),0,0,0);buttons.addView(tasteChip,tasteLp);tasteChip.setOnClickListener(v->rate(1));
   dislikeChip=thumb(true);LinearLayout.LayoutParams dislikeLp=new LinearLayout.LayoutParams(dp(56),dp(48));dislikeLp.setMargins(dp(12),0,0,0);buttons.addView(dislikeChip,dislikeLp);dislikeChip.setOnClickListener(v->rate(-1));paintTaste();
-  forget=Ui.chip(this,"Прибрати з історії");LinearLayout.LayoutParams fl=new LinearLayout.LayoutParams(-2,dp(48));fl.setMargins(dp(12),0,0,0);buttons.addView(forget,fl);forget.setVisibility(View.GONE);forget.setOnClickListener(v->forgetHistory());
   voicesBox=new HorizontalScrollView(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(0,dp(14),0,0);body.addView(status);
   status.setBackground(Ui.states(Ui.shape(0,dp(4),0,0),Ui.shape(Ui.CARD,dp(4),dp(2),Color.WHITE)));status.setOnClickListener(v->{status.setFocusable(false);status.setText("Завантаження…");load();});status.setFocusable(false);
@@ -164,9 +163,9 @@ public final class FilmActivity extends Activity {
  }
  private void showEpisodes(){
   seasonVoice();
-  epHeader.setVisibility(film.episodes.isEmpty()?View.GONE:View.VISIBLE);
-  seasons.removeAllViews();
-  if(film.seasons.size()>1)for(final String s:film.seasons){TextView c=Ui.chip(this,"Сезон "+s);seasons.addView(c,Ui.wrap(this,10));Ui.select(c,s.equals(season));c.setOnClickListener(v->{season=s;showEpisodes();seasons.post(()->{for(int i=0;i<seasons.getChildCount();i++)if(((TextView)seasons.getChildAt(i)).getText().toString().endsWith(" "+s))seasons.getChildAt(i).requestFocus();});});}
+  epHeader.setVisibility(film.episodes.isEmpty()?View.GONE:View.VISIBLE);((TextView)epHeader).setText(film.seasons.size()>1&&season!=null?"Серії · Сезон "+season:"Серії");
+  seasons.removeAllViews();View chosen=null,resume=null;
+  if(film.seasons.size()>1)for(final String s:film.seasons){TextView c=Ui.chip(this,"Сезон "+s);seasons.addView(c,Ui.wrap(this,10));Ui.select(c,s.equals(season));if(s.equals(season))chosen=c;c.setOnClickListener(v->{season=s;showEpisodes();seasons.post(()->{for(int i=0;i<seasons.getChildCount();i++)if(((TextView)seasons.getChildAt(i)).getText().toString().endsWith(" "+s))seasons.getChildAt(i).requestFocus();});});}
   episodes.removeAllViews();
   Progress.Entry last=Progress.get(this,link);
   for(final Site.Episode e:film.episodes){
@@ -178,23 +177,26 @@ public final class FilmActivity extends Activity {
    long[] p=Progress.episode(this,link,e.season,e.episode);
    boolean finished=p!=null&&p[1]>0&&p[0]>p[1]*0.93;
    String sub=p==null||p[0]<=0?"Дивитися":finished?"Переглянуто":(here?"Продовжити · ":"Зупинено · ")+Ui.time(p[0]);
+   if(finished)sub="";
    TextView s=Ui.text(this,sub,12,here&&!finished?0xffefb8bb:Ui.GREY);s.setSingleLine(true);s.setEllipsize(TextUtils.TruncateAt.END);FrameLayout.LayoutParams statusLp=new FrameLayout.LayoutParams(-1,-2);statusLp.setMargins(dp(14),dp(39),dp(12),0);card.addView(s,statusLp);
-   TextView cue=Ui.text(this,finished?"✓":"▶",14,finished?Ui.GREY:Color.WHITE);cue.setGravity(Gravity.CENTER);FrameLayout.LayoutParams cueLp=new FrameLayout.LayoutParams(dp(20),dp(24),Gravity.TOP|Gravity.END);cueLp.setMargins(0,dp(10),dp(10),0);card.addView(cue,cueLp);
-   if(p!=null&&p[1]>0){FrameLayout progress=new FrameLayout(this);progress.setBackground(Ui.shape(0xff414147,dp(2),0,0));FrameLayout.LayoutParams progressLp=new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM);progressLp.setMargins(dp(14),0,dp(14),dp(8));card.addView(progress,progressLp);View bar=new View(this);bar.setBackground(Ui.shape(Ui.RED,dp(2),0,0));progress.addView(bar,new FrameLayout.LayoutParams((int)(dp(136)*Math.max(0,Math.min(1f,(float)p[0]/p[1]))),-1));}
-   card.setContentDescription("Серія "+e.episode+". "+sub);
-   card.setOnFocusChangeListener((v,f)->{v.animate().scaleX(f?1.06f:1f).scaleY(f?1.06f:1f).setDuration(160).setInterpolator(Ui.EASE).start();if(f)v.requestRectangleOnScreen(new Rect(-dp(8),-dp(8),v.getWidth()+dp(8),v.getHeight()+dp(8)),false);});
-   card.setOnClickListener(v->play(e.season,e.episode));
+   TextView cue=Ui.text(this,finished?"✓":"▶",14,Color.WHITE);cue.setGravity(Gravity.CENTER);FrameLayout.LayoutParams cueLp=new FrameLayout.LayoutParams(dp(20),dp(24),Gravity.TOP|Gravity.END);cueLp.setMargins(0,dp(10),dp(10),0);card.addView(cue,cueLp);
+   if(finished)card.setAlpha(0.5f);
+   if(p!=null&&p[1]>0&&!finished){FrameLayout progress=new FrameLayout(this);progress.setBackground(Ui.shape(0xff414147,dp(2),0,0));FrameLayout.LayoutParams progressLp=new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM);progressLp.setMargins(dp(14),0,dp(14),dp(8));card.addView(progress,progressLp);View bar=new View(this);bar.setBackground(Ui.shape(Ui.RED,dp(2),0,0));progress.addView(bar,new FrameLayout.LayoutParams((int)(dp(136)*Math.max(0,Math.min(1f,(float)p[0]/p[1]))),-1));}
+   card.setContentDescription("Серія "+e.episode+". "+(finished?"Переглянуто":sub));
+   final float rest=finished?0.5f:1f;
+   card.setOnFocusChangeListener((v,f)->{v.animate().alpha(f?1f:rest).scaleX(f?1.06f:1f).scaleY(f?1.06f:1f).setDuration(160).setInterpolator(Ui.EASE).start();if(f)v.requestRectangleOnScreen(new Rect(-dp(8),-dp(8),v.getWidth()+dp(8),v.getHeight()+dp(8)),false);});
+   card.setOnClickListener(v->play(e.season,e.episode));if(here)resume=card;
    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(164),dp(72));lp.setMargins(0,0,dp(12),0);episodes.addView(card,lp);
   }
+  reveal(chosen);reveal(resume);
   paintWatch();
  }
- /** Removes this title from the profile's watch history (every episode); synced profiles drop it too. */
- private void forgetHistory(){
-  Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+name.getText()+"» зникне з історії та «Продовжити перегляд». Позначки «Подобається» і «Мій список» залишаться.")
-   .setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,link);Ui.toast(this,"Прибрано з історії");paintWatch();if(film!=null&&film.series)showEpisodes();watch.requestFocus();}).show();
+ /** Long rows (32 seasons, 20+ episodes): scroll so the selected season and the episode to continue are on screen. */
+ private void reveal(final View v){
+  if(v==null||!(v.getParent()!=null&&v.getParent().getParent() instanceof HorizontalScrollView))return;final HorizontalScrollView box=(HorizontalScrollView)v.getParent().getParent();
+  box.post(()->box.scrollTo(Math.max(0,v.getLeft()-dp(8)),0));
  }
  private void paintWatch(){
-  if(forget!=null)forget.setVisibility(Progress.get(this,link)!=null?View.VISIBLE:View.GONE);
   if(film==null)return;if(film.sourceUrl!=null){watch.setText("Перегляд у KIK недоступний");return;}Progress.Entry e=Progress.get(this,link);
   if(e!=null&&!e.finished())watch.setText(film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити з "+Ui.time(e.pos));
   else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");
@@ -210,6 +212,9 @@ public final class FilmActivity extends Activity {
  /** Monochrome, state-aware icons match the shared focused and selected button palette. */
  static final class ThumbIcon extends Drawable {
   private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path hand=new Path();private final int size;private final boolean down;
+  ThumbIcon(int size,Path shape){this.size=size;this.down=false;paint.setColor(Color.WHITE);hand.set(shape);}
+  /** A filled bin with three cut-out slots, on the same 24-unit grid as the thumb. */
+  static Path trash(){Path p=new Path();p.setFillType(Path.FillType.EVEN_ODD);p.addRect(9,2.5f,15,4.5f,Path.Direction.CW);p.addRect(3.5f,4.5f,20.5f,7,Path.Direction.CW);p.moveTo(5.5f,8);p.lineTo(18.5f,8);p.lineTo(17.4f,21.5f);p.lineTo(6.6f,21.5f);p.close();for(float x:new float[]{8.6f,11.4f,14.2f})p.addRect(x,10.5f,x+1.2f,19,Path.Direction.CW);return p;}
   ThumbIcon(int size,boolean down){this.size=size;this.down=down;paint.setColor(Color.WHITE);hand.addRect(2,10,6,21,Path.Direction.CW);hand.moveTo(8,10);hand.lineTo(13,4);hand.quadTo(14,2,15,3);hand.quadTo(16,4,15.5f,6);hand.lineTo(15,9);hand.lineTo(20,9);hand.quadTo(22,9,21.5f,11.5f);hand.lineTo(19.2f,19.5f);hand.quadTo(19,21,17.5f,21);hand.lineTo(9,21);hand.quadTo(8,21,8,20);hand.close();}
   @Override public void draw(Canvas canvas){Rect r=getBounds();canvas.save();canvas.translate(r.left,r.top);canvas.scale(r.width()/24f,r.height()/24f);if(down)canvas.rotate(180,12,12);canvas.drawPath(hand,paint);canvas.restore();}
   @Override public boolean isStateful(){return true;}

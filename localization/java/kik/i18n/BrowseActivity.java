@@ -12,7 +12,7 @@ import org.json.*;
 
 /** Poster grid for a catalogue section, search, history or the watch-later list. */
 public final class BrowseActivity extends Activity {
- public static final String MODE="mode",CATEGORY="category",TITLE="title",QUERY="query";
+ public static final String MODE="mode",CATEGORY="category",TITLE="title",QUERY="query",GENRE="genre";
  private int columns=6;
  static final class G{String link,title,sub,poster,badge,year,genre,sourceTitle;float progress;}
 
@@ -21,17 +21,17 @@ public final class BrowseActivity extends Activity {
  private boolean failed;
  /** Titles already on screen (catalogue and search): a repeated source page adds nothing and ends the list. */
  private final Set<String> seen=new HashSet<String>();
- private final List<TextView> categoryChips=new ArrayList<TextView>();
- private TextView heading,genreButton,summary;private Button loadMore;
+
+ private TextView heading,categoryButton,genreButton,orderButton,summary;private Button loadMore;
  /** Genre list being fetched for this category, and a counter that makes a late list for another category inert. */
- private String genresRequest;private int genreGeneration;
+ private int genreGeneration;
  static final String[][] SECTIONS={{"films","Фільми"},{"series","Серіали"},{"cartoons","Мультфільми"},{"animation","Аніме"}};
  /** The search came with a name already (OpenTitleActivity): results take focus, no keyboard over them. */
  private boolean handedOver;
  /** The search a pause in typing starts. */
  private final Runnable typed=()->reload();
- private LinearLayout grid,genres,idle;private ScrollView scroll;private TextView status;private EditText query;
- private final List<TextView> filterChips=new ArrayList<TextView>();private int generation;
+ private LinearLayout grid,idle;private ScrollView scroll;private TextView status;private EditText query;
+ private int generation;
  private final Map<G,View> cards=new IdentityHashMap<G,View>();
  private LinearLayout openRow;private int inRow;
  private int dp(float n){return Ui.dp(this,n);}
@@ -39,10 +39,14 @@ public final class BrowseActivity extends Activity {
  public static void open(Context c,String mode,String category,String title){
   c.startActivity(new Intent(c,BrowseActivity.class).putExtra(MODE,mode).putExtra(CATEGORY,category).putExtra(TITLE,title));
  }
+ /** The catalogue already filtered to one genre (from «Жанри» on the home screen). */
+ public static void openGenre(Context c,String category,String slug,String name){
+  c.startActivity(new Intent(c,BrowseActivity.class).putExtra(MODE,"catalog").putExtra(CATEGORY,category).putExtra(GENRE,slug).putExtra(TITLE,name));
+ }
 
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);columns=Math.max(1,(int)((getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density-64)/148));
-  mode=getIntent().getStringExtra(MODE);category=getIntent().getStringExtra(CATEGORY);if(mode==null)mode="catalog";
+  mode=getIntent().getStringExtra(MODE);category=getIntent().getStringExtra(CATEGORY);genre=getIntent().getStringExtra(GENRE);if(mode==null)mode="catalog";
   FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
@@ -71,21 +75,17 @@ public final class BrowseActivity extends Activity {
    idle=new LinearLayout(this);idle.setOrientation(1);idle.setClipChildren(false);idle.setClipToPadding(false);content.addView(idle);
   }
   if("catalog".equals(mode)){
-   // The category changes in place: no going back to the home menu to see series after films.
+   // Netflix-style header: the category is the title itself («Фільми ▾»), genre and order are two quiet dropdowns beside it.
    if(category==null||category.isEmpty())category="films";
-   LinearLayout sections=new LinearLayout(this);sections.setOrientation(0);sections.setClipChildren(false);sections.setClipToPadding(false);content.addView(Ui.horizontal(this,sections),new LinearLayout.LayoutParams(-1,-2));
-   for(final String[] x:SECTIONS){TextView c=Ui.chip(this,x[1]);c.setTag(x[0]);sections.addView(c,Ui.wrap(this,10));categoryChips.add(c);
-    c.setOnClickListener(v->selectCategory(x[0],x[1]));}
-   paintCategories();Ui.space(content,6);
-   LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(Ui.horizontal(this,filters),new LinearLayout.LayoutParams(-1,-2));
-   String[][] f={{"last","Нові"},{"popular","Популярні"},{"watching","Зараз дивляться"}};
-   for(final String[] x:f){TextView c=Ui.chip(this,x[1]);filters.addView(c,Ui.wrap(this,10));filterChips.add(c);c.setTag(x[0]);
-    c.setOnClickListener(v->{if(filter.equals(x[0]))return;filter=x[0];paintFilters();reload();});}
-   final TextView g=Ui.chip(this,"Жанри ▾");filters.addView(g,Ui.wrap(this,10));genreButton=g;
-   g.setOnClickListener(v->toggleGenres());
-   paintFilters();
-   HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);genres=new LinearLayout(this);genres.setOrientation(0);genres.setClipChildren(false);genres.setClipToPadding(false);genres.setPadding(dp(4),dp(12),dp(4),dp(4));hs.addView(genres);hs.setVisibility(View.GONE);
-   content.addView(hs);genres.setTag(hs);
+   // Three equal dropdowns: category, genre, order.
+   heading.setVisibility(View.GONE);
+   categoryButton=dropButton(sectionName(category));categoryButton.setOnClickListener(v->categoryMenu(v));head.addView(categoryButton,new LinearLayout.LayoutParams(-2,dp(44)));
+   String given=getIntent().getStringExtra(TITLE);
+   genreButton=dropButton(genre!=null&&given!=null?given:"Усі жанри");genreButton.setOnClickListener(v->genreMenu(v));
+   orderButton=dropButton(orderName(filter));orderButton.setOnClickListener(v->orderMenu(v));
+   LinearLayout.LayoutParams gl=new LinearLayout.LayoutParams(-2,dp(44));gl.leftMargin=dp(10);head.addView(genreButton,gl);
+   LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(10);head.addView(orderButton,ol);
+   head.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
   }
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(dp(8),dp(16),0,dp(6));content.addView(status);
   status.setBackground(Ui.states(Ui.shape(0,dp(5),0,0),Ui.shape(0xff333337,dp(5),dp(2),Color.WHITE)));status.setOnClickListener(v->more());status.setFocusable(false);
@@ -105,30 +105,60 @@ public final class BrowseActivity extends Activity {
  private String shownList="";
  private String listSignature(){if("later".equals(mode))return String.valueOf(Progress.later(this));StringBuilder b=new StringBuilder();for(Progress.Entry e:Progress.recent(this))b.append(e.link).append(e.season).append(e.episode).append(e.pos/1000).append(e.finished()).append('\n');return b.toString();}
 
- private void paintFilters(){for(TextView c:filterChips)Ui.select(c,filter.equals(c.getTag()));}
- private void paintCategories(){for(TextView c:categoryChips)Ui.select(c,c.getTag().equals(category));}
- /** Another category in place: its own genres (fetched again when opened), the same order, the list from page one. */
+ private static final String[][] ORDERS={{"popular","Популярні"},{"last","Нові"},{"watching","Зараз дивляться"}};
+ private static String sectionName(String slug){for(String[] x:SECTIONS)if(x[0].equals(slug))return x[1];return "Каталог";}
+ private static String orderName(String slug){for(String[] x:ORDERS)if(x[0].equals(slug))return x[1];return ORDERS[0][1];}
+ private TextView dropButton(String label){return Ui.dropButton(this,label);}
+ /** The dark dropdown the home menu uses: plain items, the white focus pill with the red edge; the chosen one is red. */
+ private PopupWindow dropdown(View anchor,View panel){return dropdown(anchor,panel,ViewGroup.LayoutParams.WRAP_CONTENT);}
+ private PopupWindow dropdown(View anchor,View panel,int width){
+  panel.setBackground(Ui.menuPanel(this));
+  PopupWindow popup=new PopupWindow(panel,width,ViewGroup.LayoutParams.WRAP_CONTENT,true);
+  popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));popup.setOutsideTouchable(true);popup.setElevation(dp(10));popup.setAnimationStyle(android.R.style.Animation_Dialog);
+  popup.showAsDropDown(anchor,0,dp(6));return popup;
+ }
+ private TextView option(String label,boolean chosen){return Ui.menuItem(this,label,chosen);}
+ private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(dp(8),dp(8),dp(8),dp(8));return l;}
+ private void categoryMenu(View anchor){
+  LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
+  for(final String[] x:SECTIONS){TextView o=option(x[1],x[0].equals(category));list.addView(o,new LinearLayout.LayoutParams(dp(200),-2));if(x[0].equals(category))chosen=o;o.setOnClickListener(v->{popup.dismiss();selectCategory(x[0],x[1]);});}
+  if(chosen!=null)chosen.requestFocus();
+ }
+ private void orderMenu(View anchor){
+  LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
+  for(final String[] x:ORDERS){TextView o=option(x[1],x[0].equals(filter));list.addView(o,new LinearLayout.LayoutParams(dp(220),-2));if(x[0].equals(filter))chosen=o;
+   o.setOnClickListener(v->{popup.dismiss();if(filter.equals(x[0]))return;filter=x[0];orderButton.setText(x[1]+"  ▾");reload();});}
+  if(chosen!=null)chosen.requestFocus();
+ }
+ /** Another category in place: its own genres, the same order, the list from page one. */
  private void selectCategory(String slug,String name){
-  if(slug.equals(category))return;category=slug;genre=null;genreGeneration++;genresRequest=null;
-  genres.removeAllViews();((View)genres.getTag()).setVisibility(View.GONE);genreButton.setText("Жанри ▾");heading.setText(name);paintCategories();reload();
+  if(slug.equals(category))return;category=slug;genre=null;genreGeneration++;genreList=null;genreFor=null;
+  genreButton.setText("Усі жанри  ▾");categoryButton.setText(name+"  ▾");reload();
  }
- /** Whether a genre answer still belongs to what is on screen. */
- private boolean genresCurrent(int request,String requested){return !isFinishing()&&!isDestroyed()&&request==genreGeneration&&requested.equals(category);}
- private void toggleGenres(){
-  final View hs=(View)genres.getTag();boolean show=hs.getVisibility()!=View.VISIBLE;hs.setVisibility(show?View.VISIBLE:View.GONE);
-  if(!show||genres.getChildCount()>0||category.equals(genresRequest))return;
-  final int request=++genreGeneration;final String requested=category;genresRequest=requested;genreButton.setText("Жанри · завантаження…");
-  Ui.bg(()->{try{final List<Site.Genre> list=Site.genres(requested);List<String> names=new ArrayList<String>();for(Site.Genre x:list)names.add(x.name);
-    final Map<String,String> uk=TitleTranslate.resolve(names,Ui.TRANSLATE_WAIT);
-    Ui.MAIN.post(()->{if(!genresCurrent(request,requested))return;genresRequest=null;genreButton.setText("Жанри ▾");
-     if(list.isEmpty()){hs.setVisibility(View.GONE);Ui.toast(this,"Для цієї категорії жанрів немає");return;}
-     TextView all=Ui.chip(this,"Усі");genres.addView(all,Ui.wrap(this,10));all.setOnClickListener(v->{if(genre==null)return;genre=null;genreButton.setText("Жанри ▾");paintGenres();reload();});
-     for(final Site.Genre x:list){String n=uk.get(x.name);final TextView c=Ui.chip(this,n==null?TitleTranslate.shown(x.name):n);c.setTag(x.slug);genres.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{if(x.slug.equals(genre))return;genre=x.slug;genreButton.setText(c.getText()+" ▾");paintGenres();reload();});}
-     paintGenres();});
-    Map<String,String> translated=TitleTranslate.resolve(names);Ui.MAIN.post(()->{if(!genresCurrent(request,requested))return;for(int i=0;i<list.size()&&i+1<genres.getChildCount();i++){String t=translated.get(list.get(i).name);((TextView)genres.getChildAt(i+1)).setText(t!=null?t:list.get(i).name);}});
-   }catch(Exception e){Ui.MAIN.post(()->{if(!genresCurrent(request,requested))return;genresRequest=null;genreButton.setText("Жанри · повторити ▾");hs.setVisibility(View.GONE);Ui.toast(this,"Не вдалося завантажити жанри. Натисніть «Жанри», щоб повторити.");});}});
+ private List<Site.Genre> genreList;private String genreFor;private Map<String,String> genreUk=new HashMap<String,String>();
+ /** Genres of the shown category as a grid: everyday ones first, «Усі жанри» at the top. Fetched once per category. */
+ private void genreMenu(View anchor){
+  final LinearLayout box=column();final PopupWindow popup=dropdown(anchor,box,dp(3*170+16));
+  final TextView all=option("Усі жанри",genre==null);box.addView(all,new LinearLayout.LayoutParams(dp(170),-2));all.setOnClickListener(v->{popup.dismiss();if(genre==null)return;genre=null;genreButton.setText("Усі жанри  ▾");reload();});all.requestFocus();
+  if(genreList!=null&&category.equals(genreFor)){fillGenreGrid(box,popup,genreList);return;}
+  final TextView wait=Ui.text(this,"Завантаження…",14,Ui.GREY);wait.setPadding(dp(16),dp(10),dp(16),dp(10));box.addView(wait);
+  final int request=++genreGeneration;final String requested=category;
+  Ui.bg(()->{try{List<Site.Genre> got=Site.genres(requested);List<String> unknown=new ArrayList<String>();for(Site.Genre g:got)if(!HomeActivity.genreKnown(g.name))unknown.add(g.name);
+    final Map<String,String> uk=unknown.isEmpty()?new HashMap<String,String>():TitleTranslate.resolve(unknown,Ui.TRANSLATE_WAIT);
+    final List<Site.Genre> list=ordered(got,uk);
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||request!=genreGeneration||!requested.equals(category))return;genreUk.putAll(uk);genreList=list;genreFor=requested;if(!popup.isShowing())return;box.removeView(wait);
+     if(list.isEmpty()){wait.setText("Для цієї категорії жанрів немає");box.addView(wait);return;}fillGenreGrid(box,popup,list);});
+   }catch(Exception e){Ui.MAIN.post(()->{if(request==genreGeneration&&popup.isShowing())wait.setText("Не вдалося завантажити жанри");});}});
  }
- private void paintGenres(){for(int i=0;i<genres.getChildCount();i++){TextView c=(TextView)genres.getChildAt(i);Ui.select(c,genre==null?c.getTag()==null:genre.equals(c.getTag()));}}
+ private String genreLabel(Site.Genre g){return HomeActivity.genreKnown(g.name)?HomeActivity.genreName(g.name):genreUk.containsKey(g.name)?genreUk.get(g.name):TitleTranslate.shown(g.name);}
+ private List<Site.Genre> ordered(List<Site.Genre> got,Map<String,String> uk){return HomeActivity.mainGenres(got);}
+ private void fillGenreGrid(LinearLayout box,final PopupWindow popup,List<Site.Genre> list){
+  LinearLayout row=null;View chosen=null;
+  for(int n=0;n<list.size();n++){final Site.Genre g=list.get(n);if(n%3==0){row=new LinearLayout(this);row.setOrientation(0);box.addView(row);}
+   final String name=genreLabel(g);TextView o=option(name,g.slug.equals(genre));row.addView(o,new LinearLayout.LayoutParams(dp(170),-2));if(g.slug.equals(genre))chosen=o;
+   o.setOnClickListener(v->{popup.dismiss();if(g.slug.equals(genre))return;genre=g.slug;genreButton.setText(name+"  ▾");reload();});}
+  if(chosen!=null)chosen.requestFocus();
+ }
 
  /** Recent searches of this profile, newest first. */
  private SharedPreferences searches(){return getSharedPreferences("kik_search_"+ProfileStore.current(this),0);}

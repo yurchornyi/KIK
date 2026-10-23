@@ -23,11 +23,11 @@ import org.json.*;
 public final class HomeActivity extends Activity {
  static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
 
- static final class Item{String link,title,poster,wide,year,genre,rating,sub,description;boolean resume;float progress;}
+ static final class Item{String link,title,poster,wide,year,genre,rating,sub,heroLine,description;boolean resume;float progress;}
  static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
- private TextView heroTitle,heroMeta,heroSub,heroText;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
+ private TextView heroTitle,heroMeta,heroSub,heroText;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
  private Item hero,pendingHero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
  private static final android.view.animation.Interpolator EASE=new android.view.animation.DecelerateInterpolator(1.6f);private boolean expanded,loadedOnce;
  private final Handler main=new Handler(Looper.getMainLooper());
@@ -56,15 +56,19 @@ public final class HomeActivity extends Activity {
   content.addView(topBar());
   LinearLayout info=new LinearLayout(this);info.setOrientation(1);info.setClipChildren(false);info.setClipToPadding(false);info.setPadding(dp(40),dp(6),dp(40),dp(12));info.setMinimumHeight(dp(200));info.setGravity(Gravity.BOTTOM);
   heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
-  heroMeta=text("",14,0xffd8d8dc);heroMeta.setSingleLine(true);heroSub=text("",13,0xffefb8bb);heroSub.setSingleLine(true);heroSub.setTypeface(Typeface.DEFAULT_BOLD);
+  heroMeta=text("",14,0xffd8d8dc);heroMeta.setSingleLine(true);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
   heroText=text("",14,0xffd0d0d4);heroText.setLines(2);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
-  info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);info.addView(heroSub);space(info,8);
+  info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
+  heroResume=new LinearLayout(this);heroResume.setOrientation(0);heroResume.setGravity(Gravity.CENTER_VERTICAL);
+  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0xff4a4a50,dp(2),0,0));heroBar=new View(this);heroBar.setBackground(Ui.shape(RED,dp(2),0,0));track.addView(heroBar,new FrameLayout.LayoutParams(0,-1));
+  LinearLayout.LayoutParams trackLp=new LinearLayout.LayoutParams(dp(120),dp(4));trackLp.setMargins(0,0,dp(12),0);heroResume.addView(track,trackLp);heroResume.addView(heroSub);
+  info.addView(heroResume);space(info,8);
   info.addView(heroText,new LinearLayout.LayoutParams(Ui.contentWidth(this,500,80),-2));space(info,14);
   LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);info.addView(Ui.horizontal(this,buttons),new LinearLayout.LayoutParams(-1,-2));
   watch=action("Дивитися",HeroActions.PLAY,true);buttons.addView(watch,new LinearLayout.LayoutParams(-2,dp(48)));
   later=action("Мій список",HeroActions.ADD,false);LinearLayout.LayoutParams lp0=new LinearLayout.LayoutParams(-2,dp(48));lp0.setMargins(dp(10),0,0,0);buttons.addView(later,lp0);
   later.setOnClickListener(v->toggleLater(hero));
-  more=action("Детальніше",HeroActions.INFO,false);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(48));lp.setMargins(dp(10),0,0,0);buttons.addView(more,lp);
+  more=action("",HeroActions.INFO,false);HeroActions.round(more);more.setContentDescription("Детальніше");LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(48),dp(48));lp.setMargins(dp(10),0,0,0);buttons.addView(more,lp);
   watch.setOnClickListener(v->{if(hero!=null)startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));});
   more.setOnClickListener(v->open(hero));
   content.addView(info);
@@ -100,15 +104,54 @@ public final class HomeActivity extends Activity {
  /** The catalogue's four sections drop down right under «Каталог ▾»: no separate window, no scrolling; Back closes it. */
  private void catalogueMenu(View anchor){
   final String[] names={"Фільми","Серіали","Мультфільми","Аніме"},ids={"films","series","cartoons","animation"};
-  // Same look as the top menu: plain items on the page's own dark colour, the white focus pill with the red edge.
-  LinearLayout list=new LinearLayout(this);list.setOrientation(1);list.setPadding(dp(6),dp(6),dp(6),dp(6));list.setBackground(shape(0xff0d0d0f,dp(14),dp(1),0x22ffffff));
-  final PopupWindow popup=new PopupWindow(list,ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.WRAP_CONTENT,true);
-  for(int i=0;i<names.length;i++){final int n=i;TextView item=text(names[i],14,0xffd0d0d4);item.setIncludeFontPadding(false);item.setGravity(Gravity.CENTER_VERTICAL);item.setFocusable(true);item.setClickable(true);item.setPadding(dp(14),dp(9),dp(28),dp(9));
-   item.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));item.setTextColor(Ui.buttonText(false));item.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.04f));
-   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);if(i>0)lp.topMargin=dp(2);list.addView(item,lp);
+  LinearLayout panel=new LinearLayout(this);panel.setOrientation(0);panel.setPadding(dp(8),dp(8),dp(8),dp(8));panel.setBackground(Ui.menuPanel(this));
+  LinearLayout list=new LinearLayout(this);list.setOrientation(1);panel.addView(list);
+  final PopupWindow popup=new PopupWindow(panel,ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.WRAP_CONTENT,true);
+  for(int i=0;i<names.length;i++){final int n=i;TextView item=Ui.menuItem(this,names[i],false);list.addView(item,new LinearLayout.LayoutParams(dp(180),-2));
    item.setOnClickListener(v->{popup.dismiss();BrowseActivity.open(this,"catalog",ids[n],names[n]);});}
   popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));popup.setOutsideTouchable(true);popup.setElevation(dp(10));popup.setAnimationStyle(android.R.style.Animation_Dialog);
+  View line=new View(this);line.setBackgroundColor(0x33ffffff);LinearLayout.LayoutParams lineLp=new LinearLayout.LayoutParams(dp(1),-1);lineLp.setMargins(dp(10),dp(4),dp(10),dp(4));panel.addView(line,lineLp);
+  LinearLayout genres=new LinearLayout(this);genres.setOrientation(1);panel.addView(genres);
   popup.showAsDropDown(anchor,-dp(6),dp(4));list.getChildAt(0).requestFocus();
+  fillGenres(genres,popup);
+ }
+ /** Film genres from the source, fetched once per run; the home rows and the «Жанри» menu share them. */
+ private static volatile List<Site.Genre> filmGenres;
+ private static List<Site.Genre> filmGenres(){List<Site.Genre> g=filmGenres;if(g!=null&&!g.isEmpty())return g;try{g=Site.genres("films");}catch(Exception e){Log.w("KIK","Genres: "+e);return new ArrayList<Site.Genre>();}if(!g.isEmpty())filmGenres=g;return g;}
+ /** Ukrainian names for the genres the source spells in Russian. */
+ static final String[][] GENRE_NAMES={{"Комедии","Комедії"},{"Боевики","Бойовики"},{"Ужасы","Жахи"},{"Фантастика","Фантастика"},{"Драмы","Драми"},{"Триллеры","Трилери"},{"Детективы","Детективи"},{"Приключения","Пригоди"},{"Мелодрамы","Мелодрами"},{"Документальные","Документальні"},{"Семейные","Сімейні"},{"Криминал","Кримінал"},{"Фэнтези","Фентезі"},{"Военные","Воєнні"},{"Исторические","Історичні"},{"Биографические","Біографічні"},{"Спортивные","Спортивні"},{"Музыкальные","Музичні"},{"Вестерны","Вестерни"},{"Мюзиклы","Мюзикли"},{"Артхаус","Артхаус"},{"Короткометражные","Короткометражні"},{"Эротика","Еротика"},{"Концерт","Концерти"},{"Стендап","Стендап"},{"Детские","Дитячі"},{"Зарубежные","Зарубіжні"},{"Театр","Театр"},{"Аниме","Аніме"}};
+ /** The everyday genres the menus show: the first twelve of GENRE_NAMES. */
+ static final int MAIN_GENRES=12;
+ static List<Site.Genre> mainGenres(List<Site.Genre> got){List<Site.Genre> out=new ArrayList<Site.Genre>();for(int n=0;n<MAIN_GENRES;n++)for(Site.Genre g:got)if(GENRE_NAMES[n][0].equalsIgnoreCase(g.name.trim())&&!out.contains(g))out.add(g);return out;}
+ static boolean genreKnown(String ru){if(ru!=null)for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return true;return false;}
+ static String genreName(String ru){if(ru==null)return null;for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return g[1];return TitleTranslate.shown(ru);}
+ /** Netflix-style genre rows: the first ten everyday genres, the ones this profile watches most on top; six rows at most. */
+ private List<Row> genreRows(Recommendations.Snapshot taste){
+  List<Site.Genre> all=filmGenres();if(all.isEmpty())return new ArrayList<Row>();
+  final Map<String,Double> weight=new HashMap<String,Double>();
+  if(taste!=null)for(RecommendationRanker.Signal s:taste.signals)if(s.genre!=null)for(String[] g:GENRE_NAMES){String key=s.genre.toLowerCase(Locale.ROOT);if(key.contains(g[0].toLowerCase(Locale.ROOT).substring(0,5))||key.contains(g[1].toLowerCase(Locale.ROOT).substring(0,5)))weight.merge(g[0],s.weight,Double::sum);}
+  List<Site.Genre> picked=new ArrayList<Site.Genre>();
+  for(int n=0;n<10;n++)for(Site.Genre g:all)if(GENRE_NAMES[n][0].equalsIgnoreCase(g.name.trim()))picked.add(g);
+  Collections.sort(picked,(a,b)->Double.compare(weight.getOrDefault(b.name.trim(),0d),weight.getOrDefault(a.name.trim(),0d)));
+  if(picked.size()>6)picked=new ArrayList<Site.Genre>(picked.subList(0,6));
+  final Row[] out=new Row[picked.size()];List<Thread> threads=new ArrayList<Thread>();
+  for(int k=0;k<picked.size();k++){final int idx=k;final Site.Genre g=picked.get(k);Thread t=new Thread(()->{
+   try{Row r=new Row(genreName(g.name));for(Site.Card c:Site.list("films",g.slug,"popular",1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
+   catch(Exception e){Log.w("KIK","Genre row "+g.name+": "+e);}});threads.add(t);t.start();}
+  for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);return rows;
+ }
+ /** The catalogue's right half: every film genre in a grid, like Netflix's categories; OK opens that genre. */
+ private void fillGenres(final LinearLayout box,final PopupWindow popup){
+  TextView head=text("Жанри",13,0xff8c8c8c);head.setPadding(dp(16),dp(8),0,dp(4));box.addView(head);
+  final TextView wait=text("Завантаження…",15,0xff8c8c8c);wait.setPadding(dp(16),dp(11),dp(28),dp(11));box.addView(wait);
+  new Thread(()->{final List<Site.Genre> all=mainGenres(filmGenres());main.post(()->{if(destroyed||!popup.isShowing())return;
+   if(all.isEmpty()){wait.setText("Не вдалося завантажити жанри");return;}
+   box.removeView(wait);LinearLayout row=null;
+   for(int n=0;n<all.size();n++){final Site.Genre g=all.get(n);if(n%3==0){row=new LinearLayout(this);row.setOrientation(0);box.addView(row);}
+    final String name=genreName(g.name);TextView item=Ui.menuItem(this,name,false);row.addView(item,new LinearLayout.LayoutParams(dp(170),-2));
+    item.setOnClickListener(v->{popup.dismiss();BrowseActivity.openGenre(this,"films",g.slug,name);});}
+   popup.update(ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.WRAP_CONTENT);});},"kik-genres").start();
  }
  private TextView settingsItem;
  /** A red dot on «Налаштування» while a postponed update waits there. */
@@ -157,7 +200,7 @@ public final class HomeActivity extends Activity {
    if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<15*60_000||cacheAge>=0&&cacheAge<15*60_000)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
-   });}:null);
+   });}:null,preferences);
    if(site.isEmpty()){main.post(()->{if(valid(gen,profile)&&first.isEmpty()){heroTitle.setText("Що подивимось?");heroText.setText("Не вдалося завантажити новинки. Відкрийте каталог або спробуйте ще раз.");HeroActions.label(watch,"Спробувати ще",HeroActions.RETRY);watch.setOnClickListener(v->load());more.setVisibility(View.GONE);later.setVisibility(View.GONE);watch.requestFocus();}});return;}
    refreshedAt=SystemClock.elapsedRealtime();saveCache(site);
    if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(Recommendations.withoutDisliked(preferences,site.subList(1,site.size())));translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
@@ -215,6 +258,8 @@ public final class HomeActivity extends Activity {
    Item i=new Item();i.link=e.link;i.title=e.title;i.poster=e.poster;i.resume=true;
    i.progress=e.dur>0?Math.min(1f,(float)e.pos/e.dur):0;
    i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"наступна серія":"продовжити з "+Ui.time(e.pos));
+   long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
+   i.heroLine=join(e.season!=null&&!"0".equals(e.season)?"Сезон "+e.season+" · Серія "+e.episode:null,e.finished()?"далі наступна серія":left>0?"ще "+left+" хв":"з "+Ui.time(e.pos));
    String[] d=DETAILS.get(norm(e.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.year=d[3];i.genre=d[4];}
    resume.items.add(i);if(resume.items.size()>=20)break;
   }
@@ -224,7 +269,7 @@ public final class HomeActivity extends Activity {
   if(!saved.items.isEmpty())rows.add(saved);
   return rows;
  }
- private List<Row> siteRows(java.util.function.Consumer<Row> first){
+ private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
   final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
    try{Row r=new Row(ROWS[idx][0]);for(Site.Card c:Site.list(ROWS[idx][1],null,ROWS[idx][2],1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
@@ -234,7 +279,7 @@ public final class HomeActivity extends Activity {
   }
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty())first.accept(out[0]);
   for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
  }
  private void saveCache(List<Row> rows){
   JSONArray a=new JSONArray();
@@ -331,22 +376,42 @@ public final class HomeActivity extends Activity {
   Images.load(i.poster,img,dp(136));
   return box;
  }
- private void rate(Item i){final String profile=ProfileStore.current(this);int value=RatingStore.get(this,profile,i.link);Ui.dialog(this).setTitle(tr(i.title)).setSingleChoiceItems(new String[]{"Подобається","Не подобається","Без оцінки"},value>0?0:value<0?1:2,(d,n)->{boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,n==0?1:n==1?-1:0);d.dismiss();if(saved)load();else Ui.toast(this,"Не вдалося зберегти оцінку");}).setNegativeButton("Назад",null).show();}
+ /** Long press on a card: like, dislike (the chosen one is red; pressing it again clears it) and, for a started title, remove it from history. */
+ private void rate(Item i){
+  final String profile=ProfileStore.current(this);final int value=RatingStore.get(this,profile,i.link);
+  LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(28),dp(24),dp(28),dp(20));box.setClipChildren(false);box.setClipToPadding(false);
+  TextView title=text(tr(i.title),22,Color.WHITE);title.setTypeface(Typeface.DEFAULT_BOLD);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(0,0,0,dp(14));box.addView(title);
+  final android.app.AlertDialog d=Ui.dialog(this).setView(box).create();
+  TextView first=null;
+  for(final int want:new int[]{1,-1}){
+   TextView c=action(box,want>0?"Подобається":"Не подобається",new FilmActivity.ThumbIcon(dp(22),want<0));Ui.select(c,value==want);
+   c.setOnClickListener(v->{int next=value==want?0:want;boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,next);d.dismiss();if(saved){Ui.toast(this,RatingStore.said(next));load();}else Ui.toast(this,"Не вдалося зберегти оцінку");});
+   if(first==null||value==want)first=c;
+  }
+  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(22),FilmActivity.ThumbIcon.trash()));c.setOnClickListener(v->{Progress.remove(this,i.link);d.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
+  if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",13,GREY);hint.setPadding(dp(4),dp(8),0,0);box.addView(hint);}
+  final TextView focus=first;d.show();box.post(focus::requestFocus);
+ }
+ private TextView action(LinearLayout box,String label,FilmActivity.ThumbIcon icon){
+  TextView c=Ui.chip(this,label);c.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);c.setPadding(dp(20),0,dp(20),0);c.setCompoundDrawablePadding(dp(14));
+  icon.setBounds(0,0,dp(22),dp(22));c.setCompoundDrawables(icon,null,null,null);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,0,0,dp(10));box.addView(c,lp);return c;
+ }
  private void scrollRowIntoView(View row){
   int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
   if(target!=scroll.getScrollY())scroll.smoothScrollTo(0,target);
  }
 
  private void setHero(Item i){
-  if(i==hero)return;hero=i;expanded=false;more.setText("Детальніше");heroText.setLines(2);
+  if(i==hero)return;hero=i;expanded=false;heroText.setLines(2);
   heroTitle.setText(tr(i.title));
   heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));
-  heroSub.setText(i.resume?i.sub:"");heroSub.setVisibility(i.resume?View.VISIBLE:View.INVISIBLE);
+  heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.INVISIBLE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();
   HeroActions.label(watch,i.resume?"Продовжити":"Дивитися",HeroActions.PLAY);
   paintLater();
   heroText.setText(i.description==null?"":i.description);details(i);
   Images.crossfade(i.wide!=null?i.wide:i.poster,heroImage);
-  for(View v:new View[]{heroTitle,heroMeta,heroSub,heroText}){v.animate().cancel();v.setAlpha(0.35f);v.animate().alpha(1f).setDuration(240).setInterpolator(EASE).withLayer().start();}
+  for(View v:new View[]{heroTitle,heroMeta,heroResume,heroText}){v.animate().cancel();v.setAlpha(0.35f);v.animate().alpha(1f).setDuration(240).setInterpolator(EASE).withLayer().start();}
  }
 
  // ---------- watch later ----------

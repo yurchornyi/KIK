@@ -25,6 +25,8 @@ final class HeroActions {
   b.setPadding(Ui.dp(c,22),0,Ui.dp(c,22),0);
   label(b,label,icon);b.setOnFocusChangeListener((v,on)->focus(v,on));return b;
  }
+ /** Icon-only circle: the 20dp icon centred in a 48dp button. */
+ static void round(Button b){int pad=Ui.dp(b.getContext(),14);b.setPadding(pad,0,pad,0);b.setCompoundDrawablePadding(0);}
  static void label(Button b,String text,int icon){
   b.setText(text);Icon drawable=new Icon(icon,b.getTextColors());int size=Ui.dp(b.getContext(),20);drawable.setBounds(0,0,size,size);b.setCompoundDrawablesRelative(drawable,null,null,null);
  }
