@@ -1,0 +1,6 @@
+import kik.i18n.RecoveryPolicy;import java.util.*;
+/** Failure injection without requiring network availability or an Android decoder. */
+public final class RecoveryPolicyCheck {
+ static void check(boolean v){if(!v)throw new AssertionError();}
+ public static void main(String[] args){RecoveryPolicy p=new RecoveryPolicy();Map<String,List<String>> q=new LinkedHashMap<String,List<String>>();q.put("1080p",Arrays.asList("first","second"));q.put("720p",Arrays.asList("third"));check(p.next(q,"1080p").equals("1080p\nfirst"));check(p.next(q,"1080p").equals("1080p\nsecond"));check(p.next(q,"1080p").equals("720p\nthird"));check(p.next(q,"1080p")==null);check(p.refresh());check(p.refresh());check(!p.refresh());p.progress(1000);p.interrupted();p.progress(20000);check(!p.refresh());p.progress(51000);check(p.refresh());check(RecoveryPolicy.media("https://video.example/a.mp4"));check(RecoveryPolicy.media("https://video.example/a.mp4:hls:manifest.m3u8?t=1"));for(String url:new String[]{"https://popads.net/a.mp4","https://x.doubleclick.net/a.mp4","https://video.example/ads/a.mp4","https://video.example/a.html","https://127.0.0.1/a.mp4","http://video.example/a.mp4","https://user:pass@video.example/a.mp4"})check(!RecoveryPolicy.media(url));System.out.println("Native recovery budget, alternatives, language-independent ranking and media guard passed");}
+}

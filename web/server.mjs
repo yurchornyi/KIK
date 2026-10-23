@@ -1,3 +1,4 @@
+import {resolvePlayback} from './playback-sources.mjs';
 import {localizedCards,localizedFilm,localizedRecords} from './localization.mjs';
 import {recommendations} from './recommendations.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
@@ -92,9 +93,9 @@ async function api(request,env,ctx){
   const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[])).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:Date.now()});
  }
  if(path==="/api/episodes"||path==="/api/stream"){
-  if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),f=await film(b.link);return json(path.endsWith("episodes")?{episodes:await episodes(f,String(b.voice))}:await stream(f,String(b.voice),String(b.season||""),String(b.episode||"")));
+  if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192);return json(await resolvePlayback(b.link,String(b.voice),String(b.season||""),String(b.episode||""),{attempt:b.recovery_attempt??0,method:path.endsWith("episodes")?"episodes":"stream"}));
  }
  fail("Не знайдено",404);
 }
-function secure(response){const r=new Response(response.body,response);r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Referrer-Policy","no-referrer");r.headers.set("X-Frame-Options","DENY");r.headers.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https: blob:; connect-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");return r;}
+function secure(response){const r=new Response(response.body,response);r.headers.set("Permissions-Policy","camera=(), microphone=(), geolocation=(), payment=()");r.headers.set("Cross-Origin-Opener-Policy","same-origin");r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Referrer-Policy","no-referrer");r.headers.set("X-Frame-Options","DENY");r.headers.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https: blob:; connect-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'");return r;}
 export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;return secure(path.startsWith("/api/")?await api(request,env,ctx):await env.ASSETS.fetch(request));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname,status,e.status?"handled":e.message?.slice(0,180));return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status));}}};

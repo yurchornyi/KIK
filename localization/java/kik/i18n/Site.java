@@ -36,7 +36,7 @@ public final class Site {
   /** Episodes each voice covers, loaded on demand: voices differ in which seasons they have. */
   final Map<String,List<Episode>> coverage=new HashMap<String,List<Episode>>();
  }
- public static final class Stream{public LinkedHashMap<String,String> qualities=new LinkedHashMap<String,String>();public String subtitles;public List<String[]> subtitleList=new ArrayList<String[]>();}
+ public static final class Stream{public LinkedHashMap<String,String> qualities=new LinkedHashMap<String,String>();public LinkedHashMap<String,List<String>> alternatives=new LinkedHashMap<String,List<String>>();public String subtitles;public List<String[]> subtitleList=new ArrayList<String[]>();}
  public static final class Genre{public String slug,name;}
 
  // ---------- transport ----------
@@ -244,6 +244,7 @@ public final class Site {
     f.voices.add(x);}
   }
   if(f.voices.isEmpty()&&f.defaultVoice!=null){Voice x=new Voice();x.id=f.defaultVoice;x.name=f.defaultVoiceName!=null?f.defaultVoiceName:f.series?"Озвучка":"Основна доріжка";x.camrip=f.defaultCamrip;x.ads=f.defaultAds;x.director=f.defaultDirector;f.voices.add(x);}
+  f.voices.removeIf(v->v.ads);
   // Best track first: Ukrainian, then Russian, then the rest; studio quality inside each language.
   Collections.sort(f.voices,(x,y)->Integer.compare(PlaybackPolicy.order(x.name,x.camrip,x.ads),PlaybackPolicy.order(y.name,y.camrip,y.ads)));
   int side=h.indexOf("class=\"b-sidelist\"");
@@ -284,9 +285,16 @@ public final class Site {
   String body=send(filmEndpoint(f),"id="+f.id+"&translator_id="+voice+"&favs="+enc(f.favs)+"&action=get_episodes",true);
   try{JSONObject o=new JSONObject(body);if(!o.optBoolean("success"))return;parseEpisodes(o.optString("seasons")+o.optString("episodes"),f);}catch(JSONException e){throw new IOException(e);}
  }
- public static Stream stream(Film f,Voice v,String season,String episode)throws IOException{
-  try{return requestStream(f,v,season,episode);}catch(IOException e){String message=e.getMessage();if(message==null||(!message.contains("сессии")&&!message.toLowerCase(Locale.ROOT).contains("session")))throw e;
-   Log.d("KIK","Refreshing expired film session once");Film fresh=film(f.link,true);f.favs=fresh.favs;f.origin=fresh.origin;return requestStream(f,v,season,episode);}
+ public static Stream stream(Film f,Voice v,String season,String episode)throws IOException{return stream(f,v,season,episode,false);}
+ public static Stream stream(Film f,Voice v,String season,String episode,boolean rotate)throws IOException{
+  if(v==null||v.premium||v.ads)throw new IOException("No clean voice");IOException last=null;String original=f.origin==null?host():f.origin;int start=Arrays.asList(HOSTS).indexOf(original);if(start<0)start=0;
+  long deadline=System.nanoTime()+25_000_000_000L;
+  for(int attempt=0;attempt<HOSTS.length&&System.nanoTime()<deadline;attempt++){
+   String mirror=HOSTS[(start+attempt+(rotate?1:0))%HOSTS.length];
+   try{if(attempt>0||rotate){String url="https://"+mirror+"/"+Progress.norm(f.link);String html=send(url,null,false);if(html.contains("anubis_challenge"))html=solve(html,url);Film fresh=parseFilm(f.link,html);if(fresh.id==null||!fresh.id.equals(f.id))throw new IOException("Title mismatch");f.favs=fresh.favs;f.origin=mirror;}
+    return requestStream(f,v,season,episode);
+   }catch(IOException e){last=e;}
+  }throw last==null?new IOException("Mirrors unavailable"):last;
  }
  private static String filmEndpoint(Film f){return "https://"+(f.origin==null?host():f.origin)+"/ajax/get_cdn_series/?t="+System.currentTimeMillis();}
  private static Stream requestStream(Film f,Voice v,String season,String episode)throws IOException{
@@ -297,7 +305,7 @@ public final class Site {
    String url=o.optString("url","");if(url.startsWith("#h"))url=decode(url);
    Stream s=new Stream();
    Matcher m=Pattern.compile("\\[([^\\]]+)\\]([^,\\[]+)").matcher(url);
-   while(m.find()){String[] alts=m.group(2).split(" or ");String pick=alts[alts.length-1].trim();for(String a:alts)if(a.trim().endsWith(".mp4"))pick=a.trim();s.qualities.put(text(m.group(1)),pick);}
+   while(m.find()){List<String> alts=new ArrayList<String>();for(String a:m.group(2).split(" or ")){String urlPart=a.trim();if(RecoveryPolicy.media(urlPart)&&!alts.contains(urlPart))alts.add(urlPart);}alts.sort((a,b)->Boolean.compare(!a.contains(".mp4"),!b.contains(".mp4")));if(!alts.isEmpty()){String label=text(m.group(1));s.qualities.put(label,alts.get(0));s.alternatives.put(label,alts);}}if(s.qualities.isEmpty())throw new IOException("No direct media");
    // Menus list the best quality first.
    List<String> labels=new ArrayList<String>(s.qualities.keySet());Collections.sort(labels,(x,y)->Integer.compare(quality(y),quality(x)));LinkedHashMap<String,String> sorted=new LinkedHashMap<String,String>();for(String q:labels)sorted.put(q,s.qualities.get(q));s.qualities=sorted;
    Object sub=o.opt("subtitle");

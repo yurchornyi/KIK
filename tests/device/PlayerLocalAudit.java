@@ -23,6 +23,11 @@ public final class PlayerLocalAudit extends Instrumentation {
  ui(()->{call("openQualities",new Class[]{});List<Runnable> actions=(List<Runnable>)get(p,"optActions");actions.get(1).run();return null;});
  check("quality switch settles paused",await(()->ready()&&!ui(()->video().isPlaying()),15000));check("quality switch keeps position",Math.abs(pos()-paused)<2200);
  ui(()->{call("seek",new Class[]{long.class},15000L);return null;});check("paused seek settles",await(()->ready()&&!ui(()->video().isPlaying()),15000));check("paused seek position",Math.abs(pos()-paused-15000)<2200);
- ui(()->{call("toggle",new Class[]{});return null;});start=pos();SystemClock.sleep(3000);check("resume after quality and seek",ui(()->video().isPlaying())&&pos()>start+2500);passed=true;
+ ui(()->{call("toggle",new Class[]{});return null;});start=pos();SystemClock.sleep(3000);check("resume after quality and seek",ui(()->video().isPlaying())&&pos()>start+2500);long beforeRecovery=pos();
+ ui(()->{call("toggle",new Class[]{});Site.Stream broken=new Site.Stream();String bad=new File(c.getExternalFilesDir(null),"missing-recovery.mp4").toURI().toString();broken.qualities.put("1080p",bad);broken.alternatives.put("1080p",Arrays.asList(bad,clip.toURI().toString()));set(p,"stream",broken);set(p,"quality","1080p");set(p,"resumeAt",beforeRecovery);set(p,"prepared",false);set(p,"mp",null);set(p,"playWhenReady",false);((RecoveryPolicy)get(p,"recovery")).reset();call("play",new Class[]{});return null;});
+ check("failed media switches automatically to backup",await(()->ready()&&!ui(()->video().isPlaying()),18000));
+ check("automatic recovery keeps paused position",Math.abs(pos()-beforeRecovery)<2200);
+ check("automatic recovery keeps language and KIK player",ui(()->p.getClass().getName().equals("kik.i18n.KikPlayerActivity")));
+ ui(()->{call("toggle",new Class[]{});return null;});start=pos();SystemClock.sleep(3000);check("recovered stream continues playing",ui(()->video().isPlaying())&&pos()>start+2000);passed=true;
  }catch(Throwable e){error=e.toString();}finally{try{if(p!=null)ui(()->{p.finish();return null;});c.getSharedPreferences("kik_profiles",0).edit().putString("current",original).commit();if(qa!=null)ProfileStore.delete(c,qa);c.getSharedPreferences("kik_profiles",0).edit().putString("list",list).putString("current",original).commit();}catch(Exception e){passed=false;error=e.toString();}Bundle b=new Bundle();b.putString("stream","Local player passed="+passed+" checks="+checks+" "+error);finish(passed?-1:0,b);}}
 }

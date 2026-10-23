@@ -1,17 +1,18 @@
+import {mediaUrl} from './public/playback-recovery.js';
 import {socketHttp} from "./source-transport.mjs";
 import {sha256} from "@noble/hashes/sha2.js";
 import {titleKey} from "./sync.mjs";
-const HOSTS=["hdrezka.sh","hdrezka.website","rezka.ag","hdrezka.ag"],UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
+export const HOSTS=["hdrezka.sh","hdrezka.website","rezka.ag","hdrezka.ag"],UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
 const cookies=new Map(),pages=new Map();let host=HOSTS[0];
 const one=(h,re)=>h.match(re)?.[1]??null;
 export function text(h){return h==null?null:h.replace(/<br\s*\/?>/gi,"\n").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&quot;/g,'"').replace(/&#039;|&apos;/g,"'").replace(/&laquo;/g,"«").replace(/&raquo;/g,"»").replace(/&mdash;/g,"—").replace(/&ndash;/g,"–").replace(/&amp;/g,"&").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n)).replace(/[ \t\r]+/g," ").trim();}
-async function send(url,form=null){
+async function send(url,form=null,timeout=15000){
  for(let hop=0;hop<6;hop++){
   const u=new URL(url);if(!HOSTS.includes(u.hostname))throw Error("Untrusted catalogue redirect: "+u.hostname);let jar=cookies.get(u.hostname);if(!jar){jar=new Map();cookies.set(u.hostname,jar);}
   const headers={"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Encoding":"gzip","User-Agent":UA,"Accept-Language":"uk-UA,uk;q=0.9,ru;q=0.8","Cookie":[...jar].map(([k,v])=>`${k}=${v}`).join("; ")};
   if(!headers.Cookie)delete headers.Cookie;
   if(form){headers["Content-Type"]="application/x-www-form-urlencoded; charset=UTF-8";headers["X-Requested-With"]="XMLHttpRequest";headers.Referer=u.origin+"/";headers.Origin=u.origin;}
-  const r=await socketHttp(url,{method:form?"POST":"GET",headers,body:form,redirect:"manual",signal:AbortSignal.timeout(15000)});
+  const r=await socketHttp(url,{method:form?"POST":"GET",headers,body:form,redirect:"manual",signal:AbortSignal.timeout(timeout)});
   for(const cookie of r.headers.getSetCookie()){const pair=cookie.split(";",1)[0],at=pair.indexOf("=");if(at>0)jar.set(pair.slice(0,at),pair.slice(at+1));}
   if(r.status>=300&&r.status<400){url=new URL(r.headers.get("Location"),url).href;form=null;await r.body?.cancel();continue;}
   const content=await r.text();if(!r.ok&&!content.includes("anubis_challenge"))throw Error("Catalogue "+u.hostname+u.pathname+" HTTP "+r.status+" server="+r.headers.get("server")+" "+(one(content,/<title>(.*?)<\/title>/is)||content.slice(0,120)));if(content.length>3*1024*1024)throw Error("Catalogue limit");return {html:content,origin:u.hostname};
@@ -27,8 +28,8 @@ async function solve(result,url){
  const q=new URLSearchParams({id:c.id,response:digest,nonce:String(nonce),redir:url,elapsedTime:String(Date.now()-start+500)});
  return send(`https://${result.origin}/.within.website/x/cmd/anubis/api/pass-challenge?${q}`);
 }
-async function page(path,ttl=120000){const cached=pages.get(path);if(cached&&Date.now()-cached.at<ttl)return cached.value;
- let last;for(const h of [host,...HOSTS.filter(x=>x!==host)])try{const url="https://"+h+path;let r=await send(url);if(r.html.includes("anubis_challenge"))r=await solve(r,url);if(r.html.includes("anubis_challenge"))throw Error("Каталог не пройшов перевірку");host=r.origin;if(pages.size>80)pages.delete(pages.keys().next().value);pages.set(path,{at:Date.now(),value:r});return r;}catch(e){console.warn("KIK mirror",h,e.message);last=e;}
+async function page(path,ttl=120000,options={}){const cached=pages.get(path);if(!options.fresh&&cached&&Date.now()-cached.at<ttl)return cached.value;
+ let last;for(const h of (options.only?[options.host]:[options.host||host,...HOSTS.filter(x=>x!==(options.host||host))]))try{const url="https://"+h+path;let r=await send(url,null,options.timeout||15000);if(r.html.includes("anubis_challenge"))r=await solve(r,url);if(r.html.includes("anubis_challenge"))throw Error("Каталог не пройшов перевірку");host=r.origin;if(pages.size>80)pages.delete(pages.keys().next().value);pages.set(path,{at:Date.now(),value:r});return r;}catch(e){console.warn("KIK mirror",h,e.message);last=e;}
  throw last;
 }
 export function parseCards(html){const out=[];for(const chunk of html.split('<div class="b-content__inline_item"').slice(1)){const link=one(chunk,/^[^>]*data-url="([^"]+)"/);if(!link)continue;try{titleKey(link);}catch{continue;}const clean=chunk.replace(/<!--.*?-->/gs,"");let title=text(one(clean,/b-content__inline_item-link">\s*<a[^>]*>(.*?)<\/a>/s));if(title)out.push({link,title,poster:one(clean,/<img src="([^"]+)"/),info:text(one(clean,/b-content__inline_item-link">\s*<a[^>]*>.*?<\/a>\s*<div[^>]*>(.*?)<\/div>/s)),type:text(one(clean,/<i class="entity">(.*?)<\/i>/s))});}return out;}
@@ -60,9 +61,9 @@ export function parseFilm(link,h){const info=one(h,/<table class="b-post__info">
  const side=h.indexOf('class="b-sidelist"');f.related=side<0?[]:parseCards(h.slice(side).replace(/https?:\/\/[^/"]+\/(films|series|cartoons|animation|documentary)\//g,"https://hdrezka.sh/$1/")).filter(c=>titleKey(c.link)!==titleKey(link)).slice(0,12);
  f.episodes=parseEpisodes(h);return f;
 }
-export async function film(link){const key=titleKey(link),r=await page("/"+key),f=parseFilm("https://hdrezka.sh/"+key,r.html);f.imdb=one(r.html,/imdb\.com\/title\/(tt\d+)/);f.origin=r.origin;if(!f.id||!f.title)throw Error("Не вдалося прочитати сторінку фільму");return f;}
+export async function film(link,options={}){const key=titleKey(link),r=await page("/"+key,120000,options),f=parseFilm("https://hdrezka.sh/"+key,r.html);f.imdb=one(r.html,/imdb\.com\/title\/(tt\d+)/);f.origin=r.origin;if(!f.id||!f.title)throw Error("Не вдалося прочитати сторінку фільму");return f;}
 export async function episodes(f,voice){if(!f.voices.some(v=>v.id===voice&&!v.premium))throw Error("Озвучення недоступне");const r=await send(`https://${f.origin}/ajax/get_cdn_series/?t=${Date.now()}`,new URLSearchParams({id:f.id,translator_id:voice,favs:f.favs||"",action:"get_episodes"}).toString()),o=JSON.parse(r.html);if(!o.success)throw Error("Список серій недоступний");return parseEpisodes((o.seasons||"")+(o.episodes||""));}
 export function decode(value){if(!value.startsWith("#h"))return value;let s=value.slice(2).replaceAll("//_//","");const combos=n=>n?[...combos(n-1)].flatMap(p=>["@","#","!","^","$"].map(x=>p+x)):[""];for(const n of [2,3])for(const p of combos(n))s=s.split(Buffer.from(p).toString("base64")).join("");try{return Buffer.from(s,"base64").toString("utf8");}catch{return s;}}
 export async function stream(f,voice,season,episode){const v=f.voices.find(v=>v.id===voice&&!v.premium);if(!v)throw Error("Озвучення недоступне");if(f.series&&(!/^\d{1,4}$/.test(season)||!/^\d{1,5}$/.test(episode)))throw Error("Виберіть серію");
- const body=new URLSearchParams({id:f.id,translator_id:v.id,favs:f.favs||"",...(f.series?{season,episode,action:"get_stream"}:{is_camrip:v.camrip?"1":"0",is_ads:v.ads?"1":"0",is_director:v.director?"1":"0",action:"get_movie"})});const r=await send(`https://${f.origin}/ajax/get_cdn_series/?t=${Date.now()}`,body.toString()),o=JSON.parse(r.html);if(!o.success)throw Error(text(o.message)||"Відео недоступне");const decoded=decode(o.url||"");const qualities=[];for(const m of decoded.matchAll(/\[([^\]]+)\]([^,\[]+)/g)){const alternatives=m[2].split(" or ").map(x=>x.trim());const url=alternatives.find(x=>x.endsWith(".mp4"))||alternatives.at(-1);if(/^https:\/\//.test(url))qualities.push({label:text(m[1]),url});}if(!qualities.length)throw Error("Потік не знайдено");qualities.sort((a,b)=>qualityOrder(b.label)-qualityOrder(a.label));return {qualities};
+ const body=new URLSearchParams({id:f.id,translator_id:v.id,favs:f.favs||"",...(f.series?{season,episode,action:"get_stream"}:{is_camrip:v.camrip?"1":"0",is_ads:v.ads?"1":"0",is_director:v.director?"1":"0",action:"get_movie"})});const r=await send(`https://${f.origin}/ajax/get_cdn_series/?t=${Date.now()}`,body.toString(),6000),o=JSON.parse(r.html);if(!o.success)throw Error(text(o.message)||"Відео недоступне");const decoded=decode(o.url||"");const qualities=[];for(const m of decoded.matchAll(/\[([^\]]+)\]([^,\[]+)/g)){const alternatives=[...new Set(m[2].split(" or ").map(x=>mediaUrl(x.trim())).filter(Boolean))].sort((a,b)=>Number(b.includes(".mp4"))-Number(a.includes(".mp4")));const url=alternatives[0];if(url)qualities.push({label:text(m[1]),url,alternatives});}if(!qualities.length)throw Error("Потік не знайдено");qualities.sort((a,b)=>qualityOrder(b.label)-qualityOrder(a.label));return {qualities};
 }
