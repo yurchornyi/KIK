@@ -14,15 +14,15 @@ import org.json.*;
 public final class BrowseActivity extends Activity {
  public static final String MODE="mode",CATEGORY="category",TITLE="title",QUERY="query",GENRE="genre";
  private int columns=6;
- static final class G{String link,title,sub,poster,badge,year,genre,sourceTitle;float progress;}
+ static final class G{String link,title,sub,poster,badge,year,genre,sourceTitle,studio;float progress;}
 
- private String mode,category,genre,filter="popular";private int page=0;private boolean loading,end;
+ private String mode,category,genre,studio="",filter="popular";private int page=0;private boolean loading,end;
  /** The last page failed: the cards stay, the same page is asked again by the button (not by scrolling). */
  private boolean failed;
  /** Titles already on screen (catalogue and search): a repeated source page adds nothing and ends the list. */
  private final Set<String> seen=new HashSet<String>();
 
- private TextView heading,categoryButton,genreButton,orderButton,summary;private Button loadMore;
+ private TextView heading,categoryButton,genreButton,orderButton,summary,studioButton,studioChip;private Button loadMore;
  /** Genre list being fetched for this category, and a counter that makes a late list for another category inert. */
  private int genreGeneration;
  static final String[][] SECTIONS={{"films","Фільми"},{"series","Серіали"},{"cartoons","Мультфільми"},{"animation","Аніме"}};
@@ -85,6 +85,8 @@ public final class BrowseActivity extends Activity {
    orderButton=dropButton(orderName(filter));orderButton.setOnClickListener(v->orderMenu(v));
    LinearLayout.LayoutParams gl=new LinearLayout.LayoutParams(-2,dp(44));gl.leftMargin=dp(10);head.addView(genreButton,gl);
    LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(10);head.addView(orderButton,ol);
+   studioButton=Ui.chip(this,"");studioButton.setContentDescription("Студія / платформа");studioButton.setPadding(dp(14),0,dp(14),0);Studios.FilterIcon filterIcon=new Studios.FilterIcon(dp(20));filterIcon.setBounds(0,0,dp(20),dp(20));studioButton.setCompoundDrawables(filterIcon,null,null,null);LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(dp(48),dp(44));sl.leftMargin=dp(10);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
+   studioChip=Ui.chip(this,"");studioChip.setVisibility(View.GONE);head.addView(studioChip,Ui.wrap(this,10));studioChip.setOnClickListener(v->{studio="";paintStudio();reload();studioButton.requestFocus();});paintStudio();
    head.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
   }
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(dp(8),dp(16),0,dp(6));content.addView(status);
@@ -119,6 +121,12 @@ public final class BrowseActivity extends Activity {
  }
  private TextView option(String label,boolean chosen){return Ui.menuItem(this,label,chosen);}
  private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(dp(8),dp(8),dp(8),dp(8));return l;}
+ private void paintStudio(){if(!studio.isEmpty()&&"watching".equals(filter))filter="popular";orderButton.setText(orderName(filter)+"  ▾");studioChip.setText(Studios.name(studio)+" ×");studioChip.setVisibility(studio.isEmpty()?View.GONE:View.VISIBLE);studioChip.setContentDescription("Скинути фільтр "+Studios.name(studio));studioButton.setContentDescription("Студія / платформа"+(studio.isEmpty()?"":": "+Studios.name(studio)));Ui.select(studioButton,!studio.isEmpty());}
+ private void studioMenu(View anchor){
+  LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
+  for(final String[] x:Studios.ALL){TextView o=option(x[1],x[0].equals(studio));list.addView(o,new LinearLayout.LayoutParams(dp(220),-2));if(x[0].equals(studio))chosen=o;o.setOnClickListener(v->{popup.dismiss();if(!studio.equals(x[0])){studio=x[0];paintStudio();reload();}studioButton.requestFocus();});}
+  if(chosen!=null)chosen.requestFocus();
+ }
  private void categoryMenu(View anchor){
   LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
   for(final String[] x:SECTIONS){TextView o=option(x[1],x[0].equals(category));list.addView(o,new LinearLayout.LayoutParams(dp(200),-2));if(x[0].equals(category))chosen=o;o.setOnClickListener(v->{popup.dismiss();selectCategory(x[0],x[1]);});}
@@ -126,7 +134,7 @@ public final class BrowseActivity extends Activity {
  }
  private void orderMenu(View anchor){
   LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
-  for(final String[] x:ORDERS){TextView o=option(x[1],x[0].equals(filter));list.addView(o,new LinearLayout.LayoutParams(dp(220),-2));if(x[0].equals(filter))chosen=o;
+  for(final String[] x:ORDERS){if(!studio.isEmpty()&&"watching".equals(x[0]))continue;TextView o=option(x[1],x[0].equals(filter));list.addView(o,new LinearLayout.LayoutParams(dp(220),-2));if(x[0].equals(filter))chosen=o;
    o.setOnClickListener(v->{popup.dismiss();if(filter.equals(x[0]))return;filter=x[0];orderButton.setText(x[1]+"  ▾");reload();});}
   if(chosen!=null)chosen.requestFocus();
  }
@@ -202,16 +210,16 @@ public final class BrowseActivity extends Activity {
   if(page==0){status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);}
   final int gen=generation;final int next=page+1;final long started=android.os.SystemClock.elapsedRealtime();
   // What the request is for, captured now: a chip pressed meanwhile reloads and makes this answer obsolete anyway.
-  final String requestedCategory=category,requestedGenre=genre,requestedFilter=filter;
-  final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
+  final String requestedCategory=category,requestedGenre=genre,requestedFilter=filter,requestedStudio=studio;
+  final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};final boolean[] studioMore={false};
   Ui.bg(()->{
    List<G> items=new ArrayList<G>();String error=null;
    try{
     // A page can be fully hidden by the country filter: keep paging while the source still has titles.
-    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;tries<5&&items.isEmpty();tries++){
+    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;tries<(requestedStudio.isEmpty()?5:2)&&items.isEmpty();tries++){
      if("search".equals(mode)&&(q==null||q.length()<2))break;reached[0]=next+tries;
-     for(Site.Card c:"catalog".equals(mode)?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.search(q,reached[0]))items.add(of(c));
-     if(Site.lastRaw()==0)break;}
+     for(Site.Card c:"catalog".equals(mode)?(requestedStudio.isEmpty()?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.studioList(requestedCategory,requestedGenre,requestedFilter,requestedStudio,reached[0])):Site.search(q,reached[0]))items.add(of(c));
+     studioMore[0]=Site.lastRaw()>0;if(Site.lastRaw()==0)break;}
     else if(next==1&&"history".equals(mode))for(Progress.Entry e:Progress.recent(this)){G g=new G();g.link=e.link;g.title=e.title;g.poster=e.poster;
       g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"переглянуто":"зупинились на "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}
     else if(next==1&&"later".equals(mode)){JSONArray a=Progress.later(this);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;G g=new G();g.link=o.optString("link");g.title=o.optString("title");g.poster=o.optString("poster",null);g.sub=Ui.join(o.optString("year",""),o.optString("genre",""));items.add(g);}}
@@ -228,9 +236,9 @@ public final class BrowseActivity extends Activity {
     failed=false;page=reached[0];status.setFocusable(false);
     List<G> fresh=got;if(paged()){fresh=new ArrayList<G>();for(G g:got)if(seen.add(Progress.norm(g.link)))fresh.add(g);}
     // Nothing new: an empty page, or the source repeating a page it has already given.
-    if(fresh.isEmpty()){end=true;if(cards.isEmpty()){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}else status.setVisibility(View.GONE);
+    if(fresh.isEmpty()){end=requestedStudio.isEmpty()||!studioMore[0]||reached[0]>=4000;if(cards.isEmpty()){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":!end?"Натисніть «Показати ще», щоб знайти відповідні назви":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}else status.setVisibility(View.GONE);
      updateMore();if(focusMore)focusLast();return;}
-    if(!paged()||reached[0]>=100)end=true;
+    if(!paged()||reached[0]>=(requestedStudio.isEmpty()?100:4000)||!requestedStudio.isEmpty()&&!studioMore[0])end=true;
     status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(fresh);updateMore();android.util.Log.d("KIK.Load","Browse "+mode+" page "+next+" "+(android.os.SystemClock.elapsedRealtime()-started)+"ms");
     if(firstCard!=null&&(focusMore||first&&(!"search".equals(mode)||handedOver)))firstCard.requestFocus();
    });
@@ -242,12 +250,13 @@ public final class BrowseActivity extends Activity {
  }
  /** Focus on the last poster when the button that had it disappears. */
  private void focusLast(){if(openRow!=null&&openRow.getChildCount()>0){View v=openRow.getChildAt(openRow.getChildCount()-1);if(v instanceof ViewGroup)((ViewGroup)v).getChildAt(0).requestFocus();}}
- private G of(Site.Card c){G g=new G();g.link=c.link;g.title=c.title;g.poster=c.poster;g.year=c.year();g.genre=c.genre();g.sub=Ui.join(g.year,g.genre);return g;}
+ private G of(Site.Card c){G g=new G();g.link=c.link;g.title=c.title;g.poster=c.poster;g.year=c.year();g.genre=c.genre();g.studio=c.studio;g.sub=Ui.join(g.year,g.genre);return g;}
  private View add(List<G> items){
   View first=null;
   for(final G g:items){
    if(openRow==null||inRow>=columns){openRow=new LinearLayout(this);openRow.setOrientation(0);openRow.setClipChildren(false);openRow.setClipToPadding(false);grid.addView(openRow);inRow=0;}
    View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->{if(query!=null)remember(query.getText().toString());FilmActivity.open(this,g.link,g.title,g.poster,g.year);});
+   Studios.watch((FrameLayout)((ViewGroup)card).getChildAt(0),g.link,g.sourceTitle==null?g.title:g.sourceTitle,g.year,g.studio);
    // History: hold OK on a poster to remove the title from history.
    if("history".equals(mode)){View target=((ViewGroup)card).getChildAt(0);target.setOnLongClickListener(v->{Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+g.title+"»").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,g.link);Ui.toast(this,"Прибрано з історії");reload();}).show();return true;});}
    cards.put(g,card);openRow.addView(card);inRow++;if(first==null)first=((ViewGroup)card).getChildAt(0);

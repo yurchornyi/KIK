@@ -12,9 +12,11 @@ import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
 import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
+import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {synopsis} from "./synopsis.mjs";
 import {adBreaks,adScanner} from "./ad-breaks.mjs";
 const artworkService=createArtworkService();
+const studioCatalogue=createStudioCatalogue({search:params=>catalogue(params,{bounded:true}),genres:category=>catalogueGenres(category,{bounded:true}),film:link=>film(link,{bounded:true})});
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 /**
@@ -116,8 +118,11 @@ async function api(request,env,ctx){
   return edgeCached(ctx,key,3600,async()=>({items:await localizedGenres(db,await catalogueGenres(category))}));
  }
  if(path==="/api/catalogue"){
-  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5"),params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
-  return edgeCached(ctx,key,180,async()=>({items:await localizedCards(db,await (params.source==="uaserials"?uaSearch(params):catalogue(params)))}));
+  const params=Object.fromEntries(url.searchParams);
+  if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
+  if(params.studio&&!env.TMDB_READ_TOKEN)fail('Фільтр студій тимчасово недоступний. Спробуйте пізніше.',503);
+  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5");
+  return edgeCached(ctx,key,180,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
  }
  if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),180,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
