@@ -62,6 +62,7 @@ public final class FilmActivity extends Activity {
 
  private int loadGeneration;
  private void load(){
+  final long started=android.os.SystemClock.elapsedRealtime();
   final int generation=++loadGeneration;
   Ui.bg(()->{
    try{
@@ -70,7 +71,7 @@ public final class FilmActivity extends Activity {
     // Title and description translate side by side, so the page waits once, not twice.
     final java.util.concurrent.FutureTask<String> about=new java.util.concurrent.FutureTask<String>(()->DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT));new Thread(about,"kik-film-text").start();
     final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=about.get();
-    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);});
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);android.util.Log.d("KIK.Load","Film page "+(android.os.SystemClock.elapsedRealtime()-started)+"ms");});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
     // The page lists one voice's episodes; show every season the leading voices have.

@@ -100,7 +100,10 @@ public final class BrowseActivity extends Activity {
    String given=getIntent().getStringExtra(QUERY);if(given!=null&&given.trim().length()>=2){handedOver=true;getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);query.setText(given.trim());query.setSelection(query.length());query.clearFocus();}}
   else reload();
  }
- @Override protected void onResume(){super.onResume();if(("history".equals(mode)||"later".equals(mode))&&page>0)reload();}
+ // History and My list change only after watching or editing: rebuild them only then, so coming back from a title does not jump.
+ @Override protected void onResume(){super.onResume();if(("history".equals(mode)||"later".equals(mode))&&page>0&&!listSignature().equals(shownList))reload();}
+ private String shownList="";
+ private String listSignature(){if("later".equals(mode))return String.valueOf(Progress.later(this));StringBuilder b=new StringBuilder();for(Progress.Entry e:Progress.recent(this))b.append(e.link).append(e.season).append(e.episode).append(e.pos/1000).append(e.finished()).append('\n');return b.toString();}
 
  private void paintFilters(){for(TextView c:filterChips)Ui.select(c,filter.equals(c.getTag()));}
  private void paintCategories(){for(TextView c:categoryChips)Ui.select(c,c.getTag().equals(category));}
@@ -155,7 +158,7 @@ public final class BrowseActivity extends Activity {
   });
  }
  private boolean paged(){return "catalog".equals(mode)||"search".equals(mode);}
- private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
+ private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if("history".equals(mode)||"later".equals(mode))shownList=listSignature();if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
  /** The count and the next-page button under the posters. */
  private void updateMore(){
   if(loadMore==null)return;boolean show=paged()&&page>0&&(!end||failed)&&!seen.isEmpty();
@@ -167,7 +170,7 @@ public final class BrowseActivity extends Activity {
   if(loading||end)return;
   final boolean focusMore=loadMore!=null&&loadMore.hasFocus();loading=true;updateMore();
   if(page==0){status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);}
-  final int gen=generation;final int next=page+1;
+  final int gen=generation;final int next=page+1;final long started=android.os.SystemClock.elapsedRealtime();
   // What the request is for, captured now: a chip pressed meanwhile reloads and makes this answer obsolete anyway.
   final String requestedCategory=category,requestedGenre=genre,requestedFilter=filter;
   final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
@@ -198,7 +201,7 @@ public final class BrowseActivity extends Activity {
     if(fresh.isEmpty()){end=true;if(cards.isEmpty()){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}else status.setVisibility(View.GONE);
      updateMore();if(focusMore)focusLast();return;}
     if(!paged()||reached[0]>=100)end=true;
-    status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(fresh);updateMore();
+    status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(fresh);updateMore();android.util.Log.d("KIK.Load","Browse "+mode+" page "+next+" "+(android.os.SystemClock.elapsedRealtime()-started)+"ms");
     if(firstCard!=null&&(focusMore||first&&(!"search".equals(mode)||handedOver)))firstCard.requestFocus();
    });
    if(err==null&&!got.isEmpty()){

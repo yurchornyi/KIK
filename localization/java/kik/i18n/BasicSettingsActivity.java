@@ -70,6 +70,7 @@ public final class BasicSettingsActivity extends Activity {
   LinearLayout profile=card(right,"Профіль і пристрої",null);
   LinearLayout identity=new LinearLayout(this);identity.setGravity(Gravity.CENTER_VERTICAL);ImageView avatar=Avatars.view(this,ProfileStore.avatarOf(this,ProfileStore.current(this)),40);avatar.setFocusable(false);identity.addView(avatar,new LinearLayout.LayoutParams(dp(40),dp(40)));
   TextView name=Ui.bold(this,ProfileStore.nameOf(this,ProfileStore.current(this)),17);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);LinearLayout.LayoutParams nameLp=new LinearLayout.LayoutParams(0,-2,1);nameLp.leftMargin=dp(12);identity.addView(name,nameLp);profile.addView(identity);Ui.space(profile,14);
+  action(profile,"Змінити рекомендації",()->TasteActivity.open(this,false));
   action(profile,"Керувати профілями",()->startActivity(new Intent(this,ProfilesActivity.class)));
   action(profile,"Синхронізація профілю",()->startActivity(new Intent(this,SyncActivity.class)));
 
