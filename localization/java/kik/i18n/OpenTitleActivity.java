@@ -24,11 +24,20 @@ import java.util.Locale;
 public final class OpenTitleActivity extends Activity {
 
  public static final String ACTION="kik.intent.action.OPEN_TITLE",ORIGINAL="kik.original",YEAR="kik.year";
+ /** From the home-screen channels: the exact title, its profile, and whether to start or resume playback. */
+ public static final String LINK="kik.link",POSTER="kik.poster",PROFILE="kik.profile",PLAY="kik.play",SEASON="kik.season",EPISODE="kik.episode";
  private volatile boolean gone;
 
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);
   Intent in=getIntent();
+  String link=clean(in.getStringExtra(LINK));
+  if(RecoveryPolicy.title(link)){
+   ProfileStore.use(this,in.getStringExtra(PROFILE));
+   startActivity(new Intent(this,FilmActivity.class).putExtra("link",link).putExtra("title",in.getStringExtra(SearchManager.QUERY)).putExtra("poster",in.getStringExtra(POSTER))
+    .putExtra("play",in.getBooleanExtra(PLAY,false)).putExtra("season",in.getStringExtra(SEASON)).putExtra("episode",in.getStringExtra(EPISODE)));
+   overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);finish();return;
+  }
   final String title=clean(in.getStringExtra(SearchManager.QUERY));
   final String original=clean(in.getStringExtra(ORIGINAL));
   final String year=clean(in.getStringExtra(YEAR));

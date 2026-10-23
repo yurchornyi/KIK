@@ -7,7 +7,7 @@ SDK="${KIK_ANDROID_SDK:-/opt/homebrew/share/android-commandlinetools}"
 BT="$SDK/build-tools/34.0.0"
 DEVICE="${KIK_DEVICE:-192.168.1.127:5555}"
 mkdir -p work/audit-classes work/audit-dex outputs/design-audit
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -source 8 -target 8 -cp "$SDK/platforms/android-34/android.jar:work/helper-classes" -d work/audit-classes tests/device/*.java
+"$JAVA_HOME/bin/javac" -encoding UTF-8 -source 8 -target 8 -cp "$SDK/platforms/android-34/android.jar:work/helper-classes:$(scripts/media3.sh)" -d work/audit-classes tests/device/*.java
 "$BT/d8" --min-api 26 --output work/audit-dex work/audit-classes/kik/qa/*.class
 "$BT/aapt2" link -I "$SDK/platforms/android-34/android.jar" --manifest tests/device/AndroidManifest.xml -o work/audit-base.apk
 python3 - <<'PY'

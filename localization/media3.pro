@@ -1,0 +1,20 @@
+-keep class kik.i18n.** { *; }
+-repackageclasses kik.m3
+-allowaccessmodification
+-dontwarn javax.annotation.**
+-dontwarn org.checkerframework.**
+-dontwarn com.google.errorprone.**
+-dontwarn com.google.j2objc.**
+-dontwarn kotlin.**
+-dontwarn org.jspecify.**
+-dontwarn afu.org.checkerframework.**
+-dontwarn androidx.annotation.**
+-dontwarn com.google.common.util.concurrent.internal.**
+-keepattributes SourceFile,LineNumberTable
+-dontwarn android.media.LoudnessCodecController**
+-dontwarn sun.misc.Unsafe
+-dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
+-dontwarn javax.lang.model.element.Modifier
+-dontwarn java.lang.SafeVarargs
+-dontwarn java.lang.ClassValue
+-keepclassmembernames,allowobfuscation,allowshrinking class androidx.core.os.UserHandleCompat$Api*Impl { *; }

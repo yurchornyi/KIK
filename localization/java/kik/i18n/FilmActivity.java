@@ -91,7 +91,7 @@ public final class FilmActivity extends Activity {
   pickVoice();buildVoices();
   if(f.series){season=null;Progress.Entry e=Progress.get(this,link);if(e!=null&&e.season!=null&&f.seasons.contains(e.season))season=e.season;if(season==null&&!f.seasons.isEmpty())season=f.seasons.get(0);showEpisodes();}
   watch.setEnabled(voice!=null&&f.sourceUrl==null);paintWatch();if(f.sourceUrl!=null)watch.setText("Перегляд у KIK недоступний");if(voice!=null&&later.hasFocus())watch.requestFocus();
-  if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(null,null);}
+  if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(f.series?getIntent().getStringExtra("season"):null,f.series?getIntent().getStringExtra("episode"):null);}
   if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
  }
  private void showText(Site.Film f,String description){

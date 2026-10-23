@@ -1,4 +1,5 @@
 package kik.i18n;
+import android.util.Log;
 import android.content.*;import android.os.*;import android.util.AtomicFile;import java.io.*;import java.net.*;import java.util.*;import java.util.concurrent.*;import java.util.concurrent.atomic.AtomicBoolean;import org.json.*;
 
 /** Per-profile cloud binding. Credentials stay in private preferences; only watch data crosses devices. */
@@ -20,6 +21,11 @@ public final class CloudSync {
   if(ProfileStore.nameOf(c,profile)==null||!token.matches("[a-f0-9]{64}")||remote.optString("id").isEmpty())throw new IOException("Invalid cloud binding");
   if(!remote.getString("id").equals(prefs(c).getString("remote_"+profile,"")))stateFile(c,profile).delete();
   if(!prefs(c).edit().putString("token_"+profile,token).putString("remote_"+profile,remote.getString("id")).putString("name_"+profile,remote.getString("name")).remove("offset_"+profile).commit())throw new IOException("Cloud preferences");status="Підключено • синхронізація…";now(c);
+ }
+ /** Asks the account for its ranking of these candidates; the server applies AI only where the administrator enabled it. */
+ static JSONObject recommend(Context context,String profile,JSONArray items){
+  Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,""),remote=prefs(c).getString("remote_"+profile,"");if(token.isEmpty()||remote.isEmpty())return null;
+  try{return request("/api/recommendations",new JSONObject().put("profile_id",remote).put("items",items),token);}catch(Exception e){Log.w("KIK","Cloud recommendations",e);return null;}
  }
  public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
  public static JSONObject request(String path,JSONObject data,String token)throws Exception{

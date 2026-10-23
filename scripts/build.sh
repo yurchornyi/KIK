@@ -8,9 +8,13 @@ VERSION="$(python3 -c 'import json; print(json.load(open("localization/release.j
 APK="outputs/KIK-$VERSION.apk"
 python3 scripts/localize.py
 python3 scripts/simplify.py
-mkdir -p work/helper-classes work/helper-dex
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -source 8 -target 8 -cp "$SDK/platforms/android-34/android.jar" -d work/helper-classes localization/java/kik/i18n/*.java
-"$BT/d8" --min-api 24 --output work/helper-dex work/helper-classes/kik/i18n/*.class
+MEDIA3="$(scripts/media3.sh)"
+rm -rf work/helper-classes work/helper-dex;mkdir -p work/helper-classes work/helper-dex
+"$JAVA_HOME/bin/javac" -encoding UTF-8 -source 8 -target 8 -nowarn -cp "$SDK/platforms/android-34/android.jar:$MEDIA3" -d work/helper-classes localization/java/kik/i18n/*.java
+(cd work/helper-classes && "$JAVA_HOME/bin/jar" cf ../helper-classes.jar kik)
+# R8 keeps KIK's helpers by name and moves ExoPlayer into kik.m3, apart from the app's own obfuscated copy.
+"$JAVA_HOME/bin/java" -cp "$BT/lib/d8.jar" com.android.tools.r8.R8 --release --min-api 24 --output work/helper-dex --lib "$SDK/platforms/android-34/android.jar" --pg-conf localization/media3.pro work/helper-classes.jar ${MEDIA3//:/ } 2>&1 | grep -v "MANIFEST.MF" || true
+test -f work/helper-dex/classes.dex
 python3 - <<'PY'
 import zipfile
 with zipfile.ZipFile('RezkaTV-1.2.0.apk') as src, zipfile.ZipFile('work/helper.apk', 'w') as dst:
@@ -18,7 +22,8 @@ with zipfile.ZipFile('RezkaTV-1.2.0.apk') as src, zipfile.ZipFile('work/helper.a
     dst.write('work/helper-dex/classes.dex', 'classes.dex')
 PY
 "$JAVA_HOME/bin/java" -jar work/tools/apktool.jar d -f -r work/helper.apk -o work/helper-decoded
-cp work/helper-decoded/smali/kik/i18n/*.smali localized/smali/kik/i18n/
+# Helpers and the player live in their own dex: the app's classes.dex has no room for them.
+rm -rf localized/smali_classes2;cp -R work/helper-decoded/smali localized/smali_classes2
 "$JAVA_HOME/bin/java" -jar work/tools/apktool.jar b localized -o work/RezkaTV-UA-unsigned.apk
 "$BT/zipalign" -f -p 4 work/RezkaTV-UA-unsigned.apk work/RezkaTV-UA-aligned.apk
 mkdir -p work/signing outputs

@@ -305,13 +305,32 @@ public final class Site {
    String url=o.optString("url","");if(url.startsWith("#h"))url=decode(url);
    Stream s=new Stream();
    Matcher m=Pattern.compile("\\[([^\\]]+)\\]([^,\\[]+)").matcher(url);
-   while(m.find()){List<String> alts=new ArrayList<String>();for(String a:m.group(2).split(" or ")){String urlPart=a.trim();if(RecoveryPolicy.media(urlPart)&&!alts.contains(urlPart))alts.add(urlPart);}alts.sort((a,b)->Boolean.compare(!a.contains(".mp4"),!b.contains(".mp4")));if(!alts.isEmpty()){String label=text(m.group(1));s.qualities.put(label,alts.get(0));s.alternatives.put(label,alts);}}if(s.qualities.isEmpty())throw new IOException("No direct media");
+   while(m.find()){List<String> alts=new ArrayList<String>();for(String a:m.group(2).split(" or ")){String urlPart=a.trim();if(RecoveryPolicy.media(urlPart)&&!alts.contains(urlPart))alts.add(urlPart);}// HLS first: 6-second segments start and resume at once, while the MP4 copy must load a multi-megabyte index
+   // before the first frame. The MP4 stays as the backup address.
+   alts.sort((a,b)->Boolean.compare(!KikPlayerActivity.hls(a),!KikPlayerActivity.hls(b)));if(!alts.isEmpty()){String label=text(m.group(1));s.qualities.put(label,alts.get(0));s.alternatives.put(label,alts);}}if(s.qualities.isEmpty())throw new IOException("No direct media");
    // Menus list the best quality first.
    List<String> labels=new ArrayList<String>(s.qualities.keySet());Collections.sort(labels,(x,y)->Integer.compare(quality(y),quality(x)));LinkedHashMap<String,String> sorted=new LinkedHashMap<String,String>();for(String q:labels)sorted.put(q,s.qualities.get(q));s.qualities=sorted;
    Object sub=o.opt("subtitle");
    if(sub instanceof String&&!((String)sub).isEmpty()){Matcher t=Pattern.compile("\\[([^\\]]+)\\](https?://[^,\\[]+)").matcher((String)sub);while(t.find())s.subtitleList.add(new String[]{t.group(1),t.group(2).trim()});}
    return s;
   }catch(JSONException e){throw new IOException(e);}
+ }
+ /**
+  * The CDN answers every request with a redirect to the node that holds the file. Following it once up front lets
+  * the player fetch each HLS segment straight from that node instead of paying the extra round trip every 6 s.
+  * Any failure keeps the original address.
+  */
+ public static String resolve(String url){
+  String at=url;
+  for(int hop=0;hop<3;hop++){
+   HttpURLConnection c=null;
+   try{c=(HttpURLConnection)new URL(at).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(5000);c.setReadTimeout(5000);c.setRequestProperty("User-Agent",UA);c.setRequestProperty("Range","bytes=0-0");
+    int code=c.getResponseCode();String next=c.getHeaderField("Location");
+    if(code<300||code>399||next==null)return at;
+    String target=new URL(new URL(at),next).toString();if(!RecoveryPolicy.media(target))return url;at=target;
+   }catch(Exception e){return at;}finally{if(c!=null)c.disconnect();}
+  }
+  return at;
  }
  static int quality(String q){
   String s=q==null?"":q.toLowerCase(Locale.ROOT);Matcher m=Pattern.compile("(\\d+)").matcher(s);int n=m.find()?Integer.parseInt(m.group(1))*2:0;

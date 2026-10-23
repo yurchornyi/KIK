@@ -57,7 +57,45 @@ final class Recommendations {
   Map<String,HomeActivity.Item> items=items(c,s,catalogue);List<RecommendationRanker.Candidate> pool=pool(c,s,items);
   HomeActivity.Row row=new HomeActivity.Row(s.signals.stream().anyMatch(x->x.weight>0)?"Рекомендовано для вас":"Відкрийте для себе");
   row.personalized=true;row.recommendationId="main";
-  for(RecommendationRanker.Candidate x:RecommendationRanker.rank(s.profile,s.signals,s.excluded,pool,15))row.items.add(items.get(RecommendationRanker.key(x.link)));return row;
+  List<RecommendationRanker.Candidate> ranked=RecommendationRanker.rank(s.profile,s.signals,s.excluded,pool,AI_POOL);
+  List<String> ai=aiOrder(c,s);List<String> local=new ArrayList<String>();Map<String,HomeActivity.Item> byPath=new HashMap<String,HomeActivity.Item>();
+  for(RecommendationRanker.Candidate x:ranked){HomeActivity.Item it=items.get(RecommendationRanker.key(x.link));String path=Progress.norm(it.link);local.add(path);byPath.put(path,it);}
+  int overlap=0;for(String k:ai)if(byPath.containsKey(k))overlap++;
+  if(overlap>=3){row.title="Рекомендовано для вас · AI";local=blend(local,ai);}
+  for(String path:local){row.items.add(byPath.get(path));if(row.items.size()>=15)break;}return row;
+ }
+ private static final int AI_POOL=40;
+ private static String info(String... parts){StringBuilder b=new StringBuilder();for(String x:parts)if(x!=null&&!x.isEmpty()){if(b.length()>0)b.append(", ");b.append(x);}return b.length()>300?b.substring(0,300):b.toString();}
+ /** 60% the local taste ranking, 40% the account's AI order, the same mix as the web version. */
+ static List<String> blend(List<String> local,List<String> ai){
+  Map<String,Integer> at=new HashMap<String,Integer>();for(int i=0;i<ai.size();i++)at.putIfAbsent(ai.get(i),i);
+  final Map<String,Double> score=new HashMap<String,Double>();int n=Math.max(1,local.size());
+  for(int i=0;i<local.size();i++){Integer a=at.get(local.get(i));score.put(local.get(i),.6*(1-(double)i/n)+.4*(a==null?0:1-(double)a/Math.max(1,ai.size())));}
+  List<String> out=new ArrayList<String>(local);out.sort((x,y)->Double.compare(score.get(y),score.get(x)));return out;
+ }
+ private static List<String> aiOrder(Context c,Snapshot s){
+  SharedPreferences p=prefs(c,s.profile);List<String> out=new ArrayList<String>();if(!CloudSync.linked(c,s.profile)||!"ai".equals(p.getString("ai_mode",""))||!p.getString("ai_taste","").equals(s.fingerprint))return out;
+  try{JSONArray a=new JSONArray(p.getString("ai_keys","[]"));for(int i=0;i<a.length();i++)out.add(a.getString(i));}catch(JSONException ignored){}return out;
+ }
+ /**
+  * For a TV profile linked to a KIK account, sends the local top candidates (public titles, genres, a short
+  * description) to the account. The server ranks them with AI only when the administrator enabled enhanced
+  * recommendations for that profile; otherwise the answer is the standard order and nothing changes here.
+  */
+ static void refreshAi(Context c,Snapshot s,List<HomeActivity.Row> catalogue){
+  if(!CloudSync.linked(c,s.profile)||s.signals.stream().noneMatch(x->x.weight>0))return;
+  Map<String,HomeActivity.Item> items=items(c,s,catalogue);List<RecommendationRanker.Candidate> ranked=RecommendationRanker.rank(s.profile,s.signals,s.excluded,pool(c,s,items),AI_POOL);
+  JSONArray send=new JSONArray();StringBuilder stamp=new StringBuilder();
+  try{for(RecommendationRanker.Candidate x:ranked){HomeActivity.Item it=items.get(RecommendationRanker.key(x.link));String path=Progress.norm(it.link);if(path.startsWith("uaserials/"))continue;ContentSimilarity.Document d=x.document;
+    send.put(new JSONObject().put("link","https://hdrezka.sh/"+path).put("title",it.title==null?"":it.title).put("original",d==null?"":d.original).put("info",info(it.year,it.genre,d==null?"":String.join(", ",d.genres))).put("year",it.year==null?"":it.year).put("description",d==null||d.plot==null?"":d.plot.length()>240?d.plot.substring(0,240):d.plot));stamp.append(path).append(',');}
+  }catch(JSONException e){return;}
+  if(send.length()<3)return;
+  SharedPreferences p=prefs(c,s.profile);String signature=s.fingerprint+"|"+stamp.toString().hashCode();long age=System.currentTimeMillis()-p.getLong("ai_updated",0);
+  if(age>=0&&(signature.equals(p.getString("ai_signature",""))?age<TTL:age<30*60_000L))return;
+  JSONObject r=CloudSync.recommend(c,s.profile,send);if(r==null)return;
+  synchronized(Recommendations.class){if(!s.profile.equals(ProfileStore.current(c))||ProfileStore.nameOf(c,s.profile)==null)return;
+   JSONArray keys=r.optJSONArray("keys");p.edit().putString("ai_signature",signature).putString("ai_taste",s.fingerprint).putString("ai_mode",r.optString("mode","standard")).putString("ai_keys",keys==null?"[]":keys.toString()).putLong("ai_updated",System.currentTimeMillis()).apply();}
+  Log.d("KIK","Account recommendations mode="+r.optString("mode")+" status="+r.optString("status"));
  }
  static List<HomeActivity.Row> rows(Context c,Snapshot s,List<HomeActivity.Row> catalogue){
   List<HomeActivity.Row> rows=new ArrayList<HomeActivity.Row>();HomeActivity.Row main=row(c,s,catalogue);if(!main.items.isEmpty())rows.add(main);

@@ -262,5 +262,20 @@ s=s.replace(m[0],'')
 assert re.search(r'<activity [^>]*android:name="kik\.i18n\.HomeActivity"',s), 'KIK launcher must remain declared'
 s=s.replace('    </application>','    <activity-alias android:name="rezkatv.web.app.PlayerActivity" android:targetActivity="kik.i18n.HomeActivity" android:exported="false"/>\n    </application>',1)
 p.write_text(s);changes.append('manifest:old_screen_removed_open_title')
+# KIK's own Android TV home-screen channels (TvChannels) replace RezkaTV's: its channel manager (na7) publishes
+# nothing, and the periodic refresh runs as KIK's job.
+p=D/'AndroidManifest.xml';s=p.read_text()
+s=s.replace('    </application>','    <service android:name="kik.i18n.TvChannels$Job" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE"/>\n    </application>',1)
+p.write_text(s)
+p=D/'smali/na7.smali';s=p.read_text()
+def body(name,sig,code):
+ global s
+ m=re.search(r'(\.method public final '+re.escape(name+sig)+r'\n).*?(\.end method)',s,re.S);assert m,name
+ s=s[:m.start()]+m.group(1)+code+'\n'+m.group(2)+s[m.end():]
+body('b','(Ljava/util/ArrayList;Lp31;)Ljava/lang/Object;','    .locals 1\n    new-instance v0, Ljava/util/LinkedHashMap;\n    invoke-direct {v0}, Ljava/util/LinkedHashMap;-><init>()V\n    return-object v0')
+body('c','(Ljava/lang/String;)J','    .locals 2\n    const-wide/16 v0, -0x1\n    return-wide v0')
+body('d','(JLjava/util/List;Ldk2;)V','    .locals 0\n    return-void')
+body('e','(Lp31;)Ljava/lang/Object;','    .locals 1\n    sget-object v0, Loe7;->a:Loe7;\n    return-object v0')
+p.write_text(s);changes.append('channels:kik_tvhome_channels_upstream_disabled')
 (ROOT/'localization/simplification-summary.json').write_text(json.dumps({'version':release['version_name'],'patches':changes,'trailers':'removed','rating':'IMDb then HDRezka then Kinopoisk; one badge','genres':2,'quality_default':'1080p','player':'internal','updates':'KIK GitHub Releases; upstream disabled','descriptions':'machine-translated to Ukrainian, cached','profiles':'local, separate history and resume'},indent=2))
 print('Simplification overlay:',len(changes),'patches')
