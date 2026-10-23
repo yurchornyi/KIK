@@ -28,7 +28,7 @@ async function solve(result,url){
  const q=new URLSearchParams({id:c.id,response:digest,nonce:String(nonce),redir:url,elapsedTime:String(Date.now()-start+500)});
  return send(`https://${result.origin}/.within.website/x/cmd/anubis/api/pass-challenge?${q}`);
 }
-async function page(path,ttl=120000,options={}){const cached=pages.get(path);if(!options.fresh&&cached&&Date.now()-cached.at<ttl)return cached.value;
+async function page(path,ttl=120000,options={}){if(options.bounded)options={...options,only:true,host:options.host||host,timeout:5000};const cached=pages.get(path);if(!options.fresh&&cached&&Date.now()-cached.at<ttl)return cached.value;
  let last;for(const h of (options.only?[options.host]:[options.host||host,...HOSTS.filter(x=>x!==(options.host||host))]))try{const url="https://"+h+path;let r=await send(url,null,options.timeout||15000);if(r.html.includes("anubis_challenge"))r=await solve(r,url);if(r.html.includes("anubis_challenge"))throw Error("Каталог не пройшов перевірку");host=r.origin;if(pages.size>80)pages.delete(pages.keys().next().value);pages.set(path,{at:Date.now(),value:r});return r;}catch(e){console.warn("KIK mirror",h,e.message);last=e;}
  throw last;
 }
@@ -58,12 +58,12 @@ export function parseGenres(html,category){
  for(const m of html.matchAll(pattern))if(m[1]!=="page"&&!found.has(m[1])){const name=text(m[2]);if(name)found.set(m[1],{slug:m[1],name});}
  return [...found.values()];
 }
-export async function catalogueGenres(category){return parseGenres((await page(cataloguePath({category}),3600000)).html,category);}
-export async function catalogue({category="",genre="",filter="popular",page:pageNumber=1,query=""}){
+export async function catalogueGenres(category,options={}){return parseGenres((await page(cataloguePath({category}),3600000,options)).html,category);}
+export async function catalogue({category="",genre="",filter="popular",page:pageNumber=1,query=""},options={}){
  const path=cataloguePath({category,genre,filter,page:pageNumber,query});pageNumber=Math.max(1,Math.min(100,Math.floor(Number(pageNumber)||1)));
- let items=parseCards((await page(path,300000)).html);
+ let items=parseCards((await page(path,300000,options)).html);
  // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms.
- if(query&&!items.length&&searchForm(query)!==query.toLowerCase().trim())items=parseCards((await page(`/search/?do=search&subaction=search&q=${encodeURIComponent(searchForm(query).slice(0,150))}&page=${pageNumber}`,300000)).html);
+ if(query&&!items.length&&searchForm(query)!==query.toLowerCase().trim())items=parseCards((await page(`/search/?do=search&subaction=search&q=${encodeURIComponent(searchForm(query).slice(0,150))}&page=${pageNumber}`,300000,options)).html);
  return query?relevant(query,items):items;
 }
 export function parseEpisodes(html){const out=[],seen=new Set();for(const m of html.matchAll(/<(?:li|a)[^>]*data-season_id="(\d+)"[^>]*data-episode_id="(\d+)"[^>]*>(.*?)<\/(?:li|a)>/gs)){const key=m[1]+":"+m[2];if(!seen.has(key)){seen.add(key);out.push({season:m[1],episode:m[2],title:text(m[3])});}}return out;}
