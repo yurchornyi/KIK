@@ -1,2 +1,5 @@
 # Copy to .dev.vars for local development. Never commit the real token.
 TMDB_READ_TOKEN="replace-with-your-api-read-access-token"
+
+# Generate a separate 256-bit key for local development; production uses a Worker secret.
+# MEDIA_TOKEN_KEY="64-lowercase-hex-characters"

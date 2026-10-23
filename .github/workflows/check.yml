@@ -32,6 +32,7 @@ jobs:
           done
           if [ "$ready" != 1 ]; then cat /tmp/kik-web.log; exit 1; fi
           node web/management-integration.mjs
+          node web/security-integration.mjs
       - name: Update security policy
         run: |
           mkdir -p /tmp/kik-checks
