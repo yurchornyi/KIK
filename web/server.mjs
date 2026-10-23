@@ -44,19 +44,28 @@ async function api(request,env,ctx){
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
  if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
+ // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
+ if(path==="/api/auth/check"&&request.method==="POST"){
+  const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email))fail("Введіть коректну email-адресу");
+  if(await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first())return json({email,state:"password"});
+  if(!await registrationAllowed(db,email))fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
+  return json({email,state:"create"});
+ }
  if(path==="/api/auth/register"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email);if(!validEmail(email)||typeof b.password!=="string"||b.password.length<6||b.password.length>256)fail("Введіть коректну email-адресу. Пароль: від 6 символів.");
   if(!await registrationAllowed(db,email))fail("Реєстрація лише за дозволом адміністратора. Попросіть додати вашу пошту.",403);
   const exists=await db.prepare("SELECT id FROM users WHERE email=?").bind(email).first();if(exists)fail("Ця пошта вже зареєстрована",409);
   const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");
-  const id=crypto.randomUUID(),salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40);
-  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,avatar,now)]);}catch{fail("Ця пошта вже зареєстрована",409);}
-  const token=await session(db,id);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id})},201,{"Set-Cookie":cookie(token)});
+  // The TV creates the account first and asks for the profile name on the next screen.
+  const id=crypto.randomUUID(),salt=randomToken(),password_hash=await passwordHash(b.password,salt),now=Date.now(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40),withProfile=b.profile!==false;
+  try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),...withProfile?[db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),id,name,avatar,now)]:[]]);}catch{fail("Ця пошта вже зареєстрована",409);}
+  if(!await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first())fail("Реєстрація лише за дозволом адміністратора. Попросіть додати вашу пошту.",403);
+  const token=await session(db,id);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id}),...b.device===true?{token}:{}},201,{"Set-Cookie":cookie(token)});
  }
  if(path==="/api/auth/login"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email),legacy=typeof b.username==="string"?b.username.trim().toLowerCase():"";if((!validEmail(email)&&!validUsername(legacy))||typeof b.password!=="string"||b.password.length>256)fail("Неправильна пошта або пароль",401);
   const user=await db.prepare("SELECT * FROM users WHERE email=? OR (email IS NULL AND username=?)").bind(email,legacy).first();const digest=await passwordHash(b.password,user?.salt||"invalid-account-timing-padding");if(!user||!equal(digest,user.password_hash))fail("Неправильна пошта або пароль",401);
-  const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user)},200,{"Set-Cookie":cookie(token)});
+  const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
  }
  const user=await identity(request,db);
  if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>env.AI&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
@@ -67,7 +76,7 @@ async function api(request,env,ctx){
  if(path==="/api/pair/start"&&request.method==="POST"){
   const device=randomToken(),code=Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[n%32]).join("");
   await db.batch([db.prepare("DELETE FROM pairs WHERE expires_at<?").bind(Date.now()),db.prepare("INSERT INTO pairs(device_hash,user_code,expires_at) VALUES(?,?,?)").bind(await hash(device),code,Date.now()+10*60_000)]);
-  return json({device_code:device,user_code:code,verification_uri:url.origin+"/?pair="+code,expires_in:600});
+  return json({device_code:device,user_code:code,verification_uri:url.origin+"/pair?code="+code,expires_in:600});
  }
  if(path==="/api/pair/poll"&&request.method==="POST"){
   const b=await body(request,8192);if(typeof b.device_code!=="string"||!/^[a-f0-9]{64}$/.test(b.device_code))fail("Некоректний код");const device=await hash(b.device_code),pair=await db.prepare("SELECT * FROM pairs WHERE device_hash=? AND expires_at>?").bind(device,Date.now()).first();if(!pair||pair.consumed)fail("Код прострочений",410);if(!pair.user_id)return json({pending:true});
@@ -104,5 +113,7 @@ async function api(request,env,ctx){
  }
  fail("Не знайдено",404);
 }
+/** TV QR codes open /pair?code=…; the app shell reads ?pair= and asks the signed-in user to confirm the link. */
+function pairRedirect(request){const code=String(new URL(request.url).searchParams.get("code")||"").replace(/[\s-]/g,"").toUpperCase();return new Response(null,{status:302,headers:{Location:/^[A-Z2-9]{8}$/.test(code)?"/?pair="+code:"/","Cache-Control":"no-store"}});}
 function secure(response){const r=new Response(response.body,response);r.headers.set("Permissions-Policy","camera=(), microphone=(), geolocation=(), payment=()");r.headers.set("Cross-Origin-Opener-Policy","same-origin");r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Referrer-Policy","no-referrer");r.headers.set("X-Frame-Options","DENY");r.headers.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https: blob:; connect-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'");return r;}
-export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;return secure(path.startsWith("/api/")?await api(request,env,ctx):await env.ASSETS.fetch(request));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname,status,e.status?"handled":e.message?.slice(0,180));return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status));}}};
+export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));return secure(path.startsWith("/api/")?await api(request,env,ctx):await env.ASSETS.fetch(request));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname,status,e.status?"handled":e.message?.slice(0,180));return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status));}}};

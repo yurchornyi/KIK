@@ -32,7 +32,7 @@ public final class AppUpdater {
  private static String confirmationToken;
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("kik_updates",0);}
  public static boolean enabled(Context c){return prefs(c).getBoolean("automatic",true);}
- public static String status(Context c){return message.isEmpty()?prefs(c).getString("status","Автоматична перевірка через GitHub Releases"):message;}
+ public static String status(Context c){String text=message.isEmpty()?prefs(c).getString("status","Автоматична перевірка через GitHub Releases"):message;if(text.startsWith("Установлено останню версію • "))return "Установлено останню версію • "+version(c);return text;}
  public static String version(Context c){try{return c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName;}catch(Exception e){return "";}}
  public static void listen(Runnable r){listener=new WeakReference<>(r);}
  public static void unlisten(Runnable r){if(listener.get()==r)listener.clear();}
