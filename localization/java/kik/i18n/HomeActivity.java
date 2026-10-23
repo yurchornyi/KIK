@@ -77,7 +77,7 @@ public final class HomeActivity extends Activity {
 
  private long cloudRevision=CloudSync.revision();
  private final Runnable cloudTick=new Runnable(){public void run(){if(destroyed||!foreground)return;CloudSync.now(HomeActivity.this);long next=CloudSync.revision();if(next!=cloudRevision){cloudRevision=next;load();}main.postDelayed(this,15000);}};
- @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
+ @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
  @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
  @Override protected void onDestroy(){destroyed=true;loadGeneration++;main.removeCallbacksAndMessages(null);super.onDestroy();}
  private long backAt;private TextView backHint;
@@ -97,21 +97,39 @@ public final class HomeActivity extends Activity {
   backHint.animate().alpha(1f).translationY(0).setDuration(240).withEndAction(()->backHint.animate().alpha(0f).setStartDelay(2300).setDuration(300).start()).start();
  }
 
+ /** The catalogue's four sections drop down right under «Каталог ▾»: no separate window, no scrolling; Back closes it. */
+ private void catalogueMenu(View anchor){
+  final String[] names={"Фільми","Серіали","Мультфільми","Аніме"},ids={"films","series","cartoons","animation"};
+  // Same look as the top menu: plain items on the page's own dark colour, the white focus pill with the red edge.
+  LinearLayout list=new LinearLayout(this);list.setOrientation(1);list.setPadding(dp(6),dp(6),dp(6),dp(6));list.setBackground(shape(0xff0d0d0f,dp(14),dp(1),0x22ffffff));
+  final PopupWindow popup=new PopupWindow(list,ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.WRAP_CONTENT,true);
+  for(int i=0;i<names.length;i++){final int n=i;TextView item=text(names[i],14,0xffd0d0d4);item.setIncludeFontPadding(false);item.setGravity(Gravity.CENTER_VERTICAL);item.setFocusable(true);item.setClickable(true);item.setPadding(dp(14),dp(9),dp(28),dp(9));
+   item.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));item.setTextColor(Ui.buttonText(false));item.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.04f));
+   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);if(i>0)lp.topMargin=dp(2);list.addView(item,lp);
+   item.setOnClickListener(v->{popup.dismiss();BrowseActivity.open(this,"catalog",ids[n],names[n]);});}
+  popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));popup.setOutsideTouchable(true);popup.setElevation(dp(10));popup.setAnimationStyle(android.R.style.Animation_Dialog);
+  popup.showAsDropDown(anchor,-dp(6),dp(4));list.getChildAt(0).requestFocus();
+ }
+ private TextView settingsItem;
+ /** A red dot on «Налаштування» while a postponed update waits there. */
+ private void paintSettingsBadge(){if(settingsItem==null||destroyed)return;boolean waiting=AppUpdater.availableName(this)!=null;if(!waiting){settingsItem.setText("Налаштування");return;}android.text.SpannableString t=new android.text.SpannableString("Налаштування  ●");t.setSpan(new android.text.style.ForegroundColorSpan(RED),t.length()-1,t.length(),0);settingsItem.setText(t);}
  private View topBar(){
   LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
   LinearLayout menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
   HorizontalScrollView navigation=Ui.horizontal(this,menuRow);LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,-2,1);navLp.setMargins(dp(14),0,dp(10),0);bar.addView(navigation,navLp);
   menuRow.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
-  menuRow.addView(menu("Каталог ▾",v->Ui.dialog(this).setTitle("Що подивимось?").setItems(new String[]{"Фільми","Серіали","Мультфільми","Аніме"},(d,n)->BrowseActivity.open(this,"catalog",new String[]{"films","series","cartoons","animation"}[n],new String[]{"Фільми","Серіали","Мультфільми","Аніме"}[n])).show()));
+  menuRow.addView(menu("Каталог ▾",this::catalogueMenu));
   menuRow.addView(menu("Пошук",v->BrowseActivity.open(this,"search",null,"Пошук")));
   menuRow.addView(menu("Мій список",v->BrowseActivity.open(this,"later",null,"Переглянути пізніше")));
   menuRow.addView(menu("Історія",v->BrowseActivity.open(this,"history",null,"Історія переглядів")));
-  menuRow.addView(menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class))));
+  TextView settings=menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class)));menuRow.addView(settings);settingsItem=settings;paintSettingsBadge();
 
   String name=ProfileStore.nameOf(this,ProfileStore.current(this));lastProfileName=name;lastProfileAvatar=ProfileStore.avatarOf(this,ProfileStore.current(this));
   ImageView avatar=Avatars.view(this,lastProfileAvatar,36);
   avatar.setOnClickListener(v->startActivity(new Intent(this,ProfilesActivity.class)));
+  // The remote reaches «Хто дивиться?» from the menu: right of «Налаштування» is the avatar, not the posters below.
+  avatar.setFocusable(true);avatar.setId(View.generateViewId());avatar.setForeground(states(shape(0,dp(10),0,0),shape(0,dp(10),dp(3),Color.WHITE)));avatar.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.1f));settings.setId(View.generateViewId());settings.setNextFocusRightId(avatar.getId());avatar.setNextFocusLeftId(settings.getId());avatar.setNextFocusRightId(avatar.getId());
   bar.addView(avatar,new LinearLayout.LayoutParams(dp(36),dp(36)));
   avatar.setContentDescription("Профіль: "+(name==null?"вибрати":name));
   return bar;
@@ -127,9 +145,14 @@ public final class HomeActivity extends Activity {
    final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);
    final List<Row> local=localRows(profile);List<Row> cached=fromCache();
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
-   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");List<Row> all=homeRows(local,cached,preferences);translateNow(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
+   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");
+   // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
+   final List<Row> saved=savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
+   if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(local,cached,preferences);
+   Log.d("KIK.Load","Home rows "+(SystemClock.elapsedRealtime()-started)+"ms"+(saved!=null?" (saved)":""));translateNow(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
    final List<Row> first=all;
-   main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if(!first.isEmpty()||loadedOnce)show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
+   main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if((!first.isEmpty()||loadedOnce)&&!(loadedOnce&&signature(first).equals(shownSignature)))show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
+   if(saved!=null&&!cached.isEmpty()){final List<Row> fresh=Recommendations.rows(this,preferences,cached);saveRecommendations(profile,fresh);translateNow(fresh);main.post(()->{if(valid(gen,profile))for(Row r:fresh)updateRecommendations(r);});}
    long cacheAge=System.currentTimeMillis()-getSharedPreferences("kik_home",0).getLong("updated",0);
    if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<15*60_000||cacheAge>=0&&cacheAge<15*60_000)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
@@ -145,7 +168,18 @@ public final class HomeActivity extends Activity {
   },"kik-home").start();
  }
  private List<Row> homeRows(List<Row> local,List<Row> catalogue,Recommendations.Snapshot preferences){
-  List<Row> out=new ArrayList<Row>(local);out.addAll(Recommendations.rows(this,preferences,catalogue));out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
+  List<Row> out=new ArrayList<Row>(local);List<Row> personal=Recommendations.rows(this,preferences,catalogue);if(!catalogue.isEmpty())saveRecommendations(ProfileStore.current(this),personal);out.addAll(personal);out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
+ }
+ /** Last ranked personal rows per profile, so the next start shows them without waiting for the ranking. */
+ private void saveRecommendations(String profile,List<Row> rows){
+  try{JSONArray a=new JSONArray();for(Row r:rows){JSONArray items=new JSONArray();for(Item i:r.items)items.put(new JSONObject().put("link",i.link).put("title",i.title).put("poster",i.poster).put("wide",i.wide).put("year",i.year).put("genre",i.genre).put("rating",i.rating));a.put(new JSONObject().put("title",r.title).put("id",r.recommendationId).put("personalized",r.personalized).put("items",items));}
+   getSharedPreferences("kik_home_personal",0).edit().putString(profile,a.toString()).apply();}catch(JSONException ignored){}
+ }
+ private List<Row> savedRecommendations(String profile){
+  String raw=getSharedPreferences("kik_home_personal",0).getString(profile,null);if(raw==null)return null;
+  try{JSONArray a=new JSONArray(raw);List<Row> out=new ArrayList<Row>();for(int n=0;n<a.length();n++){JSONObject o=a.getJSONObject(n);Row r=new Row(o.getString("title"));r.recommendationId=o.isNull("id")?null:o.optString("id",null);r.personalized=o.optBoolean("personalized");JSONArray items=o.getJSONArray("items");
+    for(int k=0;k<items.length();k++){JSONObject x=items.getJSONObject(k);Item i=new Item();i.link=x.getString("link");i.title=x.optString("title");i.poster=x.isNull("poster")?null:x.optString("poster",null);i.wide=x.isNull("wide")?null:x.optString("wide",null);i.year=x.isNull("year")?null:x.optString("year",null);i.genre=x.isNull("genre")?null:x.optString("genre",null);i.rating=x.isNull("rating")?null:x.optString("rating",null);r.items.add(i);}
+    if(!r.items.isEmpty())out.add(r);}return out;}catch(JSONException e){return null;}
  }
  private static String recommendationKeys(Row row){StringBuilder keys=new StringBuilder();for(Item i:row.items)keys.append(norm(i.link)).append('|');return keys.toString();}
  private void updateRecommendations(Row row){
@@ -169,7 +203,7 @@ public final class HomeActivity extends Activity {
    Recommendations.refresh(this,preferences);if(!valid(gen,profile)||!foreground)return;
    Recommendations.refreshAi(this,preferences,catalogue);if(!valid(gen,profile)||!foreground)return;
    Recommendations.enrich(this,preferences,catalogue,()->valid(gen,profile)&&foreground);
-   if(!valid(gen,profile))return;final List<Row> updated=Recommendations.rows(this,preferences,catalogue);translateNow(updated);
+   if(!valid(gen,profile))return;final List<Row> updated=Recommendations.rows(this,preferences,catalogue);saveRecommendations(profile,updated);translateNow(updated);
    main.post(()->{if(valid(gen,profile)){for(Row r:updated)updateRecommendations(r);translateLater(updated,gen,profile);}});
   },"kik-home-recommendations").start();},1800);
  }
@@ -237,7 +271,11 @@ public final class HomeActivity extends Activity {
  private static String time(long ms){return Ui.time(ms);}
 
  // ---------- ui ----------
+ /** What the rows would show; coming back to Home with the same rows keeps the screen as it is instead of rebuilding it. */
+ private static String signature(List<Row> rows){StringBuilder b=new StringBuilder();for(Row r:rows){b.append(r.title).append('\n');for(Item i:r.items)b.append(i.link).append('|').append(i.sub).append('|').append(i.resume).append('|').append(Math.round(i.progress*100)).append('\n');}return b.toString();}
+ private String shownSignature="";
  private void show(List<Row> rows){
+  shownSignature=signature(rows);
   boolean initial=!loadedOnce;loadedOnce=true;boolean actionFocused=watch.hasFocus()||later.hasFocus()||more.hasFocus();
   recommendedLine=null;recommendedHeading=null;recommendationKeys="";
   recommendationLines.clear();recommendationSignatures.clear();tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
@@ -258,7 +296,7 @@ public final class HomeActivity extends Activity {
  private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];
   for(Row r:rows){
    TextView h=text(r.title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);
-   if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));TextView customize=Ui.chip(this,"Налаштувати смак");header.addView(customize,new LinearLayout.LayoutParams(-2,dp(44)));customize.setOnClickListener(v->chooseTaste());content.addView(header);}else content.addView(h);
+   if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));content.addView(header);}else content.addView(h);
    HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
    LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);content.addView(hs);
    if(r.personalized){recommendedLine=line;recommendedHeading=h;recommendationKeys=recommendationKeys(r);}
@@ -294,7 +332,6 @@ public final class HomeActivity extends Activity {
   return box;
  }
  private void rate(Item i){final String profile=ProfileStore.current(this);int value=RatingStore.get(this,profile,i.link);Ui.dialog(this).setTitle(tr(i.title)).setSingleChoiceItems(new String[]{"Подобається","Не подобається","Без оцінки"},value>0?0:value<0?1:2,(d,n)->{boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,n==0?1:n==1?-1:0);d.dismiss();if(saved)load();else Ui.toast(this,"Не вдалося зберегти оцінку");}).setNegativeButton("Назад",null).show();}
- private void chooseTaste(){TasteActivity.open(this,false);}
  private void scrollRowIntoView(View row){
   int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
   if(target!=scroll.getScrollY())scroll.smoothScrollTo(0,target);
@@ -324,11 +361,11 @@ public final class HomeActivity extends Activity {
  private void paintLater(){if(hero==null)return;boolean saved=laterLinks.contains(norm(hero.link));HeroActions.label(later,saved?"У списку":"Мій список",saved?HeroActions.CHECK:HeroActions.ADD);later.setSelected(saved);}
 
  private String tr(String s){if(s==null)return null;String t=uk.get(s);return t==null?TitleTranslate.shown(s):t;}
- private static String join(String... parts){StringBuilder b=new StringBuilder();for(String p:parts)if(p!=null&&!p.isEmpty()){if(b.length()>0)b.append("  •  ");b.append(p);}return b.toString();}
+ private static String join(String... parts){return Ui.join(parts);}
 
  private void open(Item i){
   if(i==null||i.link==null)return;
-  FilmActivity.open(this,i.link,tr(i.title),i.poster);overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);
+  FilmActivity.open(this,i.link,tr(i.title),i.poster,i.year);overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);
  }
 
  private TextView menu(String label,View.OnClickListener l){

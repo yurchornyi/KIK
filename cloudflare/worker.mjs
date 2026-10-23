@@ -1,7 +1,7 @@
 const MAX=64*1024;
 export function validateRelease(r,repo){
  const u=new URL(r.apk_url);
- if(r.schema!==1||r.application_id!=="rezkatv.web.app.uk"||!Number.isSafeInteger(r.version_code)||r.version_code<1||r.version_code>2147483647||typeof r.version_name!=="string"||!r.version_name||r.version_name.length>64||r.min_sdk!==24||!Number.isSafeInteger(r.size_bytes)||r.size_bytes<1||r.size_bytes>96*1024*1024||!/^\w[\w.-]+\.apk$/.test(r.apk_name)||!/^\b[a-f0-9]{64}\b$/i.test(r.sha256)||!/^\b[a-f0-9]{64}\b$/i.test(r.signer_sha256)||u.protocol!=="https:"||u.host!=="github.com"||u.username||u.password||u.search||u.hash||!u.pathname.startsWith(`/${repo}/releases/download/`)||!u.pathname.endsWith("/"+r.apk_name)||u.pathname.includes("%"))throw new Error("Invalid release metadata");
+ if(r.schema!==1||r.application_id!=="kik.app"||!Number.isSafeInteger(r.version_code)||r.version_code<1||r.version_code>2147483647||typeof r.version_name!=="string"||!r.version_name||r.version_name.length>64||r.min_sdk!==24||!Number.isSafeInteger(r.size_bytes)||r.size_bytes<1||r.size_bytes>96*1024*1024||!/^\w[\w.-]+\.apk$/.test(r.apk_name)||!/^\b[a-f0-9]{64}\b$/i.test(r.sha256)||!/^\b[a-f0-9]{64}\b$/i.test(r.signer_sha256)||u.protocol!=="https:"||u.host!=="github.com"||u.username||u.password||u.search||u.hash||!u.pathname.startsWith(`/${repo}/releases/download/`)||!u.pathname.endsWith("/"+r.apk_name)||u.pathname.includes("%"))throw new Error("Invalid release metadata");
  return Object.fromEntries(["schema","application_id","version_code","version_name","min_sdk","apk_name","apk_url","size_bytes","sha256","signer_sha256"].map(k=>[k,r[k]]));
 }
 async function limitedJson(response){

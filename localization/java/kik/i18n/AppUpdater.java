@@ -52,6 +52,26 @@ public final class AppUpdater {
  }
  public static void paused(Activity a){if(screen.get()==a)screen.clear();}
  private static Activity active(){Activity a=screen.get();return a!=null&&!a.isFinishing()&&!a.isDestroyed()&&a.hasWindowFocus()?a:null;}
+ /** The newest release on the server when it is newer than this install, e.g. "1.6.0-uk"; Settings and the menu point to it. */
+ public static String availableName(Context c){try{return prefs(c).getLong("available_code",0)>installedCode(c)?prefs(c).getString("available_name",null):null;}catch(Exception e){return null;}}
+ /** Reads the release manifest (at most every 20 minutes) off the main thread, then runs {@code then} on the main thread. */
+ public static void lookup(Context context,Runnable then){
+  final Context c=context.getApplicationContext();
+  IO.execute(()->{try{long now=System.currentTimeMillis(),at=prefs(c).getLong("available_at",0);
+    if(now<at||now-at>20*60_000L){Release r=new Release(new JSONObject(new String(fetch(UpdateConfig.MANIFEST_URL,UpdatePolicy.MAX_METADATA),"UTF-8")));r.validate(c);
+     prefs(c).edit().putLong("available_at",now).putLong("available_code",r.code).putString("available_name",r.name).apply();}
+   }catch(Exception e){Log.w("KIK.Update","Lookup: "+e.getClass().getSimpleName()+": "+e.getMessage());}
+   MAIN.post(then);});
+ }
+ private static long promptedAt;
+ /** On every start (and after half an hour away) an available update is offered over the screen; «Пізніше» keeps it highlighted in Settings. */
+ public static void prompt(Activity a){
+  if(SystemClock.elapsedRealtime()-promptedAt<30*60_000L&&promptedAt!=0)return;
+  lookup(a,()->{String name=availableName(a);Runnable r=listener.get();if(r!=null)r.run();
+   if(name==null||a.isFinishing()||a.isDestroyed()||!a.hasWindowFocus()||SystemClock.elapsedRealtime()-promptedAt<30*60_000L&&promptedAt!=0)return;promptedAt=SystemClock.elapsedRealtime();
+   Ui.dialog(a).setTitle("Доступне оновлення KIK "+name).setMessage("Нова версія вже готова. Профілі, історія та «Мій список» збережуться.\nЯкщо відкласти, оновлення чекатиме в «Налаштуваннях».")
+    .setNegativeButton("Пізніше",null).setPositiveButton("Оновити",(d,w)->manual(a)).show();});
+ }
  public static boolean installAllowed(Context c){return Build.VERSION.SDK_INT<26||c.getPackageManager().canRequestPackageInstalls();}
  public static void permission(Activity a){
   try{a.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+a.getPackageName())));}

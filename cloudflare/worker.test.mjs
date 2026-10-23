@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {handle,validateRelease} from "./worker.mjs";
-const repo="yurchornyi/KIK",fixture={schema:1,application_id:"rezkatv.web.app.uk",version_code:12,version_name:"1.2.11-uk",min_sdk:24,apk_name:"KIK-1.2.11-uk.apk",apk_url:`https://github.com/${repo}/releases/download/v1.2.11-uk/KIK-1.2.11-uk.apk`,size_bytes:25000000,sha256:"a".repeat(64),signer_sha256:"b".repeat(64)};
+const repo="yurchornyi/KIK",fixture={schema:1,application_id:"kik.app",version_code:12,version_name:"1.2.11-uk",min_sdk:24,apk_name:"KIK-1.2.11-uk.apk",apk_url:`https://github.com/${repo}/releases/download/v1.2.11-uk/KIK-1.2.11-uk.apk`,size_bytes:25000000,sha256:"a".repeat(64),signer_sha256:"b".repeat(64)};
 const env={REPOSITORY:repo};
 test("only a bounded KIK release from its repository is accepted",()=>{
  assert.deepEqual(validateRelease({...fixture,unexpected:"discarded"},repo),fixture);

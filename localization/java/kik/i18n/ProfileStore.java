@@ -49,6 +49,8 @@ public final class ProfileStore {
  }
  /** Profiles made at sign-in open the home screen; taste setup stays one click away there. */
  static synchronized boolean skipTasteSetup(Context c,String id){List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id)){p.tasteSetup=true;return save(c,all);}return false;}
+ /** A profile just created on the account: its first opening asks for its taste once. */
+ static synchronized boolean requireTasteSetup(Context c,String id){List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id)){p.tasteSetup=false;return save(c,all);}return false;}
  public static boolean needsTasteSetup(Context c,String id){for(Profile p:list(c))if(p.id.equals(id))return !p.tasteSetup;return false;}
  public static synchronized boolean completeTasteSetup(Context c,String id){if(!id.equals(current(c)))return false;List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id)){p.tasteSetup=true;return save(c,all);}return false;}
  public static boolean checkPassword(Profile p,String password){return p.hash!=null&&p.hash.equals(hash(p.salt,password));}

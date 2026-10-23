@@ -49,19 +49,19 @@ public final class SignInActivity extends Activity {
   if(step==EMAIL){
    head("Увійдіть у KIK","Введіть пошту, яку адміністратор додав до KIK.");
    final EditText field=input("Пошта",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,EditorInfo.IME_ACTION_NEXT);field.setText(email);field.setSelection(field.length());
-   final Button next=primary("Далі");next.setOnClickListener(v->checkEmail(field,next));submit(field,next);field.requestFocus();
+   final Button next=primary("Далі");next.setOnClickListener(v->checkEmail(field,next));submit(field,next);type(field);
   }else if(step==PASSWORD){
    head("Введіть пароль",email);
    final EditText field=input("Пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
    LinearLayout row=actions();final Button login=button(row,"Увійти",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
-   login.setOnClickListener(v->login(field,login));submit(field,login);field.requestFocus();
+   login.setOnClickListener(v->login(field,login));submit(field,login);type(field);
   }else if(step==CREATE){
    head("Створіть пароль","Для "+email+" ще немає пароля. Введіть код запрошення від адміністратора і новий пароль — щонайменше 6 символів.");
    final EditText code=input("Код запрошення, наприклад K7M2-9QXA",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,EditorInfo.IME_ACTION_NEXT);code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(9),new android.text.InputFilter.AllCaps()});
    final EditText field=input("Новий пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_NEXT);
    final EditText again=input("Повторіть пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
    LinearLayout row=actions();final Button create=button(row,"Створити пароль",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
-   create.setOnClickListener(v->register(code,field,again,create));code.setOnEditorActionListener((v,a,e)->{field.requestFocus();return true;});field.setOnEditorActionListener((v,a,e)->{again.requestFocus();return true;});submit(again,create);code.requestFocus();
+   create.setOnClickListener(v->register(code,field,again,create));code.setOnEditorActionListener((v,a,e)->{field.requestFocus();return true;});field.setOnEditorActionListener((v,a,e)->{again.requestFocus();return true;});submit(again,create);type(code);
   }else if(step==PICK){
    head("Хто дивиться?","Виберіть свій профіль. Історія й місце, де ви зупинилися, підтягнуться з облікового запису.");
    LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);row.setClipChildren(false);
@@ -76,7 +76,7 @@ public final class SignInActivity extends Activity {
    final EditText field=input("Ім’я",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,EditorInfo.IME_ACTION_NEXT);field.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});field.setText(name);field.setSelection(field.length());
    LinearLayout row=actions();final Button next=button(row,"Далі",true);if(adding)button(row,"Скасувати",false).setOnClickListener(v->finish());
    next.setOnClickListener(v->{String n=field.getText().toString().trim();if(n.isEmpty()){error("Введіть ім’я профілю");return;}for(ProfileStore.Profile p:ProfileStore.list(this))if(p.name.equalsIgnoreCase(n)&&!CloudSync.remoteId(this,p.id).isEmpty()){error("Профіль з таким ім’ям уже є");return;}for(int i=0;i<remote.length();i++)if(n.equalsIgnoreCase(remote.optJSONObject(i).optString("name"))){error("Профіль з таким ім’ям уже є");return;}name=n;show(AVATAR);});
-   submit(field,next);field.requestFocus();
+   submit(field,next);type(field);
   }else{
    head("Оберіть аватарку","Для профілю «"+name+"». Можна пропустити — KIK вибере випадкову.");
    View first=null;LinearLayout row=null;
@@ -140,7 +140,7 @@ public final class SignInActivity extends Activity {
  }
  private void createProfile(String avatar){
   if(working)return;error("Створення профілю…");
-  call(null,"/api/profiles",json("name",name,"avatar",avatar),Account.token(this),p->{String local=Account.adopt(this,p,!adding);ProfileStore.choose(this,local);},()->{Account.signOut(this);show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
+  call(null,"/api/profiles",json("name",name,"avatar",avatar),Account.token(this),p->{String local=Account.adopt(this,p,!adding);ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{Account.signOut(this);show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
  }
 
  private interface Done{void run(JSONObject result)throws Exception;}
@@ -177,6 +177,8 @@ public final class SignInActivity extends Activity {
  }
  /** The keyboard's Enter submits the step, so a remote never has to leave the field. */
  private void submit(EditText field,Button button){field.setOnEditorActionListener((v,a,e)->{if(button.isEnabled())button.performClick();return true;});}
+ /** Focus a field and open the on-screen keyboard at once: the remote should not need an extra OK. */
+ private void type(final EditText field){field.requestFocus();field.postDelayed(()->{if(destroyed||!field.isAttachedToWindow())return;((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(field,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);},250);}
  private void error(String message){if(error!=null)error.setText(message);}
  private void busy(Button b,String label){if(b.isEnabled())b.setTag(b.getText());b.setEnabled(false);b.setText(label);error("");}
  private Button primary(String label){LinearLayout row=actions();return button(row,label,true);}

@@ -100,7 +100,10 @@ public final class BrowseActivity extends Activity {
    String given=getIntent().getStringExtra(QUERY);if(given!=null&&given.trim().length()>=2){handedOver=true;getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);query.setText(given.trim());query.setSelection(query.length());query.clearFocus();}}
   else reload();
  }
- @Override protected void onResume(){super.onResume();if(("history".equals(mode)||"later".equals(mode))&&page>0)reload();}
+ // History and My list change only after watching or editing: rebuild them only then, so coming back from a title does not jump.
+ @Override protected void onResume(){super.onResume();if(("history".equals(mode)||"later".equals(mode))&&page>0&&!listSignature().equals(shownList))reload();}
+ private String shownList="";
+ private String listSignature(){if("later".equals(mode))return String.valueOf(Progress.later(this));StringBuilder b=new StringBuilder();for(Progress.Entry e:Progress.recent(this))b.append(e.link).append(e.season).append(e.episode).append(e.pos/1000).append(e.finished()).append('\n');return b.toString();}
 
  private void paintFilters(){for(TextView c:filterChips)Ui.select(c,filter.equals(c.getTag()));}
  private void paintCategories(){for(TextView c:categoryChips)Ui.select(c,c.getTag().equals(category));}
@@ -151,11 +154,11 @@ public final class BrowseActivity extends Activity {
    Set<String> words=new HashSet<String>();for(G g:items){words.add(g.title);if(g.genre!=null)words.add(g.genre);}Map<String,String> uk=TitleTranslate.resolve(words);
    for(G g:items){String t=uk.get(g.title);if(t!=null)g.title=t;if(g.genre!=null){String gn=uk.get(g.genre);if(gn!=null)g.sub=Ui.join(g.year,gn);}}
    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||items.isEmpty())return;h.setText(heading[0]);h.setVisibility(View.VISIBLE);
-    for(final G g:items){View card=Ui.card(this,g.title,g.sub,g.poster,null,0,null,()->FilmActivity.open(this,g.link,g.title,g.poster));row.addView(card);}});
+    for(final G g:items){View card=Ui.card(this,g.title,g.sub,g.poster,null,0,null,()->FilmActivity.open(this,g.link,g.title,g.poster,g.year));row.addView(card);}});
   });
  }
  private boolean paged(){return "catalog".equals(mode)||"search".equals(mode);}
- private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
+ private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if("history".equals(mode)||"later".equals(mode))shownList=listSignature();if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
  /** The count and the next-page button under the posters. */
  private void updateMore(){
   if(loadMore==null)return;boolean show=paged()&&page>0&&(!end||failed)&&!seen.isEmpty();
@@ -167,7 +170,7 @@ public final class BrowseActivity extends Activity {
   if(loading||end)return;
   final boolean focusMore=loadMore!=null&&loadMore.hasFocus();loading=true;updateMore();
   if(page==0){status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);}
-  final int gen=generation;final int next=page+1;
+  final int gen=generation;final int next=page+1;final long started=android.os.SystemClock.elapsedRealtime();
   // What the request is for, captured now: a chip pressed meanwhile reloads and makes this answer obsolete anyway.
   final String requestedCategory=category,requestedGenre=genre,requestedFilter=filter;
   final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
@@ -198,7 +201,7 @@ public final class BrowseActivity extends Activity {
     if(fresh.isEmpty()){end=true;if(cards.isEmpty()){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}else status.setVisibility(View.GONE);
      updateMore();if(focusMore)focusLast();return;}
     if(!paged()||reached[0]>=100)end=true;
-    status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(fresh);updateMore();
+    status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(fresh);updateMore();android.util.Log.d("KIK.Load","Browse "+mode+" page "+next+" "+(android.os.SystemClock.elapsedRealtime()-started)+"ms");
     if(firstCard!=null&&(focusMore||first&&(!"search".equals(mode)||handedOver)))firstCard.requestFocus();
    });
    if(err==null&&!got.isEmpty()){
@@ -214,7 +217,7 @@ public final class BrowseActivity extends Activity {
   View first=null;
   for(final G g:items){
    if(openRow==null||inRow>=columns){openRow=new LinearLayout(this);openRow.setOrientation(0);openRow.setClipChildren(false);openRow.setClipToPadding(false);grid.addView(openRow);inRow=0;}
-   View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->{if(query!=null)remember(query.getText().toString());FilmActivity.open(this,g.link,g.title,g.poster);});
+   View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->{if(query!=null)remember(query.getText().toString());FilmActivity.open(this,g.link,g.title,g.poster,g.year);});
    // History: hold OK on a poster to remove the title from history.
    if("history".equals(mode)){View target=((ViewGroup)card).getChildAt(0);target.setOnLongClickListener(v->{Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+g.title+"»").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,g.link);Ui.toast(this,"Прибрано з історії");reload();}).show();return true;});}
    cards.put(g,card);openRow.addView(card);inRow++;if(first==null)first=((ViewGroup)card).getChildAt(0);

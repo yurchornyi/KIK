@@ -18,8 +18,16 @@ public final class FilmActivity extends Activity {
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
 
- public static void open(Context c,String link,String title,String poster){
-  c.startActivity(new Intent(c,FilmActivity.class).putExtra("link",link).putExtra("title",title).putExtra("poster",poster));
+ public static void open(Context c,String link,String title,String poster){open(c,link,title,poster,null);}
+ /** {@code year} is the card's own year, e.g. "2011-2019": a title page lists only the premiere date. */
+ public static void open(Context c,String link,String title,String poster,String year){
+  c.startActivity(new Intent(c,FilmActivity.class).putExtra("link",link).putExtra("title",title).putExtra("poster",poster).putExtra("year",year));
+ }
+ /** A series' run from its card, or else from the source's search card for the same title; null if unknown. */
+ private static String run(Site.Film f,String hint){
+  if(hint!=null&&hint.matches("\\d{4}\\s*-.*"))return hint;if(!f.series||f.year!=null&&f.year.contains("-"))return null;
+  try{for(Site.Card c:Site.search(f.original!=null&&!f.original.isEmpty()?f.original:f.title,1))if(Progress.norm(c.link).equals(Progress.norm(f.link))){String y=c.year();return y!=null&&y.contains("-")?y:null;}}catch(Exception ignored){}
+  return null;
  }
 
  @Override public void onCreate(Bundle state){
@@ -62,15 +70,18 @@ public final class FilmActivity extends Activity {
 
  private int loadGeneration;
  private void load(){
+  final long started=android.os.SystemClock.elapsedRealtime();
   final int generation=++loadGeneration;
   Ui.bg(()->{
    try{
     final Site.Film f=Site.film(link);
+    // Finished series read «2011–2019», running ones «2026»: the page itself names only the premiere.
+    String hint=getIntent().getStringExtra("year");if(hint!=null&&hint.matches("\\d{4}\\s*-.*"))f.year=hint;
     List<String> words=new ArrayList<String>();words.add(f.title);words.addAll(f.genres);if(f.country!=null)words.addAll(Arrays.asList(f.country.split(",\\s*")));if(f.duration!=null)words.add(f.duration);
     // Title and description translate side by side, so the page waits once, not twice.
     final java.util.concurrent.FutureTask<String> about=new java.util.concurrent.FutureTask<String>(()->DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT));new Thread(about,"kik-film-text").start();
     final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=about.get();
-    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);});
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);android.util.Log.d("KIK.Load","Film page "+(android.os.SystemClock.elapsedRealtime()-started)+"ms");});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
     // The page lists one voice's episodes; show every season the leading voices have.
@@ -78,6 +89,7 @@ public final class FilmActivity extends Activity {
      f.episodes=new ArrayList<Site.Episode>(all);f.seasons.clear();for(Site.Episode x:all)if(!f.seasons.contains(x.season))f.seasons.add(x.season);if(season==null||!f.seasons.contains(season))season=f.seasons.isEmpty()?null:f.seasons.get(0);showEpisodes();});}
     Map<String,String> got=TitleTranslate.resolve(words);
     final String d=DescTranslate.tr(f.description);
+    String span=run(f,null);if(span!=null)f.year=span;
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
    }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText("Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
   });

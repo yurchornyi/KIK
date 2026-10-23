@@ -15,7 +15,7 @@ import java.util.Map;
  * KIK's titles for Android's search (the Android TV search screen, Assistant on TVs that still ask apps, any app
  * reading searchable providers): the catalogue's matches for the words, named in Ukrainian, with poster and year.
  * Choosing one opens its KIK page through OpenTitleActivity (kik.intent.action.OPEN_TITLE with the title's link).
- *   content://rezkatv.web.app.uk.search/search_suggest_query/<words>
+ *   content://kik.app.search/search_suggest_query/<words>
  */
 public final class SearchProvider extends ContentProvider {
 

@@ -129,5 +129,7 @@ public final class Ui {
   root.addView(t,lp);t.setAlpha(0f);t.animate().alpha(1f).setDuration(200).withEndAction(()->t.animate().alpha(0f).setStartDelay(2200).setDuration(300).withEndAction(()->root.removeView(t)).start()).start();
  }
  public static String time(long ms){long s=Math.max(0,ms)/1000;return s>=3600?String.format(Locale.ROOT,"%d:%02d:%02d",s/3600,s/60%60,s%60):String.format(Locale.ROOT,"%d:%02d",s/60,s%60);}
- public static String join(String... parts){StringBuilder b=new StringBuilder();for(String p:parts)if(p!=null&&!p.isEmpty()){if(b.length()>0)b.append("  •  ");b.append(p);}return b.toString();}
+ public static String join(String... parts){StringBuilder b=new StringBuilder();for(String p:parts)if(p!=null&&!p.isEmpty()){if(b.length()>0)b.append("  •  ");b.append(year(p));}return b.toString();}
+ /** The source writes a running series as "2026-..." and a finished one as "2010-2022": show "2026" and "2010–2022". */
+ public static String year(String s){if(s==null)return null;java.util.regex.Matcher m=java.util.regex.Pattern.compile("^(\\d{4})\\s*-\\s*(\\d{4}|\\.{3}|…)?$").matcher(s.trim());if(!m.matches())return s;String end=m.group(2);return end==null||!Character.isDigit(end.charAt(0))||end.equals(m.group(1))?m.group(1):m.group(1)+"–"+end;}
 }

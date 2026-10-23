@@ -7,9 +7,9 @@ original=root/'RezkaTV-1.2.0.apk';final=root/('outputs/KIK-'+release['version_na
 assert hashlib.sha256(original.read_bytes()).hexdigest()=='7883dc0e4dd15e726994e10f75c066b061241a3a8ef7192f5caf6595ba897442'
 ns='{http://schemas.android.com/apk/res/android}'
 a=ET.parse(root/'decoded/AndroidManifest.xml').getroot();b=ET.parse(root/'localized/AndroidManifest.xml').getroot()
-assert b.get('package')=='rezkatv.web.app.uk'
+assert b.get('package')==release['application_id']
 old_permissions={e.get(ns+'name') for e in a.findall('uses-permission') if not e.get(ns+'name').startswith('rezkatv.')}
-new_permissions={e.get(ns+'name') for e in b.findall('uses-permission') if not e.get(ns+'name').startswith('rezkatv.')}
+new_permissions={e.get(ns+'name') for e in b.findall('uses-permission') if not e.get(ns+'name').startswith(('rezkatv.',release['application_id']+'.'))}
 assert not old_permissions-new_permissions
 assert new_permissions-old_permissions=={'android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION'}
 job=b.find("./application/service[@"+ns+"name='kik.i18n.UpdateJob']")
