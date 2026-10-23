@@ -161,6 +161,8 @@ public final class KikPlayerActivity extends Activity {
      recovering=false;stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.",false);return;}
      quality=quality!=null&&s.qualities.containsKey(quality)&&(!fromHistory||manualQuality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
+     // Start after the voice studio's ident: the film begins at once, as on Netflix.
+     resumeAt=Math.max(resumeAt,PlaybackPolicy.introMs(playing.name));
      subGeneration++;cues.clear();subIndex=-1;subtitle.setText("");
      play();
     });

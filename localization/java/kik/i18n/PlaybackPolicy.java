@@ -43,7 +43,16 @@ public final class PlaybackPolicy {
  /** Full order for every track: language first (Ukrainian, then Russian, then the rest), then studio quality. */
  public static int order(String title,boolean camrip,boolean ads) {
   String s=title==null?"":title.toLowerCase(Locale.ROOT);
-  return language(title)*1000+studio(s)+(camrip?400:0)+(ads?60:0);
+  return language(title)*1000+studio(s)+(camrip?400:0)+(ads?60:0)+(sponsored(s)?600:0);
+ }
+ /** Studios that burn betting logos or ad clips into the video: chosen only when the language has nothing else. */
+ static boolean sponsored(String s){return s.contains("coldfilm")||s.contains("колдфильм")||s.contains("1win");}
+ /** Length of the studio ident at the start of every video, ending inside the black gap that follows it (measured 2026-10). */
+ public static long introMs(String title){
+  String s=title==null?"":title.toLowerCase(Locale.ROOT);
+  if(s.contains("rezka studio"))return 9500;
+  if(s.contains("coldfilm")||s.contains("колдфильм"))return 13500;
+  return 0;
  }
  /** Automatic choice never starts original or third-language audio. */
  public static int rank(String title) {
