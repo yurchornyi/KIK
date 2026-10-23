@@ -40,18 +40,19 @@ public final class KikPlayerActivity extends Activity {
  /** Buffer: start after 1.5 s, refill to 5 s after a stall, keep up to 2 min but no more than 48 MB of heap. */
  private static final int MIN_BUFFER=30000,MAX_BUFFER=120000,START_BUFFER=1500,REBUFFER=5000,BUFFER_BYTES=48*1024*1024;
  /** Buffering longer than this, or a picture that does not move, counts as a dead stream. */
- private static final long STALL_MS=30000,FROZEN_MS=15000,RETRY_MS=20000;
+ private static final long STALL_MS=30000,FROZEN_MS=15000,RETRY_MS=20000,ENDED_SLACK_MS=90000,WARM_MS=180000,SHORT_HLS_MS=180000;
  private String season,episode,title,poster,profileId;private Site.Stream stream;private String quality;private float speed=1f;private boolean manualQuality;
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
  private FrameLayout root;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
- private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry;private final Set<String> failedVoices=new HashSet<String>();
+ private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
  private long lastMovement,lastPosition,recoveryStarted,bufferingSince,seekAt,stableSince;private final List<Long> rebuffers=new ArrayList<Long>();
  private String menu;private int optFocus,optSelected;private List<String> optLabels=new ArrayList<String>();private List<Runnable> optActions=new ArrayList<Runnable>();
  private List<Object[]> cues=new ArrayList<Object[]>();private int subIndex=-1;
  private ConnectivityManager.NetworkCallback network;
+ private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
  private final Handler h=new Handler(Looper.getMainLooper());
  private final Runnable hide=()->{if(prepared&&!seeking&&playWhenReady&&menu==null)show(false);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active)save();h.postDelayed(this,5000);}},retry=()->{if(!destroyed&&failed)retryNow();};
  private int dp(float n){return Ui.dp(this,n);}
@@ -59,6 +60,16 @@ public final class KikPlayerActivity extends Activity {
  public static void open(Context c,Site.Film f,Site.Voice v,String season,String episode,String title,String poster){
   film=f;voice=v;c.startActivity(new Intent(c,KikPlayerActivity.class).putExtra("season",season).putExtra("episode",episode).putExtra("title",title).putExtra("poster",poster));
  }
+ /** A stream fetched on the title page while the viewer reads it, so OK starts at once. Links stay valid for minutes. */
+ private static final class Warm{final String key;final Site.Voice voice;final Site.Stream stream;final long at=SystemClock.elapsedRealtime();Warm(String k,Site.Voice v,Site.Stream st){key=k;voice=v;stream=st;}}
+ private static volatile Warm warm;private static volatile String warming;
+ private static String warmKey(Site.Film f,Site.Voice v,String s,String e){return f.id+"|"+v.id+"|"+s+"|"+e;}
+ static void prefetch(Context c,final Site.Film f,final Site.Voice v,final String s,final String e){
+  if(f==null||v==null||f.id==null||f.sourceUrl!=null)return;final String key=warmKey(f,v,s,e);Warm w=warm;
+  if(key.equals(warming)||w!=null&&key.equals(w.key)&&SystemClock.elapsedRealtime()-w.at<WARM_MS/2)return;warming=key;final Context app=c.getApplicationContext();
+  Ui.bg(()->{try{Site.Voice use=v;if(f.series&&s!=null){Site.Voice has=Site.voiceFor(f,s,e,Progress.voice(app,f.link));if(has!=null)use=has;}warm=new Warm(key,use,Site.stream(f,use,s,e,false));Log.d("KIK.Player","Prefetched "+key);}catch(Exception x){Log.w("KIK","Prefetch",x);}finally{if(key.equals(warming))warming=null;}});
+ }
+ private static Warm takeWarm(Site.Film f,Site.Voice v,String s,String e){Warm w=warm;if(w==null||!w.key.equals(warmKey(f,v,s,e))||SystemClock.elapsedRealtime()-w.at>WARM_MS)return null;warm=null;return w;}
  static Site.Episode next(Site.Film f,String s,String e){boolean seen=false;for(Site.Episode x:f.episodes){if(seen)return x;if(x.season.equals(s)&&x.episode.equals(e))seen=true;}return null;}
 
  @Override public void onCreate(Bundle state){
@@ -76,6 +87,7 @@ public final class KikPlayerActivity extends Activity {
   player=createPlayer();player.setVideoSurfaceView(surface);
   watchNetwork();
   h.post(tick);h.postDelayed(saver,5000);
+  playIntro();
   start(true);
  }
  private ExoPlayer createPlayer(){
@@ -102,12 +114,12 @@ public final class KikPlayerActivity extends Activity {
  }
  private boolean online(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);NetworkInfo n=cm.getActiveNetworkInfo();return n!=null&&n.isConnected();}catch(Exception e){return true;}}
  @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}}
- @Override protected void onPause(){super.onPause();active=false;save();CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
- @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
+ @Override protected void onPause(){super.onPause();active=false;endIntro();save();CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
+ @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
 
  private long pos(){return player==null?0:Math.max(0,player.getCurrentPosition());}
  /** For the device audits: position, duration and whether frames are advancing right now. */
- public long position(){return pos();}public long duration(){return dur();}public boolean playing(){return player!=null&&player.isPlaying();}
+ public long position(){return pos();}public long duration(){return dur();}public boolean playing(){return player!=null&&player.isPlaying();}public float rate(){return player==null?0:player.getPlaybackParameters().speed;}
  private long dur(){long d=player==null?C.TIME_UNSET:player.getDuration();return d==C.TIME_UNSET||d<0?0:d;}
 
  // ---------- playback ----------
@@ -117,7 +129,7 @@ public final class KikPlayerActivity extends Activity {
  }
  private void start(final boolean fromHistory,final boolean refreshEpisodes){
   h.removeCallbacks(retry);
-  if(!recovering){recovery.reset();failedVoices.clear();refreshAttempt=0;voiceAttempt=0;sameAttempt=0;rebuffers.clear();recoveryStarted=SystemClock.elapsedRealtime();}
+  if(!recovering){recovery.reset();failedVoices.clear();refreshAttempt=0;voiceAttempt=0;sameAttempt=0;earlyEnds=0;rebuffers.clear();recoveryStarted=SystemClock.elapsedRealtime();}
   lastMovement=SystemClock.elapsedRealtime();bufferingSince=0;playGeneration++;final int gen=++generation;final Site.Film selectedFilm=film;final Site.Voice selected=voice;final String ss=season,ee=episode;
   final long keep=prepared?pos():resumeAt;if(player!=null)player.setPlayWhenReady(false);if(fromHistory)playWhenReady=true;prepared=false;failed=false;loading.setText(recovering?loading.getText():"Підготовка відео…");loading.setVisibility(View.VISIBLE);
   name.setText(title);paintSub();
@@ -125,11 +137,11 @@ public final class KikPlayerActivity extends Activity {
    try{
     Site.Film updated=null;if(refreshEpisodes&&selectedFilm.series){Site.Film copy=new Site.Film();copy.id=selectedFilm.id;copy.favs=selectedFilm.favs;copy.origin=selectedFilm.origin;try{Site.episodesFor(copy,selected.id);if(!copy.episodes.isEmpty())updated=copy;}catch(Exception e){Log.w("KIK","Voice episodes",e);}}
     final Site.Film episodeData=updated;
-    Site.Voice use=selected;
-    if(selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,(refreshEpisodes||recovering)?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
+    Site.Voice use=selected;final Warm w=refreshEpisodes||recovering?null:takeWarm(selectedFilm,selected,ss,ee);if(w!=null){use=w.voice;Log.d("KIK.Player","Using prefetched stream");}
+    if(w==null&&selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,(refreshEpisodes||recovering)?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
     final Site.Voice playing=use;
     final boolean rotate=recovering&&refreshAttempt>0;
-    final Site.Stream s=Site.stream(selectedFilm,playing,ss,ee,rotate);
+    final Site.Stream s=w!=null?w.stream:Site.stream(selectedFilm,playing,ss,ee,rotate);
     h.post(()->{
      if(destroyed||gen!=generation)return;
      if(episodeData!=null){selectedFilm.seasons=new ArrayList<String>(episodeData.seasons);selectedFilm.episodes=new ArrayList<Site.Episode>(episodeData.episodes);}
@@ -164,7 +176,7 @@ public final class KikPlayerActivity extends Activity {
   DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);
   Log.d("KIK.Player","Play quality="+quality+" hls="+hls(url)+" at="+resumeAt+" alternatives="+stream.alternatives.get(quality));
-  player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(playWhenReady&&active);player.prepare();paintSub();
+  player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
  }
  /**
   * Up to 8 in-place retries with growing pauses: a short CDN hiccup resumes from the same byte, unseen by the viewer.
@@ -182,6 +194,7 @@ public final class KikPlayerActivity extends Activity {
  private void onState(int state){
   if(destroyed)return;long now=SystemClock.elapsedRealtime();
   if(state==Player.STATE_READY){
+   if(!prepared&&truncated())return;
    boolean first=!prepared;prepared=true;failed=false;offline=false;h.removeCallbacks(retry);seeking=false;bufferingSince=0;autoRetry=0;loading.setVisibility(View.GONE);lastMovement=now;lastPosition=pos();
    if(first){if(!active)player.setPlayWhenReady(false);show(true);TvChannels.played(this,profileId);Log.d("KIK.Player","Prepared quality="+quality+" playing="+player.isPlaying()+" speed="+speed+" after "+(now-recoveryStarted)+" ms");}
    update();
@@ -221,7 +234,7 @@ public final class KikPlayerActivity extends Activity {
   if(player==null||stream==null){retryNow();return;}
   failed=false;loading.setText("Відновлюємо з'єднання…");loading.setVisibility(View.VISIBLE);bufferingSince=0;lastMovement=SystemClock.elapsedRealtime();
   Log.d("KIK.Player","Retry same address at "+resumeAt+" attempt="+sameAttempt);
-  if(player.getPlayerError()!=null){player.seekTo(resumeAt);player.setPlayWhenReady(playWhenReady&&active);player.prepare();}else play();
+  if(player.getPlayerError()!=null){player.seekTo(resumeAt);player.setPlayWhenReady(wanted());player.prepare();}else play();
  }
  private String pickQuality(Site.Stream s){
   String want=getSharedPreferences("settings",0).getString("default_quality","1080p");int target=num(want);String best=null;int bestN=-1;
@@ -231,11 +244,41 @@ public final class KikPlayerActivity extends Activity {
  private static int num(String q){Matcher m=Pattern.compile("(\\d+)").matcher(q==null?"":q);int n=m.find()?Integer.parseInt(m.group(1)):0;if(q!=null&&q.toLowerCase(Locale.ROOT).contains("ultra"))n+=1;if(q!=null&&(q.contains("2K")||q.contains("2k")))n=1440;if(q!=null&&(q.contains("4K")||q.contains("4k")))n=2160;return n;}
  private void applySpeed(){if(player!=null)player.setPlaybackSpeed(speed);Log.d("KIK.Player","Speed="+speed);}
  private void seek(long delta){if(!prepared||player==null)return;long d=dur(),t=Math.max(0,pos()+delta);if(d>0)t=Math.min(Math.max(0,d-1500),t);resumeAt=t;seekAt=SystemClock.elapsedRealtime();lastMovement=seekAt;Log.d("KIK.Player","Seek requested="+t);player.seekTo(t);update();}
- private void toggle(){if(!prepared||player==null)return;playWhenReady=!playWhenReady;player.setPlayWhenReady(playWhenReady&&active);lastMovement=SystemClock.elapsedRealtime();update();show(true);Log.d("KIK.Player","Playing="+playWhenReady+" position="+pos());}
+ private void toggle(){if(!prepared||player==null)return;playWhenReady=!playWhenReady;player.setPlayWhenReady(wanted());lastMovement=SystemClock.elapsedRealtime();update();show(true);Log.d("KIK.Player","Playing="+playWhenReady+" position="+pos());}
+ /** The KIK ident plays above everything while the stream loads underneath; the video starts when it ends. */
+ private void playIntro(){
+  if(intro!=null||!getSharedPreferences("settings",0).getBoolean("intro",true))return;
+  try{
+   introSurface=new SurfaceView(this);introSurface.setZOrderOnTop(true);root.addView(introSurface,new FrameLayout.LayoutParams(-1,-1));
+   intro=new ExoPlayer.Builder(this).build();intro.setVideoSurfaceView(introSurface);
+   intro.addListener(new Player.Listener(){
+    @Override public void onPlaybackStateChanged(int state){if(state==Player.STATE_ENDED)endIntro();}
+    @Override public void onPlayerError(PlaybackException error){Log.w("KIK.Player","Intro",error);endIntro();}
+   });
+   intro.setMediaItem(MediaItem.fromUri("asset:///kik/intro.mp4"));intro.setPlayWhenReady(true);intro.prepare();
+   h.postDelayed(introTimeout,6000);
+  }catch(Exception e){Log.w("KIK.Player","Intro",e);endIntro();}
+ }
+ private void endIntro(){
+  if(intro==null&&introSurface==null)return;h.removeCallbacks(introTimeout);
+  if(intro!=null){intro.release();intro=null;}if(introSurface!=null){root.removeView(introSurface);introSurface=null;}
+  if(player!=null&&!destroyed)player.setPlayWhenReady(wanted());lastMovement=SystemClock.elapsedRealtime();
+ }
+ /** Without premium the source serves a one-minute preview for its top quality: drop it and play the next one down. */
+ private boolean truncated(){
+  long d=dur();if(stream==null||quality==null||d<=0||d>=SHORT_HLS_MS||stream.qualities.size()<2)return false;
+  String lower=null;boolean past=false;for(String q:stream.qualities.keySet()){if(past){lower=q;break;}if(q.equals(quality))past=true;}
+  if(lower==null)return false;Log.w("KIK.Player",quality+" is a "+d+" ms preview, switching to "+lower);
+  stream.qualities.remove(quality);stream.alternatives.remove(quality);quality=lower;resumeAt=Math.max(resumeAt,pos());play();return true;
+ }
+ private boolean wanted(){return playWhenReady&&active&&intro==null;}
  private void onEnded(){
+  // A broken stream can report the end long before the credits: resume it instead of marking the episode watched.
+  if(truncated())return;
+  long d=dur(),at=pos();if(d>0&&at<d-ENDED_SLACK_MS&&earlyEnds++<3){Log.w("KIK.Player","Ended early at "+at+" of "+d+", resuming");resumeAt=at;retrySame();return;}
   save();Site.Episode n=film.series?next(film,season,episode):null;
   boolean auto=getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true);
-  if(n!=null&&auto){season=n.season;episode=n.episode;start(true);}else finish();
+  if(n!=null&&auto){season=n.season;episode=n.episode;playIntro();start(true);}else finish();
  }
  private void save(){
   if(!prepared||film==null||player==null||!profileId.equals(ProfileStore.current(this)))return;
@@ -263,7 +306,7 @@ public final class KikPlayerActivity extends Activity {
   buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);buttons.setGravity(Gravity.CENTER_VERTICAL);buttons.setPadding(0,dp(14),0,0);bottom.addView(buttons);
   addControl("⟲10",()->seek(-10000));addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
   View gap=new View(this);buttons.addView(gap,new LinearLayout.LayoutParams(0,1,1));
-  if(film.series)addControl("Наступна серія",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);if(n!=null){save();season=n.season;episode=n.episode;start(true);}else Ui.toast(this,"Це остання серія");});
+  if(film.series)addControl("Наступна серія",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це остання серія");});
   if(PlaybackPolicy.langs(voiceNames()).size()>1)addControl("Озвучка",()->openVoices());
   addControl("Якість",()->openQualities());
   addControl("Швидкість",()->openSpeeds());
@@ -385,11 +428,12 @@ public final class KikPlayerActivity extends Activity {
 
  @Override public boolean dispatchKeyEvent(KeyEvent e){
   int k=e.getKeyCode();
+  if(intro!=null){if(e.getAction()==KeyEvent.ACTION_UP)endIntro();return true;}
   if(k==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   if(e.getAction()!=KeyEvent.ACTION_DOWN)return true;
   switch(k){
    case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_SPACE:toggle();if(!visible)pulse(playWhenReady?"▶":"❚❚");return true;
-   case KeyEvent.KEYCODE_MEDIA_PLAY:playWhenReady=true;if(player!=null)player.setPlayWhenReady(active);show(true);return true;
+   case KeyEvent.KEYCODE_MEDIA_PLAY:playWhenReady=true;if(player!=null)player.setPlayWhenReady(wanted());show(true);return true;
    case KeyEvent.KEYCODE_MEDIA_PAUSE:playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);update();show(true);return true;
    case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:seek(10000);pulse("10 »");return true;
    case KeyEvent.KEYCODE_MEDIA_REWIND:seek(-10000);pulse("« 10");return true;

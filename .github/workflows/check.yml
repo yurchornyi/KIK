@@ -41,6 +41,10 @@ jobs:
         run: |
           javac -d /tmp/kik-checks localization/java/kik/i18n/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java
           java -cp /tmp/kik-checks RecoveryPolicyCheck
+      - name: Android helpers compile with ExoPlayer
+        run: |
+          python3 scripts/localize.py --java-only
+          javac -encoding UTF-8 -source 8 -target 8 -nowarn -cp "$ANDROID_HOME/platforms/android-34/android.jar:$(scripts/media3.sh)" -d /tmp/kik-helpers localization/java/kik/i18n/*.java
       - name: Ensure no private build inputs are tracked
         run: |
           python3 - <<'PY'

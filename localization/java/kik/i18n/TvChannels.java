@@ -149,7 +149,7 @@ public final class TvChannels {
   }catch(Exception e){Log.w(TAG,"For you",e);}
   return out;
  }
- /** Series the profile follows, whose last watched episode was finished: the next episode once it is out, newest first. */
+ /** Series the profile follows: the next episode after a finished one, newest first, then the latest episode of series saved to My list. */
  private static List<Program> newEpisodes(Context c,String profile){
   List<Program> out=new ArrayList<Program>();Set<String> seen=new HashSet<String>();int checked=0;
   for(Progress.Entry e:Progress.recent(c,profile)){
@@ -160,8 +160,17 @@ public final class TvChannels {
     Program p=new Program();p.link=e.link;p.title=e.title;p.poster=e.poster;p.season=n.season;p.episode=n.episode;p.play=true;p.type=TvContract.PreviewPrograms.TYPE_TV_EPISODE;out.add(p);
    }catch(Exception x){Log.w(TAG,"Series "+e.link,x);}
    if(out.size()>=LIMIT)break;
+  }
+  // Series saved to My list and not started yet: their latest episode, opening the title page.
+  JSONArray later=Progress.later(c,profile);
+  for(int i=0;i<later.length()&&out.size()<LIMIT&&checked<16;i++){JSONObject o=later.optJSONObject(i);if(o==null)continue;String link=o.optString("link",null);
+   if(link==null||!Progress.norm(link).startsWith("series/")||!seen.add(Progress.norm(link))||started(c,profile,link))continue;checked++;
+   try{Site.Film f=Site.film(link);if(!f.series||f.sourceUrl!=null||f.episodes.isEmpty())continue;Site.Episode n=f.episodes.get(f.episodes.size()-1);
+    Program p=new Program();p.link=link;String t=o.optString("title",null);p.title=Ua.t(t==null||t.isEmpty()?f.title:t);p.poster=o.optString("poster",f.poster);p.season=n.season;p.episode=n.episode;p.type=TvContract.PreviewPrograms.TYPE_TV_EPISODE;out.add(p);
+   }catch(Exception x){Log.w(TAG,"Series "+link,x);}
   }return out;
  }
+ private static boolean started(Context c,String profile,String link){String k=Progress.norm(link);for(Progress.Entry e:Progress.recent(c,profile))if(k.equals(Progress.norm(e.link)))return true;return false;}
 
  // ---------- artwork ----------
  /** 16:9 TMDB backdrops (w1280) through the KIK server, cached for a month (misses for three days). */
