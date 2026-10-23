@@ -443,7 +443,9 @@ public final class KikPlayerActivity extends Activity {
   if(on){h.postDelayed(hide,menu!=null?8000:4500);if(!visible){visible=true;fade(top,true);fade(bottom,true);}paint();bottom.post(this::placeSubtitles);return;}
   if(!visible)return;visible=false;closeMenu();progressFocus=false;fade(top,false);fade(bottom,false);placeSubtitles();
  }
- private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();lp.bottomMargin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);subtitle.setLayoutParams(lp);}
+ private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();lp.bottomMargin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);subtitle.setLayoutParams(lp);
+  // «Пропустити рекламу» rises above the open controls instead of hiding behind them.
+  if(skipAd!=null){FrameLayout.LayoutParams k=(FrameLayout.LayoutParams)skipAd.getLayoutParams();k.bottomMargin=visible?Math.max(dp(150),bottom.getHeight()-dp(30)):dp(52);skipAd.setLayoutParams(k);}}
  private void fade(final View v,boolean on){
   v.animate().cancel();
   if(on){v.setVisibility(View.VISIBLE);v.setTranslationY(v==top?-dp(12):dp(12));v.animate().alpha(1).translationY(0).setDuration(300).setInterpolator(Ui.EASE).start();}
