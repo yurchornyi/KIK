@@ -44,3 +44,11 @@ test('revoking a registered email signs the account out everywhere; reset passwo
  assert.deepEqual(await call(db,'/api/admin/access',{email:'member1@example.invalid',action:'revoke'}),{ok:true});
  assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id='u0001'").get().n,0);assert.ok(db.raw.prepare("SELECT id FROM users WHERE id='u0001'").get());
 });
+test('the TV reports how it reaches the catalogue; the admin list shows the latest state and rewrites the same one at most hourly',async()=>{const {siteReport}=await import('./management.mjs');const db=memoryD1();seed(db,1);const member={id:'u0001'};
+ await assert.rejects(siteReport(db,member,{status:'hacked'}),e=>e.status===400);
+ await siteReport(db,member,{status:'dns',host:'hdrezka.sh',detail:'hdrezka.sh dns, rezka.ag dns',app_version:'1.6.1'});
+ let row=(await call(db,'/api/admin/users')).users.find(u=>u.id==='u0001');assert.equal(row.site.status,'dns');assert.equal(row.site.detail,'hdrezka.sh dns, rezka.ag dns');assert.equal(row.site.app_version,'1.6.1');assert.equal(row.site_status,undefined);
+ const first=row.site.updated_at;await new Promise(r=>setTimeout(r,5));await siteReport(db,member,{status:'dns',host:'hdrezka.sh',detail:'hdrezka.sh dns, rezka.ag dns',app_version:'1.6.1'});assert.equal(db.raw.prepare('SELECT updated_at FROM site_reports').get().updated_at,first);
+ await siteReport(db,member,{status:'ok',host:'rezka.ag'});row=(await call(db,'/api/admin/users')).users.find(u=>u.id==='u0001');assert.equal(row.site.status,'ok');assert.equal(row.site.detail,null);
+ assert.equal((await call(db,'/api/admin/users')).users.find(u=>u.id===owner.id).site,null);
+ db.raw.exec("DELETE FROM users WHERE id='u0001'");assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM site_reports').get().n,0);});

@@ -5,7 +5,7 @@ import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './l
 import {recommendations} from './recommendations.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
-import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
+import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -109,6 +109,7 @@ async function api(request,env,ctx){
  if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(await localizedFilm(db,f));}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env);}
+ if(path==="/api/diagnostics/site"&&request.method==="POST")return json(await siteReport(db,user,await body(request,2048)));
  if(path==="/api/recommendations"&&request.method==="POST"){const b=await body(request,65536),p=await owned(db,user,b.profile_id);return json(await recommendations(db,p,b.items,env));}
  if(path==="/api/auth/logout-others"&&request.method==="POST")return json(await logoutOtherSessions(db,user,requestToken(request)));
  if(path==="/api/settings"){

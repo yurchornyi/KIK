@@ -21,6 +21,7 @@ public final class Site {
  private static final Map<String,String> COOKIES=new LinkedHashMap<String,String>();
  private static boolean loaded;
  private static final ThreadLocal<String> PAGE_HOST=new ThreadLocal<String>();
+ private static final ThreadLocal<Integer> PAGE_CODE=new ThreadLocal<Integer>();
 
  // ---------- models ----------
  public static final class Card{public String link,title,poster,info,type;public String year(){Matcher m=Pattern.compile("(\\d{4}(?:\\s*-\\s*(?:\\d{4}|\\.\\.\\.))?)").matcher(info==null?"":info);return m.find()?m.group(1).replace(" ",""):null;}
@@ -67,7 +68,7 @@ public final class Site {
    int code=c.getResponseCode();takeCookies(c);
    if(code>=300&&code<400&&c.getHeaderField("Location")!=null){url=new URL(new URL(url),c.getHeaderField("Location")).toString();form=null;c.disconnect();continue;}
    InputStream in=code>=400?c.getErrorStream():c.getInputStream();
-   String body=read(in);PAGE_HOST.set(new URL(url).getHost());c.disconnect();
+   String body=read(in);PAGE_HOST.set(new URL(url).getHost());PAGE_CODE.set(code);c.disconnect();
    if(code>=500)throw new IOException("HTTP "+code);
    return body;
   }
@@ -84,20 +85,25 @@ public final class Site {
  public static String page(String path)throws IOException{
   load();IOException last=null;
   if(path.startsWith("http")){URL u=new URL(path);if(Arrays.asList(HOSTS).contains(u.getHost()))path=u.getFile();}
+  final boolean mirror=!path.startsWith("http");String status=null;StringBuilder detail=new StringBuilder();boolean cancelled=false;
   for(int attempt=0;attempt<HOSTS.length;attempt++){
    if(Thread.currentThread().isInterrupted())throw new IOException("Request cancelled");
-   String url=abs(path);
+   String url=abs(path),tried=new URL(url).getHost();
    try{
     String h=send(url,null,false);
     if(h.contains("anubis_challenge")){h=solve(h,url);}
     if(h.contains("anubis_challenge"))throw new IOException("bot check not passed");
+    if(mirror){Integer code=PAGE_CODE.get();if(code!=null&&(code==403||code==451))SiteReport.failed("http",tried,tried+" HTTP "+code);else SiteReport.ok(tried);}
     return h;
    }catch(IOException e){
     last=e;Log.w("KIK","Site "+host+": "+e);
+    String kind=SiteReport.kind(e);if(kind==null)cancelled=true;else{status=status==null||status.equals(kind)?kind:"mixed";if(detail.length()>0)detail.append(", ");detail.append(SiteReport.detail(tried,kind,e));}
     if(path.startsWith("http"))path=path.replaceFirst("^https?://[^/]+","");
     synchronized(Site.class){host=HOSTS[(Arrays.asList(HOSTS).indexOf(host)+1+HOSTS.length)%HOSTS.length];}
    }
   }
+  // Every mirror failed: tell the admin how, unless the app itself cancelled the request.
+  if(mirror&&!cancelled&&status!=null)SiteReport.failed(status,host,detail.toString());
   throw last;
  }
  private static String solve(String html,String url)throws IOException{
