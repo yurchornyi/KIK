@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';import fs from 'node:fs';import path fr
 import {film,stream,voiceOrder} from '../catalogue.mjs';import {titleKey} from '../sync.mjs';
 import {fingerprint,RATE,toBase64,fromBase64} from '../ad-fingerprint.mjs';import {FPS,SIZE} from '../ad-align.mjs';
 import {fromLibrary,discover,fromReference,merge,suggest,IDENT,CREDITS} from '../ad-detect.mjs';import {SPONSORED} from '../ad-breaks.mjs';
-const ORIGIN=process.env.KIK_ORIGIN||'https://kik.basic-175.workers.dev',TOKEN=process.env.KIK_SCANNER_TOKEN||'',FFMPEG=process.env.FFMPEG||'ffmpeg';
+const ORIGIN=process.env.KIK_ORIGIN||'https://kiktv.pages.dev',TOKEN=process.env.KIK_SCANNER_TOKEN||'',FFMPEG=process.env.FFMPEG||'ffmpeg';
 if(new URL(ORIGIN).origin!==ORIGIN||!ORIGIN.startsWith('https://'))throw Error('KIK_ORIGIN must be an HTTPS origin');
 const AI=process.env.KIK_SCANNER_AI!=='0',DATA=process.env.KIK_SCANNER_DATA||path.join(os.homedir(),'.kik-ad-scanner'),POOL=40,IDLE=5*60_000;
 const log=(...a)=>console.log(new Date().toISOString().slice(0,19),...a);

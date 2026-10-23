@@ -38,7 +38,7 @@ KIK збирається накладанням власного коду на �
 
 ## Версія 1.3.0: Android TV + сайт
 
-Сайт: [kik.basic-175.workers.dev](https://kik.basic-175.workers.dev). APK: [GitHub Releases](https://github.com/yurchornyi/KIK/releases/latest).
+Сайт: [kiktv.pages.dev](https://kiktv.pages.dev). APK: [GitHub Releases](https://github.com/yurchornyi/KIK/releases/latest).
 
 Один хмарний профіль об’єднує історію, позиції кожної серії, озвучення, мій список і вподобання TV та браузера. Для підключення потрібно один раз увійти на сайті й ввести код із Налаштування → Синхронізація профілю на TV. Особисті дані зберігаються в приватній Cloudflare D1; у GitHub їх немає. Докладніше: [WEB-SYNC_UA.md](docs/WEB-SYNC_UA.md).
 

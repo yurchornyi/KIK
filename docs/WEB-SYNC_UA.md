@@ -4,7 +4,7 @@
 
 Для TMDB використовується секрет Worker `kik` з назвою `TMDB_READ_TOKEN`: API Read Access Token або API key v3. Значення не включається в JavaScript, APK чи GitHub. TVmaze й Wikidata працюють без токена.
 
-- Сайт: https://kik.basic-175.workers.dev
+- Сайт: https://kiktv.pages.dev
 - APK: https://github.com/yurchornyi/KIK/releases/latest
 - Вебсервер, статичні файли й приватна база D1 працюють у Cloudflare-акаунті **Basic**. Публічний GitHub містить код і APK, а не облікові записи чи історію.
 
