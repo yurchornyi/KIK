@@ -50,7 +50,7 @@ export class CataloguePages {
  */
 export function createCatalogueView({main,el,button,card,keyOf,api,visible=items=>items,isActive,onSelection=()=>{},skip=4}){
  const models=new Map(),genreCache=new Map();
- let model,section,list,note,more,count,genreSelect,genreRetry,sort,categories,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null;
+ let model,section,list,note,more,count,genreSelect,genreRetry,sort,categories,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null,ghosts=[],lastBatch=0;
  const fetchPage=(params,signal)=>api('/api/catalogue?'+new URLSearchParams(params),undefined,{signal});
  const live=()=>!!section?.isConnected&&isActive();
  const label=category=>CATEGORIES.find(([key])=>key===category)?.[1]||'Каталог';
@@ -62,12 +62,20 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
  }
  /** Appends cards not painted yet; returns the first new card. */
  function append(){
-  let first=null;const fresh=visible(model.items.slice(painted));painted=model.items.length;
-  for(const item of fresh){const key=keyOf(item.link);if(shownKeys.has(key))continue;shownKeys.add(key);const node=card(item);list.append(node);first||=node;}
+  let first=null,added=0;const fresh=visible(model.items.slice(painted));painted=model.items.length;
+  for(const item of fresh){const key=keyOf(item.link);if(shownKeys.has(key))continue;shownKeys.add(key);const node=card(item);list.append(node);first||=node;added++;}
+  if(added)lastBatch=added;
   return first;
  }
+ /** While the next page loads, placeholders sized like cards hold its place: the cards then fill them without moving the page. */
+ function placeholders(on){
+  for(const g of ghosts)g.remove();ghosts=[];if(!on)return;
+  const n=Math.min(36,lastBatch||24);
+  for(let i=0;i<n;i++)ghosts.push(el('button',{class:'poster ghost',type:'button',tabindex:'-1','aria-hidden':'true',inert:''},el('div',{class:'poster-image'}),el('span',{class:'poster-title'},'·'),el('span',{class:'poster-info'},'·')));
+  list.append(...ghosts);
+ }
  function paint(){
-  if(!live())return null;const first=append(),shown=list.children.length;
+  if(!live())return null;placeholders(false);const first=append(),shown=list.children.length;placeholders(model.loading);
   list.setAttribute('aria-busy',String(model.loading));count.textContent=shown?'Показано: '+shown:'';
   note.textContent=model.error?(shown?'Не вдалося завантажити наступну сторінку. Список збережено.':'Не вдалося завантажити каталог. Спробуйте ще раз.')
    :model.loading?(shown?'Завантажуємо ще…':'Завантажуємо каталог…')
@@ -102,7 +110,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
    target.value=model.genre;target.disabled=false;
   }catch{if(request!==genreRequest||target!==genreSelect||model.category!==category||!section?.isConnected)return;target.replaceChildren(el('option',{value:model.genre},model.genre||'Жанри недоступні'));retry.hidden=false;}
  }
- function restart(){shownKeys=new Set();painted=0;list.replaceChildren();onSelection(selection());}
+ function restart(){shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;list.replaceChildren();onSelection(selection());}
  function selection(){return {category:model.category,filter:model.filter,genre:model.genre};}
  function select(next){
   const changedCategory=next.category!==model.category;model=modelFor(next);
@@ -134,7 +142,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
    el('div',{class:'page-head'},el('div',{},el('div',{class:'eyebrow'},'КАТАЛОГ KIK'),el('h1',{},label(model.category))),count),
    el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},dropdown(genreSelect,'Жанр'),dropdown(sort,'Порядок'),genreRetry)),
    list,el('div',{class:'catalogue-bottom'},note,more));
-  shownKeys=new Set();painted=0;main.replaceChildren(section);onSelection(selection());paint();loadGenres();
+  shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;main.replaceChildren(section);onSelection(selection());paint();loadGenres();
   watcher?.disconnect();if(typeof IntersectionObserver!=='undefined'){watcher=new IntersectionObserver(e=>{if(e.some(x=>x.isIntersecting))autoMore();},{rootMargin:'0px 0px 900px 0px'});watcher.observe(more);}
   if(!model.page&&!model.loading)load();else if(model.loading)watch(model);
   return true;

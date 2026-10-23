@@ -30,3 +30,8 @@
  .catalogue-selects .dropdown{min-width:100%}
  .catalogue-toolbar{margin-bottom:20px}
 }
+/* Placeholders hold the next page's place, so cards fill them instead of pushing the page down. */
+.poster.ghost{pointer-events:none}
+.poster.ghost .poster-image{animation:pulse 1.5s infinite}
+.poster.ghost .poster-title,.poster.ghost .poster-info{visibility:hidden}
+@media(prefers-reduced-motion:reduce){.poster.ghost .poster-image{animation:none}}

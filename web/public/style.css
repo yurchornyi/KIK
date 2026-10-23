@@ -124,3 +124,4 @@ dialog.search-modal{width:min(980px,94vw)}
 .search-tile .poster-title{font-size:12.5px}
 .search-tile .poster-info{font-size:11px}
 @media(max-width:720px){.search-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.search-block{margin-top:18px}}
+.poster-image img.art-in{position:absolute;inset:0}.hero-art.fade-in{animation:hero-fade .6s ease both}@keyframes hero-fade{from{opacity:0}}

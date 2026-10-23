@@ -149,3 +149,12 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
  .detail-more,.detail-info>.text-button{justify-self:start}
  .detail-modal .source-metadata{margin:0 18px 20px}
 }
+/* Two link columns don't fit the narrowest phones: one column there, so the page never scrolls sideways. */
+@media (max-width:360px){.foot-links{grid-template-columns:minmax(0,1fr)}}
+/* Shelves off screen skip style, layout and paint until they come near: opening a title or a page stays quick on phones.
+   The 4px padding keeps hover zoom and focus rings inside the shelf's paint containment. */
+.shelf{content-visibility:auto;contain-intrinsic-size:auto 400px;padding-inline:4px;margin-inline:-4px}
+@media (max-width:1100px){.shelf{contain-intrinsic-size:auto 340px}}
+@media (max-width:700px){.shelf{contain-intrinsic-size:auto 300px}}
+/* A full-screen backdrop blur is costly for phone GPUs: a deeper tint there instead. */
+@media (max-width:900px),(pointer:coarse){dialog::backdrop{backdrop-filter:none;background:#000d}}

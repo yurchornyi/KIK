@@ -17,6 +17,18 @@ import {adBreaks,adScanner} from "./ad-breaks.mjs";
 const artworkService=createArtworkService();
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
+/**
+ * Public source data from the edge cache. A copy older than `fresh` seconds is still served at once and refreshed
+ * in the background, so visitors rarely wait for the source; browsers keep each answer for `fresh` seconds.
+ */
+const refreshing=new Map();
+async function edgeCached(ctx,key,fresh,load){
+ const reply=async stored=>{const r=new Response(stored.body,stored);r.headers.set("Cache-Control","public, max-age="+fresh);r.headers.delete("X-KIK-Stored");return r;};
+ const store=async()=>{const r=json(await load(),200,{"Cache-Control":"public, max-age=86400","X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
+ const cached=await caches.default.match(key);
+ if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!refreshing.has(key.url)){const task=store().catch(()=>{}).finally(()=>refreshing.delete(key.url));refreshing.set(key.url,task);ctx.waitUntil(task);}return reply(cached);}
+ return reply(await store());
+}
 
 function origin(request){const o=request.headers.get("Origin");if(o&&o!==new URL(request.url).origin)fail("Запит з іншого сайту відхилено",403);if(request.headers.get("Sec-Fetch-Site")==="cross-site")fail("Запит з іншого сайту відхилено",403);}
 async function owned(db,user,id){if(typeof id!=="string")fail("Виберіть профіль");const p=await db.prepare("SELECT id,name,avatar,enhanced_recs,ad_skip FROM profiles WHERE id=? AND user_id=?").bind(id,user.id).first();if(!p)fail("Профіль недоступний",404);return p;}
@@ -100,13 +112,14 @@ async function api(request,env,ctx){
   const token=await session(db,changed.user_id);return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
  }
  if(path==="/api/genres"){
-  const category=url.searchParams.get("category")||"films",key=new Request(url.origin+path+"?category="+encodeURIComponent(category)+"&__presentation=uk1"),cached=await caches.default.match(key);if(cached)return cached;
-  const r=json({items:await localizedGenres(db,await catalogueGenres(category))});r.headers.set("Cache-Control","public, max-age=3600");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
+  const category=url.searchParams.get("category")||"films",key=new Request(url.origin+path+"?category="+encodeURIComponent(category)+"&__presentation=uk2");
+  return edgeCached(ctx,key,3600,async()=>({items:await localizedGenres(db,await catalogueGenres(category))}));
  }
  if(path==="/api/catalogue"){
-  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk4"),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:await localizedCards(db,data)});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
+  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5"),params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
+  return edgeCached(ctx,key,180,async()=>({items:await localizedCards(db,await (params.source==="uaserials"?uaSearch(params):catalogue(params)))}));
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(await localizedFilm(db,f));}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),180,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env);}
  if(path==="/api/diagnostics/site"&&request.method==="POST")return json(await siteReport(db,user,await body(request,2048)));
@@ -136,6 +149,8 @@ async function api(request,env,ctx){
  fail("Не знайдено",404);
 }
 /** TV QR codes open /pair?code=…; the app shell reads ?pair= and asks the signed-in user to confirm the link. */
+/** Fingerprinted files (`?v=<hash>`, see build.mjs) never change at their URL. */
+async function asset(request,env){const r=await env.ASSETS.fetch(request);if(r.status!==200||!new URL(request.url).searchParams.has("v"))return r;const out=new Response(r.body,r);out.headers.set("Cache-Control","public, max-age=31536000, immutable");return out;}
 function pairRedirect(request){const code=String(new URL(request.url).searchParams.get("code")||"").replace(/[\s-]/g,"").toUpperCase();return new Response(null,{status:302,headers:{Location:/^[A-Z2-9]{8}$/.test(code)?"/?pair="+code:"/","Cache-Control":"no-store"}});}
 function secure(response){const r=new Response(response.body,response);r.headers.set("Strict-Transport-Security","max-age=31536000");r.headers.set("Permissions-Policy","camera=(), microphone=(), geolocation=(), payment=()");r.headers.set("Cross-Origin-Opener-Policy","same-origin");r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Referrer-Policy","no-referrer");r.headers.set("X-Frame-Options","DENY");r.headers.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'");return r;}
-export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));return secure(path.startsWith("/api/")?await api(request,env,ctx):await env.ASSETS.fetch(request));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname.replace(/^\/api\/media\/.*/,"/api/media/[redacted]"),status,e.status?"handled":"unexpected");return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status,status===429?{"Retry-After":"60"}:{}));}}};
+export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));return secure(path.startsWith("/api/")?await api(request,env,ctx):await asset(request,env));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname.replace(/^\/api\/media\/.*/,"/api/media/[redacted]"),status,e.status?"handled":"unexpected");return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status,status===429?{"Retry-After":"60"}:{}));}}};
