@@ -1,1 +1,20 @@
-{"name":"kik-web","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node --test *.test.mjs","build":"node build.mjs","dev":"wrangler dev","deploy":"wrangler deploy"},"dependencies":{"@noble/hashes":"^2.4.0","hls.js":"^1.6.13"},"devDependencies":{"wrangler":"4.151.1"}}
+{
+  "name": "kik-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "build": "node build.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test:ui": "node ui-audit.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "hls.js": "^1.6.13"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

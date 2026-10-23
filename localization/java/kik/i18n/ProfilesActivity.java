@@ -45,7 +45,7 @@ public final class ProfilesActivity extends Activity {
    if(p.id.equals(current)||focus==null)focus=b;
   }
   space(30);
-  LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(actions);
+  LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(Ui.horizontal(this,actions),new LinearLayout.LayoutParams(-1,-2));
   if(!manage){
    Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
    Button edit=button("Керувати профілями");actions.addView(edit,params(280));edit.setOnClickListener(v->{manage=true;render();});
@@ -60,9 +60,9 @@ public final class ProfilesActivity extends Activity {
   ImageView preview=Avatars.view(this,avatar[0],64);preview.setFocusable(false);preview.setClickable(false);avatarRow.addView(preview,new LinearLayout.LayoutParams(dp(64),dp(64)));
   Button choose=button("Обрати аватарку");LinearLayout.LayoutParams chooseLp=new LinearLayout.LayoutParams(-2,dp(48));chooseLp.leftMargin=dp(16);avatarRow.addView(choose,chooseLp);content.addView(avatarRow);space(18);
   choose.setOnClickListener(v->pickAvatar(avatar[0],chosen->{avatar[0]=chosen;Avatars.bind(preview,chosen);}));
-  final EditText name=input("Ім'я",false);content.addView(name,new LinearLayout.LayoutParams(dp(460),dp(56)));space(10);
-  final EditText pass=input("Пароль (для зміни чи видалення профілю)",true);content.addView(pass,new LinearLayout.LayoutParams(dp(460),dp(56)));space(18);
-  LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(actions);
+  final EditText name=input("Ім'я",false);content.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,460,112),dp(56)));space(10);
+  final EditText pass=input("Пароль (для зміни чи видалення профілю)",true);content.addView(pass,new LinearLayout.LayoutParams(Ui.contentWidth(this,460,112),dp(56)));space(18);
+  LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(Ui.horizontal(this,actions),new LinearLayout.LayoutParams(-1,-2));
   Button save=button("Створити");actions.addView(save,params(200));
   save.setOnClickListener(v->{
    String n=name.getText().toString().trim(),pw=pass.getText().toString();

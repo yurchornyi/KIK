@@ -45,7 +45,7 @@ public final class BrowseActivity extends Activity {
    query.setPadding(dp(22),0,dp(22),0);query.setImeOptions(EditorInfo.IME_ACTION_SEARCH);query.setCompoundDrawablePadding(dp(14));
    android.graphics.drawable.Drawable lens=new LensIcon(dp(22));lens.setBounds(0,0,dp(22),dp(22));query.setCompoundDrawables(lens,null,null,null);
    query.setBackground(Ui.states(Ui.shape(0xff1f1f23,dp(30),dp(2),0xff2e2e33),Ui.shape(0xff26262b,dp(30),dp(2),Ui.RED)));
-   LinearLayout.LayoutParams ql=new LinearLayout.LayoutParams(dp(760),dp(60));ql.setMargins(dp(4),dp(6),0,0);content.addView(query,ql);
+   LinearLayout.LayoutParams ql=new LinearLayout.LayoutParams(Ui.contentWidth(this,760,72),dp(60));ql.setMargins(dp(4),dp(6),0,0);content.addView(query,ql);
    final Runnable run=()->reload();
    query.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}
     public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setVisibility(View.GONE);showIdle(true);}}});
@@ -54,7 +54,7 @@ public final class BrowseActivity extends Activity {
    idle=new LinearLayout(this);idle.setOrientation(1);idle.setClipChildren(false);idle.setClipToPadding(false);content.addView(idle);
   }
   if("catalog".equals(mode)){
-   LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(filters);
+   LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(Ui.horizontal(this,filters),new LinearLayout.LayoutParams(-1,-2));
    String[][] f={{"last","Нові"},{"popular","Популярні"},{"watching","Зараз дивляться"}};
    for(final String[] x:f){TextView c=Ui.chip(this,x[1]);filters.addView(c,Ui.wrap(this,10));filterChips.add(c);c.setTag(x[0]);
     c.setOnClickListener(v->{filter=x[0];paintFilters();reload();});}
