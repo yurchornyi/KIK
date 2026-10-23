@@ -416,6 +416,8 @@ public final class HomeActivity extends Activity {
    if(first==null||value==want)first=c;
   }
   if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.trash()),false);c.setOnClickListener(v->{Progress.remove(this,i.link);popup.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
+  // A title in «Переглянути пізніше» leaves the list from here; the row is redrawn in place, the hero button follows.
+  if(Progress.isLater(this,i.link)){TextView c=action(box,"Прибрати зі списку",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.minus()),false);c.setOnClickListener(v->{popup.dismiss();if(Progress.isLater(this,i.link))Progress.toggleLater(this,i.link,tr(i.title),i.poster,i.year,tr(i.genre));laterLinks.remove(norm(i.link));paintLater();Ui.toast(this,"Прибрано з мого списку");refreshLaterRow();});}
   if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",12,GREY);hint.setPadding(dp(14),dp(6),dp(14),dp(4));box.addView(hint);}
   final TextView focus=first;
   popup.showAtLocation(root,Gravity.CENTER,0,0);
