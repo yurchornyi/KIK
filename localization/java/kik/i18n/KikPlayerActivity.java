@@ -366,7 +366,7 @@ public final class KikPlayerActivity extends Activity {
   addControl("⟲10",()->seek(-10000));addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
   View gap=new View(this);buttons.addView(gap,new LinearLayout.LayoutParams(0,1,1));
   if(film.series)addControl("Наступна серія",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це остання серія");});
-  if(PlaybackPolicy.langs(voiceNames()).size()>1)addControl("Озвучка",()->openVoices());
+  if(voiceNames().size()>1)addControl("Озвучка",()->openVoices());
   addControl("Якість",()->openQualities());
   addControl("Швидкість",()->openSpeeds());
   addControl("Субтитри",()->openSubtitles());
@@ -410,12 +410,12 @@ public final class KikPlayerActivity extends Activity {
   options.setVisibility(View.VISIBLE);show(true);options.post(this::placeSubtitles);
  }
  private void closeMenu(){menu=null;options.setVisibility(View.GONE);paint();}
+ /** Every free studio, best first (Ukrainian, then Russian, then the rest), named with its language. */
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  List<String> names=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)names.add(v.name);
-  for(final String lang:PlaybackPolicy.langs(names)){Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(lang)){best=x;break;}final Site.Voice v=best;
-   if(voice!=null&&PlaybackPolicy.lang(voice.name).equals(lang))sel=l.size();l.add(PlaybackPolicy.label(lang));
-   a.add(()->{if(voice!=null&&PlaybackPolicy.lang(voice.name).equals(lang))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
+  for(final Site.Voice v:film.voices){if(v.premium)continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
+   String lang=PlaybackPolicy.lang(v.name);l.add(("other".equals(lang)?"":lang.toUpperCase(Locale.ROOT).replace("UK","UA")+" · ")+Ua.t(v.name));
+   a.add(()->{if(voice!=null&&v.id.equals(voice.id))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
  }
  private void openQualities(){

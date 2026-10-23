@@ -143,8 +143,13 @@ public final class FilmActivity extends Activity {
  }
  /** Is there a free voice in this language, and (for a series, once known) one that has the selected season? */
  private boolean offered(String l){
-  for(Site.Voice x:film.voices){if(x.premium||!PlaybackPolicy.lang(x.name).equals(l))continue;if(!film.series||season==null)return true;
-   List<Site.Episode> eps;synchronized(film.coverage){eps=film.coverage.get(x.id);}if(eps==null)return true;for(Site.Episode e:eps)if(season.equals(e.season))return true;}
+  for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(l)&&covers(x))return true;
+  return false;
+ }
+ /** Does this studio have the selected season (true until its episode list is known)? */
+ private boolean covers(Site.Voice x){
+  if(!film.series||season==null)return true;
+  List<Site.Episode> eps;synchronized(film.coverage){eps=film.coverage.get(x.id);}if(eps==null)return true;for(Site.Episode e:eps)if(season.equals(e.season))return true;
   return false;
  }
  private void buildVoices(){
@@ -153,13 +158,29 @@ public final class FilmActivity extends Activity {
   boolean free=false;for(Site.Voice v:film.voices)if(!v.premium)free=true;
   voiceChip.setVisibility(free?View.VISIBLE:View.GONE);
   if(voice!=null)voiceChip.setText(PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)));
+  String current=voice==null?null:PlaybackPolicy.lang(voice.name);
   for(final String l:new String[]{"uk","ru","en"}){
    Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(l)){best=x;break;}final Site.Voice v=best;boolean on=v!=null&&offered(l);
-   TextView c=Ui.chip(this,PlaybackPolicy.label(l));voices.addView(c,Ui.wrap(this,10));Ui.select(c,voice!=null&&PlaybackPolicy.lang(voice.name).equals(l));
+   TextView c=Ui.chip(this,PlaybackPolicy.label(l));voices.addView(c,Ui.wrap(this,10));Ui.select(c,l.equals(current));
    c.setEnabled(on);c.setFocusable(on);c.setAlpha(on?1f:0.35f);if(!on)continue;
-   c.setOnClickListener(x->{voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);for(int i=0;i<voices.getChildCount();i++)Ui.select((TextView)voices.getChildAt(i),voices.getChildAt(i)==x);voiceChip.setText(PlaybackPolicy.label(l));voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();warm();
-    if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});});
+   c.setOnClickListener(x->{if(!l.equals(current))choose(v,true);else{voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();}});
   }
+  // Then every studio of the chosen language, best first, so the viewer can pick one by name.
+  List<Site.Voice> studios=new ArrayList<Site.Voice>();for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(current))studios.add(x);
+  if(studios.size()<2)return;
+  View divider=new View(this);divider.setBackgroundColor(0x33ffffff);LinearLayout.LayoutParams dl=new LinearLayout.LayoutParams(dp(1),dp(28));dl.gravity=Gravity.CENTER_VERTICAL;dl.setMargins(dp(4),0,dp(14),0);voices.addView(divider,dl);
+  for(final Site.Voice v:studios){
+   boolean on=covers(v);TextView c=Ui.chip(this,Ua.t(v.name));voices.addView(c,Ui.wrap(this,10));Ui.select(c,v==voice);
+   c.setEnabled(on);c.setFocusable(on);c.setAlpha(on?1f:0.35f);if(!on)continue;
+   c.setOnClickListener(x->choose(v,false));
+  }
+ }
+ /** A language keeps the studio row open on the new language; a studio closes the row. */
+ private void choose(final Site.Voice v,boolean language){
+  voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);buildVoices();warm();
+  if(language){int at=Arrays.asList("uk","ru","en").indexOf(PlaybackPolicy.lang(v.name));if(at>=0)voices.getChildAt(at).requestFocus();}
+  else{voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();}
+  if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});
  }
  private void showEpisodes(){
   seasonVoice();

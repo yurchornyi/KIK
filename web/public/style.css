@@ -53,7 +53,7 @@
 .player-head{display:flex;align-items:center;min-height:36px;padding-right:52px;margin-bottom:12px}
 .player-head h2{margin:0;font-size:19px;letter-spacing:-.4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .player-modal .player-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.player-tools .dropdown{flex:1 1 150px}
+.player-tools .dropdown{flex:1 1 150px}.player-tools .dropdown[hidden]{display:none}
 .player-tools .dropdown-trigger{min-height:46px;border-radius:14px;padding:6px 14px;flex-direction:row}
 .player-foot{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin-top:12px}
 .player-foot .player-note{margin:0;font-size:12px;color:#8f8f99}
