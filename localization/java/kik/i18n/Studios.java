@@ -11,7 +11,8 @@ import org.json.*;
 
 /** Quiet, optional public metadata. Requests never hold up posters, focus or playback. */
 final class Studios {
- static final String[][] ALL={{"","Усі студії",""},{"netflix","Netflix","N"},{"apple","Apple TV+","tv+"},{"hbo","HBO","HBO"},{"prime","Prime Video","prime"},{"disney","Disney+","Disney+"},{"hulu","Hulu","hulu"},{"paramount","Paramount+","P+"},{"warner","Warner Bros.","WB"},{"pixar","Pixar","PIXAR"}};
+ /** id, name, the wordmark on the badge (empty: the pictogram alone); the same emblems as the website's studios.js. */
+ static final String[][] ALL={{"","Усі студії",""},{"netflix","Netflix",""},{"apple","Apple TV+","tv+"},{"hbo","HBO","HBO"},{"prime","Prime Video","prime"},{"disney","Disney+","Disney+"},{"hulu","Hulu","hulu"},{"paramount","Paramount+","+"},{"warner","Warner Bros.","WB"},{"pixar","Pixar","PIXAR"}};
  static String name(String id){for(String[] s:ALL)if(s[0].equals(id))return s[1];return "";}
  static String id(JSONArray ids){if(ids!=null)for(int i=0;i<ids.length();i++)for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(ids.optString(i)))return s[0];return "";}
  private static final LinkedHashMap<String,String> cache=new LinkedHashMap<String,String>();
@@ -21,8 +22,19 @@ final class Studios {
  private static final String TAG="kik-studio-badge";
  static void paint(FrameLayout frame,String id){
   View old=frame.findViewWithTag(TAG);if(old!=null)frame.removeView(old);String[] studio=null;for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(id))studio=s;if(studio==null)return;
-  Context c=frame.getContext();TextView mark=Ui.bold(c,studio[2],10);mark.setTag(TAG);mark.setFocusable(false);mark.setClickable(false);mark.setContentDescription("Студія / платформа: "+studio[1]);mark.setPadding(Ui.dp(c,6),Ui.dp(c,3),Ui.dp(c,6),Ui.dp(c,3));mark.setBackground(Ui.shape(0xdd111113,Ui.dp(c,4),0,0));
-  FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.START);lp.setMargins(Ui.dp(c,7),Ui.dp(c,7),0,0);frame.addView(mark,lp);
+  Context c=frame.getContext();frame.addView(badge(c,studio),new FrameLayout.LayoutParams(-2,Ui.dp(c,22),Gravity.TOP|Gravity.START){{setMargins(Ui.dp(c,7),Ui.dp(c,7),0,0);}});
+ }
+ /** The emblem pill: a white pictogram and/or a short wordmark on a dark rounded pill with a thin edge, 22 dp tall everywhere. */
+ static TextView badge(Context c,String[] studio){
+  TextView mark=Ui.bold(c,studio[2],10);mark.setTag(TAG);mark.setFocusable(false);mark.setClickable(false);mark.setIncludeFontPadding(false);mark.setGravity(Gravity.CENTER_VERTICAL);mark.setSingleLine(true);
+  mark.setContentDescription("Студія / платформа: "+studio[1]);mark.setTextColor(0xfff4f4f6);
+  if("disney".equals(studio[0]))mark.setTypeface(Typeface.create("sans-serif",Typeface.BOLD_ITALIC));
+  else if("pixar".equals(studio[0])){mark.setTypeface(Typeface.create("serif",Typeface.BOLD));mark.setLetterSpacing(0.12f);mark.setTextSize(9);}
+  else if("hbo".equals(studio[0]))mark.setLetterSpacing(0.04f);
+  else if("paramount".equals(studio[0]))mark.setTextSize(13);
+  int glyph=glyphOf(studio[0]),pad=Ui.dp(c,glyph>=0&&studio[2].isEmpty()?5:7);
+  if(glyph>=0){int size=Ui.dp(c,14);Glyph g=new Glyph(glyph,0xdd111113);g.setBounds(0,0,size,size);mark.setCompoundDrawables(g,null,null,null);mark.setCompoundDrawablePadding(Ui.dp(c,4));}
+  mark.setPadding(pad,0,pad,0);mark.setBackground(Ui.shape(0xdd111113,Ui.dp(c,6),Ui.dp(c,1),0x22ffffff));return mark;
  }
  /** Called on the main thread. Weak view references and a bounded shared cache survive rebuilt rows safely. */
  static void watch(FrameLayout frame,String link,String title,String year,String known){
@@ -49,6 +61,23 @@ final class Studios {
  private static JSONObject post(JSONObject body)throws IOException,JSONException{
   HttpURLConnection c=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/artwork/batch").openConnection();c.setConnectTimeout(4500);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
   try{try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes("UTF-8"));}if(c.getResponseCode()!=200)throw new IOException("Studio metadata unavailable");try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>2*1024*1024)throw new IOException("Studio data limit");out.write(bytes,0,n);}return new JSONObject(out.toString("UTF-8"));}}finally{c.disconnect();}
+ }
+private static int glyphOf(String id){return "netflix".equals(id)?0:"apple".equals(id)?1:"prime".equals(id)?2:"paramount".equals(id)?3:"warner".equals(id)?4:-1;}
+ static final class Glyph extends Drawable {
+  private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG),line=new Paint(Paint.ANTI_ALIAS_FLAG);private final int kind,back;private final Path path=new Path();
+  Glyph(int kind,int back){this.kind=kind;this.back=back;fill.setColor(Color.WHITE);line.setColor(Color.WHITE);line.setStyle(Paint.Style.STROKE);line.setStrokeCap(Paint.Cap.ROUND);line.setStrokeJoin(Paint.Join.ROUND);}
+  @Override public void draw(Canvas c){
+   Rect b=getBounds();c.save();c.translate(b.left,b.top);c.scale(b.width()/24f,b.height()/24f);
+   if(kind==0){c.drawRect(4,2,8.5f,22,fill);c.drawRect(15.5f,2,20,22,fill);path.reset();path.moveTo(4,2);path.lineTo(8.5f,2);path.lineTo(15.5f,22);path.lineTo(11,22);path.close();c.drawPath(path,fill);}
+   else if(kind==1){path.reset();path.moveTo(12,6.4f);path.rCubicTo(-2.3f,-1.9f,-5.8f,-1.2f,-7.2f,1.5f);path.rCubicTo(-2,3.7f,.1f,9.8f,3.5f,11.8f);path.rCubicTo(1.2f,.7f,2.2f,.2f,3.7f,.2f);path.rCubicTo(1.5f,0,2.5f,.5f,3.7f,-.2f);path.rCubicTo(3.4f,-2,5.5f,-8.1f,3.5f,-11.8f);path.rCubicTo(-1.4f,-2.7f,-4.9f,-3.4f,-7.2f,-1.5f);path.close();c.drawPath(path,fill);
+    path.reset();path.moveTo(12.4f,5.6f);path.rCubicTo(.2f,-1.9f,1.5f,-3.2f,3.3f,-3.4f);path.rCubicTo(0,1.9f,-1.5f,3.4f,-3.3f,3.4f);path.close();c.drawPath(path,fill);}
+   else if(kind==2){line.setStrokeWidth(2.4f);path.reset();path.moveTo(3.5f,14.5f);path.cubicTo(8.3f,18.7f,16,18.8f,21,14.8f);c.drawPath(path,line);line.setStrokeWidth(2.2f);path.reset();path.moveTo(17.3f,12.2f);path.lineTo(21.5f,13.3f);path.lineTo(20.2f,17.4f);c.drawPath(path,line);}
+   else if(kind==3){path.reset();path.moveTo(3.5f,20.5f);path.lineTo(12,6);path.lineTo(20.5f,20.5f);path.close();c.drawPath(path,fill);fill.setColor(back);path.reset();path.moveTo(9.6f,11.4f);path.lineTo(12,6);path.lineTo(14.4f,11.4f);path.lineTo(12,13);path.close();c.drawPath(path,fill);fill.setColor(Color.WHITE);
+    float[][] stars={{5,9.2f},{8,5.4f},{12,2.6f},{16,5.4f},{19,9.2f}};for(float[] s:stars)c.drawCircle(s[0],s[1],1.4f,fill);}
+   else{line.setStrokeWidth(2.2f);path.reset();path.moveTo(4.5f,3);path.lineTo(19.5f,3);path.lineTo(19.5f,11.5f);path.cubicTo(19.5f,16.1f,16.5f,19.4f,12,21);path.cubicTo(7.5f,19.4f,4.5f,16.1f,4.5f,11.5f);path.close();c.drawPath(path,line);line.setStrokeWidth(1.9f);path.reset();path.moveTo(8,8);path.lineTo(9.6f,15);path.lineTo(12,10);path.lineTo(14.4f,15);path.lineTo(16,8);c.drawPath(path,line);}
+   c.restore();
+  }
+  @Override public void setAlpha(int a){fill.setAlpha(a);line.setAlpha(a);}@Override public void setColorFilter(ColorFilter f){fill.setColorFilter(f);line.setColorFilter(f);}@Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}
  }
  static final class FilterIcon extends Drawable {
   private final Paint pen=new Paint(Paint.ANTI_ALIAS_FLAG);private final int size;
