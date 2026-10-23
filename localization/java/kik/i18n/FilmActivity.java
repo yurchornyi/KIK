@@ -67,8 +67,8 @@ public final class FilmActivity extends Activity {
    try{
     final Site.Film f=Site.film(link);
     List<String> words=new ArrayList<String>();words.add(f.title);words.addAll(f.genres);if(f.country!=null)words.addAll(Arrays.asList(f.country.split(",\\s*")));if(f.duration!=null)words.add(f.duration);
-    final Map<String,String> cached=TitleTranslate.cached(words);
-    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,DescTranslate.cached(f.description));});
+    final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
     // The page lists one voice's episodes; show every season the leading voices have.
@@ -95,12 +95,22 @@ public final class FilmActivity extends Activity {
   if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(f.series?getIntent().getStringExtra("season"):null,f.series?getIntent().getStringExtra("episode"):null);}
   if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
  }
+ private String synopsisAsked;
+ /** Three lines that say what the title is about: the description if it fits, else the short synopsis (cached, else asked for once). */
+ private void fitDescription(final Site.Film f,String description){
+  final int width=dp(640)-desc.getPaddingLeft()-desc.getPaddingRight();final float spacing=desc.getLineSpacingMultiplier();
+  String full=description==null?"":description.trim(),brief=Synopsis.cached(this,f.link);
+  if(full.isEmpty()||Synopsis.fits(full,desc.getPaint(),width,spacing,3)){desc.setText(full);return;}
+  if(brief!=null){desc.setText(Synopsis.fit(brief,desc.getPaint(),width,spacing,3));return;}
+  desc.setText(Synopsis.fit(full,desc.getPaint(),width,spacing,3));if(f.link.equals(synopsisAsked))return;synopsisAsked=f.link;final Context app=getApplicationContext();
+  Ui.bg(()->{final String got=Synopsis.fetch(app,f.link);if(got==null)return;Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||film!=f)return;desc.setAlpha(0f);desc.setText(Synopsis.fit(got,desc.getPaint(),width,spacing,3));desc.animate().alpha(1f).setDuration(250).start();});});
+ }
  private void showText(Site.Film f,String description){
   name.setText(tr(f.title));original.setText(f.original==null?"":f.original);
   List<String> g=new ArrayList<String>();for(String x:f.genres)g.add(tr(x));
   String country=null;if(f.country!=null){StringBuilder b=new StringBuilder();for(String c:f.country.split(",\\s*")){if(b.length()>0)b.append(", ");b.append(tr(c));}country=b.toString();}
   meta.setMaxLines(2);meta.setEllipsize(TextUtils.TruncateAt.END);meta.setText(Ui.join(f.year,country,TextUtils.join(", ",g.subList(0,Math.min(2,g.size()))),tr(f.duration),f.age,f.rating==null?null:(f.ratingName+" "+f.rating)));
-  desc.setText(description==null?"":description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Немає доступного потоку для перегляду у KIK.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
+  fitDescription(f,description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Немає доступного потоку для перегляду у KIK.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
  }
  private void pickVoice(){
   voice=null;Progress.Entry e=Progress.get(this,link);String chosen=Progress.voice(this,link);

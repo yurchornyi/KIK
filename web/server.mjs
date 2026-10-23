@@ -10,6 +10,7 @@ import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
 import {catalogue,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
+import {synopsis} from "./synopsis.mjs";
 const artworkService=createArtworkService();
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
@@ -35,6 +36,8 @@ async function api(request,env,ctx){
   return json({configured,results});
  }
  if(path==="/api/metadata"){const m=await metadata(url.searchParams.get("imdb"),env,url.searchParams.get("kind")||''),t=await localizedFilm(db,{title:m.title,description:m.overview});return json({...m,title:t.title,overview:t.description});}
+ // Three-line synopsis for the TV title page, generated once per title from the catalogue page itself.
+ if(path==="/api/synopsis"&&request.method==="GET")return json(await synopsis(db,env,url.searchParams.get("link")||""));
  if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  if(path==="/api/auth/register"&&request.method==="POST"){

@@ -52,6 +52,13 @@ public final class TitleTranslate {
   return out;
  }
 
+ /** Bounded blocking variant for text about to appear (off the main thread): waits at most ms so screens show Ukrainian from the start; on a slow network the rest arrives later. */
+ public static Map<String,String> resolve(final Collection<String> texts,long ms){
+  java.util.concurrent.FutureTask<Map<String,String>> task=new java.util.concurrent.FutureTask<Map<String,String>>(()->resolve(texts));
+  new Thread(task,"kik-titles-now").start();
+  try{return task.get(ms,java.util.concurrent.TimeUnit.MILLISECONDS);}catch(Exception e){return cached(texts);}
+ }
+
  private static boolean candidate(String s){
   if(s==null||s.length()<2||s.length()>160||UiRuntime.app==null)return false;
   boolean cyr=false;

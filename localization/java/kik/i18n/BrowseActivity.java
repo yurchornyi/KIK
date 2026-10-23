@@ -80,7 +80,7 @@ public final class BrowseActivity extends Activity {
   View hs=(View)genres.getTag();boolean show=hs.getVisibility()!=View.VISIBLE;hs.setVisibility(show?View.VISIBLE:View.GONE);
   if(!show||genres.getChildCount()>0)return;
   Ui.bg(()->{try{final List<Site.Genre> list=Site.genres(category);List<String> names=new ArrayList<String>();for(Site.Genre x:list)names.add(x.name);
-    final Map<String,String> uk=TitleTranslate.cached(names);
+    final Map<String,String> uk=TitleTranslate.resolve(names,Ui.TRANSLATE_WAIT);
     Ui.MAIN.post(()->{TextView all=Ui.chip(this,"Усі");genres.addView(all,Ui.wrap(this,10));all.setOnClickListener(v->{genre=null;paintGenres();reload();});
      for(final Site.Genre x:list){String n=uk.get(x.name);TextView c=Ui.chip(this,n==null?x.name:n);c.setTag(x.slug);genres.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{genre=x.slug;paintGenres();reload();});}
      paintGenres();});
@@ -110,7 +110,7 @@ public final class BrowseActivity extends Activity {
    List<G> items=new ArrayList<G>();String[] heading={"Рекомендовано для вас"};
    try{Recommendations.Snapshot s=Recommendations.snapshot(this,profile);HomeActivity.Row r=Recommendations.row(this,s,new ArrayList<HomeActivity.Row>());if(!"Рекомендовано для вас".equals(r.title))heading[0]=r.title;for(HomeActivity.Item x:r.items){if(x==null)continue;G g=new G();g.link=x.link;g.title=x.title;g.poster=x.poster;g.year=x.year;g.genre=x.genre;g.sub=Ui.join(g.year,g.genre);items.add(g);if(items.size()>=12)break;}}catch(Exception ignored){}
    if(items.isEmpty())try{heading[0]="Популярне зараз";for(Site.Card c:Site.list("",null,"popular",1)){items.add(of(c));if(items.size()>=12)break;}}catch(Exception ignored){}
-   Set<String> words=new HashSet<String>();for(G g:items){words.add(g.title);if(g.genre!=null)words.add(g.genre);}Map<String,String> uk=TitleTranslate.cached(words);
+   Set<String> words=new HashSet<String>();for(G g:items){words.add(g.title);if(g.genre!=null)words.add(g.genre);}Map<String,String> uk=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
    for(G g:items){String t=uk.get(g.title);if(t!=null)g.title=t;if(g.genre!=null){String gn=uk.get(g.genre);if(gn!=null)g.sub=Ui.join(g.year,gn);}}
    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||items.isEmpty())return;h.setText(heading[0]);h.setVisibility(View.VISIBLE);
     for(final G g:items){View card=Ui.card(this,g.title,g.sub,g.poster,null,0,null,()->FilmActivity.open(this,g.link,g.title,g.poster));row.addView(card);}});
@@ -132,7 +132,7 @@ public final class BrowseActivity extends Activity {
       g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"переглянуто":"зупинились на "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}
     else if(next==1&&"later".equals(mode)){JSONArray a=Progress.later(this);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;G g=new G();g.link=o.optString("link");g.title=o.optString("title");g.poster=o.optString("poster",null);g.sub=Ui.join(o.optString("year",""),o.optString("genre",""));items.add(g);}}
     Set<String> words=new HashSet<String>();for(G g:items){g.sourceTitle=g.title;words.add(g.title);if(g.genre!=null)words.add(g.genre);}
-    Map<String,String> uk=TitleTranslate.cached(words);
+    Map<String,String> uk=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
     for(G g:items){String t=uk.get(g.title);if(t!=null)g.title=t;if(g.genre!=null){String gn=uk.get(g.genre);g.sub=Ui.join(g.year,gn==null?g.genre:gn);}}
    }catch(Exception e){error="Не вдалося завантажити. Перевірте інтернет і спробуйте ще раз.";}
    final List<G> got=items;final String err=error;
