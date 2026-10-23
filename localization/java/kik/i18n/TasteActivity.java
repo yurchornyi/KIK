@@ -56,7 +56,7 @@ public final class TasteActivity extends Activity {
   });
  }
  private Set<String> words(List<HomeActivity.Item> items){Set<String> words=new LinkedHashSet<>();for(HomeActivity.Item i:items){words.add(i.title);if(i.genre!=null)words.add(i.genre);}return words;}
- private String tr(String s){if(s==null)return null;String got=uk.get(s);return got==null?Ua.t(s):got;}
+ private String tr(String s){if(s==null)return null;String got=uk.get(s);if(got!=null)return got;got=Ua.t(s);return got.equals(s)?TitleTranslate.shown(s):got;}
  private void append(List<HomeActivity.Item> items){
   for(HomeActivity.Item i:items){String key=RecommendationRanker.key(i.link);if(choices.containsKey(key)||choices.size()>=TasteCatalogue.LIMIT)continue;choices.put(key,i);
    if(openRow==null||inRow==columns){openRow=new LinearLayout(this);openRow.setClipChildren(false);openRow.setClipToPadding(false);grid.addView(openRow);inRow=0;}

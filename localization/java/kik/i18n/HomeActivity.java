@@ -322,7 +322,7 @@ public final class HomeActivity extends Activity {
  }
  private void paintLater(){if(hero==null)return;boolean saved=laterLinks.contains(norm(hero.link));HeroActions.label(later,saved?"У списку":"Мій список",saved?HeroActions.CHECK:HeroActions.ADD);later.setSelected(saved);}
 
- private String tr(String s){if(s==null)return null;String t=uk.get(s);return t==null?s:t;}
+ private String tr(String s){if(s==null)return null;String t=uk.get(s);return t==null?TitleTranslate.shown(s):t;}
  private static String join(String... parts){StringBuilder b=new StringBuilder();for(String p:parts)if(p!=null&&!p.isEmpty()){if(b.length()>0)b.append("  •  ");b.append(p);}return b.toString();}
 
  private void open(Item i){

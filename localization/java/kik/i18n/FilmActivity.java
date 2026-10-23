@@ -67,7 +67,9 @@ public final class FilmActivity extends Activity {
    try{
     final Site.Film f=Site.film(link);
     List<String> words=new ArrayList<String>();words.add(f.title);words.addAll(f.genres);if(f.country!=null)words.addAll(Arrays.asList(f.country.split(",\\s*")));if(f.duration!=null)words.add(f.duration);
-    final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);
+    // Title and description translate side by side, so the page waits once, not twice.
+    final java.util.concurrent.FutureTask<String> about=new java.util.concurrent.FutureTask<String>(()->DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT));new Thread(about,"kik-film-text").start();
+    final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=about.get();
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
@@ -80,7 +82,7 @@ public final class FilmActivity extends Activity {
    }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText("Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
   });
  }
- private String tr(String s){if(s==null)return null;String t=uk.get(s);return t==null?Ua.t(s):t;}
+ private String tr(String s){if(s==null)return null;String t=uk.get(s);if(t!=null)return t;t=Ua.t(s);return t.equals(s)?TitleTranslate.shown(s):t;}
  private void show(Site.Film f,String description){
   // A UASerials title may open as its HDRezka twin: history, list and voices follow the playable link.
   if(f.sourceUrl==null&&!Progress.norm(f.link).equals(Progress.norm(link)))link=f.link;
