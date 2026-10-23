@@ -24,7 +24,7 @@ public final class Site {
  private static final ThreadLocal<Integer> PAGE_CODE=new ThreadLocal<Integer>();
 
  // ---------- models ----------
- public static final class Card{public String link,title,poster,info,type;public String year(){Matcher m=Pattern.compile("(\\d{4}(?:\\s*-\\s*(?:\\d{4}|\\.\\.\\.))?)").matcher(info==null?"":info);return m.find()?m.group(1).replace(" ",""):null;}
+ public static final class Card{public String link,title,poster,info,type,studio;public String year(){Matcher m=Pattern.compile("(\\d{4}(?:\\s*-\\s*(?:\\d{4}|\\.\\.\\.))?)").matcher(info==null?"":info);return m.find()?m.group(1).replace(" ",""):null;}
   public String genre(){if(info==null)return null;String[] p=info.split(",");return p.length>0?p[p.length-1].trim():null;}}
  public static final class Voice{public String id,name;public boolean premium,camrip,ads,director;}
  public static final class Episode{public String season,episode,title;}
@@ -150,6 +150,12 @@ public final class Site {
  /** Titles on the last parsed page of this thread before the country filter; 0 means the source has no more pages. */
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(page(listPath(category,genre,filter,page)));}
+ public static List<Card> studioList(String category,String genre,String filter,String studio,int page)throws IOException{
+  JSONObject result=FreeSources.get("/api/catalogue?category="+FreeSources.enc(category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter)+"&studio="+FreeSources.enc(studio)+"&page="+page,60000);
+  List<Card> out=new ArrayList<Card>();JSONArray items=result.optJSONArray("items");if(items==null)throw new IOException("Studio catalogue unavailable");
+  for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null||!FreeSources.rezka(item.optString("link")))continue;Card c=new Card();c.link=item.optString("link");c.title=item.optString("title");c.poster=item.optString("poster",null);c.info=item.optString("sourceInfo",item.optString("info",null));c.type=item.optString("type",null);c.studio=Studios.id(item.optJSONArray("studios"));if(!CountryFilter.blocked(c.info))out.add(c);}
+  RAW.set(result.optBoolean("hasMore",false)?1:0);return out;
+ }
  public static List<Card> search(String query,int page)throws IOException{return search(query,page,true);}
  /** fix=false for lookups by a known name (title pages, deep links): other names only when nothing was found, as before. */
  public static List<Card> search(String query,int page,boolean fix)throws IOException{

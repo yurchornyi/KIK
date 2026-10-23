@@ -17,12 +17,13 @@ import org.json.*;
 /**
  * Mandatory sign-in, one question per screen for the remote: email, then the password (or, for an email the administrator
  * allowed or whose password was reset, a new password), then a profile and its avatar when the account has none.
- * The server decides which emails may enter.
+ * The server decides which emails may enter. «Увійти з телефону» unfolds a code and a QR code instead: the viewer confirms
+ * it on a phone already signed in to the website, and the TV signs in without a password typed on the remote.
  */
 public final class SignInActivity extends Activity {
  private static final int LOADING=0,EMAIL=1,PASSWORD=2,CREATE=3,PICK=4,NAME=5,AVATAR=6;
  private final Handler main=new Handler(Looper.getMainLooper());private final ExecutorService io=Executors.newSingleThreadExecutor();
- private volatile boolean destroyed;private boolean working;private LinearLayout content;private TextView error;private int step;private boolean adding;
+ private volatile boolean destroyed;private boolean working;private ScrollView scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding;
  private String email="",name="";private JSONArray remote=new JSONArray();
 
  /** "+ Add profile" for a signed-in TV: the same name and avatar screens, made on the account. */
@@ -30,7 +31,7 @@ public final class SignInActivity extends Activity {
  private int dp(float n){return Ui.dp(this,n);}
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);
-  ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);
+  scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setGravity(Gravity.CENTER_HORIZONTAL);content.setPadding(dp(48),dp(40),dp(48),dp(32));
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
   email=Account.email(this);adding=getIntent().getBooleanExtra("add",false)&&!Account.token(this).isEmpty();
@@ -40,7 +41,7 @@ public final class SignInActivity extends Activity {
 
  // ---------- steps ----------
  private void show(int target){
-  step=target;error=null;
+  step=target;error=null;pairing++;
   // A step without a text field must not keep the previous step's keyboard over its tiles.
   ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(content.getWindowToken(),0);
   content.removeAllViews();
@@ -49,7 +50,9 @@ public final class SignInActivity extends Activity {
   if(step==EMAIL){
    head("Увійдіть у KIK","Введіть пошту, яку адміністратор додав до KIK.");
    final EditText field=input("Пошта",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,EditorInfo.IME_ACTION_NEXT);field.setText(email);field.setSelection(field.length());
-   final Button next=primary("Далі");next.setOnClickListener(v->checkEmail(field,next));submit(field,next);type(field);
+   final Button next=wide("Далі",true);next.setOnClickListener(v->checkEmail(field,next));submit(field,next);
+   // Focus starts on a button, so no keyboard covers the phone option; OK on the field opens it.
+   Button phone=phoneOption();(email.isEmpty()?phone:next).requestFocus();
   }else if(step==PASSWORD){
    head("Введіть пароль",email);
    final EditText field=input("Пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
@@ -98,6 +101,48 @@ public final class SignInActivity extends Activity {
   else if(step==NAME&&adding)finish();
   else if(step==NAME&&remote.length()>0)show(PICK);
   else finishAffinity();
+ }
+
+ // ---------- sign-in from a phone ----------
+ /** «або» and a folded card: opening it asks the server for a code; closing it stops waiting. */
+ private Button phoneOption(){
+  space(22);LinearLayout or=new LinearLayout(this);or.setOrientation(0);or.setGravity(Gravity.CENTER_VERTICAL);
+  for(int i=0;i<3;i++){if(i==1){TextView t=text("або",15);t.setTextColor(0xff8a8592);t.setPadding(dp(16),0,dp(16),0);or.addView(t);continue;}View line=new View(this);line.setBackgroundColor(0x26ffffff);or.addView(line,new LinearLayout.LayoutParams(0,dp(1),1));}
+  content.addView(or,new LinearLayout.LayoutParams(dp(480),-2));space(22);
+  final Button toggle=wide("Увійти з телефону",false);
+  final LinearLayout card=new LinearLayout(this);card.setOrientation(0);card.setGravity(Gravity.CENTER_VERTICAL);card.setPadding(dp(28),dp(24),dp(28),dp(24));card.setBackground(Ui.shape(0xff18181d,dp(18),dp(1),0x22ffffff));card.setVisibility(View.GONE);
+  final ImageView qr=new ImageView(this);qr.setContentDescription("QR-код для входу з телефону");qr.setScaleType(ImageView.ScaleType.FIT_CENTER);LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(dp(176),dp(176));qp.rightMargin=dp(28);card.addView(qr,qp);
+  LinearLayout copy=new LinearLayout(this);copy.setOrientation(1);card.addView(copy,new LinearLayout.LayoutParams(dp(360),-2));
+  TextView kicker=text("ВХІД З ТЕЛЕФОНУ",12);kicker.setGravity(Gravity.START);kicker.setTextColor(0xffef5a62);kicker.setLetterSpacing(.12f);copy.addView(kicker);
+  final TextView code=text("",36);code.setGravity(Gravity.START);code.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);code.setPadding(0,dp(6),0,dp(6));copy.addView(code);
+  final TextView steps=text("Отримання коду…",15);steps.setGravity(Gravity.START);steps.setTextColor(0xffb5b1be);steps.setLineSpacing(0,1.25f);copy.addView(steps);
+  LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.topMargin=dp(18);content.addView(card,cp);
+  toggle.setOnClickListener(v->{boolean open=card.getVisibility()!=View.VISIBLE;card.setVisibility(open?View.VISIBLE:View.GONE);toggle.setText(open?"Сховати код":"Увійти з телефону");final int gen=++pairing;
+   if(open){startPair(gen,qr,code,steps);scroll.post(()->scroll.smoothScrollTo(0,card.getBottom()));}});
+  return toggle;
+ }
+ private void startPair(int gen,ImageView qr,TextView code,TextView steps){
+  code.setText("");qr.setImageDrawable(null);steps.setText("Отримання коду…");
+  io.execute(()->{try{JSONObject r=CloudSync.request("/api/pair/start",new JSONObject(),null);final String user=r.getString("user_code"),secret=r.getString("device_code");final long until=SystemClock.elapsedRealtime()+r.optInt("expires_in",600)*1000L;
+    main.post(()->{if(destroyed||gen!=pairing)return;code.setText(user.substring(0,4)+" "+user.substring(4));qr.setImageDrawable(SyncActivity.qr(getResources(),UpdateConfig.WEB_ORIGIN+"/pair?code="+user));
+     steps.setText("1. Наведіть камеру телефона на QR-код.\n2. Увійдіть на сайті, виберіть профіль і підтвердьте.\nБез камери: "+UpdateConfig.WEB_ORIGIN.replaceFirst("^https?://","")+" → «Прив’язати TV» і цей код.");pollPair(gen,secret,until,qr,code,steps);});}
+   catch(Exception e){main.post(()->{if(!destroyed&&gen==pairing)steps.setText("Не вдалося отримати код. Перевірте інтернет і відкрийте ще раз.");});}});
+ }
+ /** Asks every 3 s; an expired code is replaced by a fresh one while the card stays open. */
+ private void pollPair(int gen,String secret,long until,ImageView qr,TextView code,TextView steps){
+  if(destroyed||gen!=pairing)return;if(SystemClock.elapsedRealtime()>until){startPair(gen,qr,code,steps);return;}
+  io.execute(()->{try{JSONObject r=CloudSync.request("/api/pair/poll",new JSONObject().put("device_code",secret),null);if(!r.optBoolean("pending")){main.post(()->{if(!destroyed&&gen==pairing)paired(r);});return;}}
+   catch(CloudSync.Failure e){if(e.code==410){main.post(()->{if(!destroyed&&gen==pairing)startPair(gen,qr,code,steps);});return;}}catch(Exception ignored){}
+   main.postDelayed(()->pollPair(gen,secret,until,qr,code,steps),3000);});
+ }
+ /** The phone approved this TV for one profile: keep the session, bind that profile and the account's others, open it. */
+ private void paired(JSONObject result){
+  final String token=result.optString("token");final JSONObject chosen=result.optJSONObject("profile");if(!token.matches("[a-f0-9]{64}")||chosen==null){error("Не вдалося завершити вхід. Спробуйте ще раз.");return;}
+  show(LOADING);
+  io.execute(()->{try{JSONObject me=request("/api/me",token);main.post(()->{if(destroyed)return;JSONObject user=me.optJSONObject("user");if(user==null){show(EMAIL);error("Вхід скасовано. Спробуйте ще раз.");return;}
+    email=user.optString("email");Account.save(this,email,token);remote=me.optJSONArray("profiles");if(remote==null)remote=new JSONArray();
+    JSONObject match=chosen;for(int i=0;i<remote.length();i++){JSONObject p=remote.optJSONObject(i);if(p!=null&&p.optString("id").equals(chosen.optString("id")))match=p;}pick(match);});}
+   catch(Exception e){main.post(()->{if(destroyed)return;show(EMAIL);error("Немає зв’язку з KIK. Перевірте інтернет і спробуйте ще раз.");});}});
  }
 
  // ---------- requests ----------
@@ -179,6 +224,8 @@ public final class SignInActivity extends Activity {
  private void error(String message){if(error!=null)error.setText(message);}
  private void busy(Button b,String label){if(b.isEnabled())b.setTag(b.getText());b.setEnabled(false);b.setText(label);error("");}
  private Button primary(String label){LinearLayout row=actions();return button(row,label,true);}
+ /** A button as wide as the text field above it: the email screen's two ways in line up in one column. */
+ private Button wide(String label,boolean primary){Button b=Ui.pill(this,label,primary);content.addView(b,new LinearLayout.LayoutParams(dp(480),dp(54)));return b;}
  private LinearLayout actions(){LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);row.setClipChildren(false);row.setClipToPadding(false);content.addView(row);return row;}
  private Button button(LinearLayout row,String label,boolean primary){Button b=Ui.pill(this,label,primary);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(52));lp.setMargins(dp(8),0,dp(8),0);b.setMinWidth(dp(200));row.addView(b,lp);return b;}
  private View tile(LinearLayout row,String avatar,String label,int size){

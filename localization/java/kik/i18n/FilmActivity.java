@@ -13,7 +13,7 @@ import java.util.*;
 public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
- private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private ImageView backdrop;
+ private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo,studioLabel;private Button watch,later;private ImageView backdrop;
  private LinearLayout body,voices,seasons,episodes,similar;private View similarHeader;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
@@ -42,6 +42,7 @@ public final class FilmActivity extends Activity {
   name=Ui.bold(this,title==null?"":title,34);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
   meta=Ui.text(this,"",14,0xffd8d8dc);body.addView(meta);Ui.space(body,12);
+  studioLabel=Ui.text(this,"",13,Ui.GREY);studioLabel.setVisibility(View.GONE);body.addView(studioLabel);
   desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(Ui.contentWidth(this,640,80),-2));
   sourceInfo=Ui.text(this,"",13,Ui.GREY);sourceInfo.setVisibility(View.GONE);body.addView(sourceInfo);
   Ui.space(body,20);
@@ -111,7 +112,7 @@ public final class FilmActivity extends Activity {
   // A UASerials title may open as its HDRezka twin: history, list and voices follow the playable link.
   if(f.sourceUrl==null&&!Progress.norm(f.link).equals(Progress.norm(link)))link=f.link;
   film=f;current=f;status.setVisibility(View.GONE);
-  showText(f,description);
+  showText(f,description);loadStudio(f);
   if(f.poster!=null){poster=poster==null?f.poster:poster;HomeActivity.Images.crossfade(f.poster,backdrop);}
   for(View v:new View[]{name,meta,desc}){v.setAlpha(0.3f);v.animate().alpha(1f).setDuration(260).start();}
   pickVoice();buildVoices();
@@ -120,6 +121,9 @@ public final class FilmActivity extends Activity {
   warm();
   if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(f.series?getIntent().getStringExtra("season"):null,f.series?getIntent().getStringExtra("episode"):null);}
   if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
+ }
+ private void loadStudio(final Site.Film f){
+  final int generation=loadGeneration;Ui.bg(()->{String label="";try{org.json.JSONObject a=FreeSources.get("/api/artwork?link="+FreeSources.enc(f.link)+"&title="+FreeSources.enc(f.title)+"&original="+FreeSources.enc(f.original==null?"":f.original)+"&year="+FreeSources.enc(f.year==null?"":f.year),12000).optJSONObject("artwork");if(a!=null)label=Studios.name(Studios.id(a.optJSONArray("studios")));}catch(Exception ignored){}final String shown=label;Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||film!=f||generation!=loadGeneration)return;studioLabel.setText(shown);studioLabel.setVisibility(shown.isEmpty()?View.GONE:View.VISIBLE);studioLabel.setPadding(0,0,0,shown.isEmpty()?0:dp(10));});});
  }
  private String synopsisAsked;
  /** Three lines that say what the title is about: the description if it fits, else the short synopsis (cached, else asked for once). */

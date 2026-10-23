@@ -37,7 +37,7 @@ test('without a token the site keeps its own artwork and never calls TMDB',async
 });
 
 test('lookup searches, picks images, sends the token only in the header and caches',async()=>{
- const {fetcher,calls}=mockTmdb([['/search/movie',{results:[{id:157336,title:'Интерстеллар',release_date:'2014-11-05'}]}],['/movie/157336/images',{posters:[poster],backdrops:[backdrop]}]]);
+ const {fetcher,calls}=mockTmdb([['/search/movie',{results:[{id:157336,title:'Интерстеллар',release_date:'2014-11-05'}]}],['/movie/157336?',{posters:[poster],backdrops:[backdrop]}]]);
  const service=createArtworkService({fetcher});
  const [a,b]=await Promise.all([service.lookup({link,title:'Интерстеллар'},{token:'secret'}),service.lookup({link,title:'Интерстеллар'},{token:'secret'})]);
  assert.equal(a.artwork.id,157336);assert.equal(a.artwork.page,'https://www.themoviedb.org/movie/157336');assert.deepEqual(a,b);
@@ -57,7 +57,7 @@ test('rejected credentials pause TMDB requests instead of hammering it',async()=
 
 test('v3 API keys and pasted Bearer prefixes both work without exposing credentials to clients',async()=>{
  for(const token of ['a'.repeat(32),'Bearer read-access-token']){
-  const {fetcher,calls}=mockTmdb([['/search/movie',{results:[{id:157336,title:'Интерстеллар',release_date:'2014-11-05'}]}],['/movie/157336/images',{posters:[poster],backdrops:[backdrop]}]]);
+  const {fetcher,calls}=mockTmdb([['/search/movie',{results:[{id:157336,title:'Интерстеллар',release_date:'2014-11-05'}]}],['/movie/157336?',{posters:[poster],backdrops:[backdrop]}]]);
   const a=await createArtworkService({fetcher}).lookup({link,title:'Интерстеллар'},{token});assert.equal(a.artwork.id,157336);assert.ok(!JSON.stringify(a).includes(token));
   for(const c of calls)if(token.startsWith('Bearer')){assert.equal(c.init.headers.Authorization,'Bearer read-access-token');assert.ok(!c.url.includes('read-access-token'));}else{assert.equal(new URL(c.url).searchParams.get('api_key'),token);assert.equal(c.init.headers.Authorization,undefined);}
  }
@@ -69,11 +69,11 @@ test('small source posters cannot be promoted to high-resolution artwork',()=>{
 });
 
 test('regional release dates can differ without choosing an unrelated film',async()=>{
- const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/images'))return Response.json({posters:[poster],backdrops:[backdrop]});return Response.json({results:new URL(url).searchParams.has('year')?[]:[{id:77,title:'Exact title',release_date:'2025-12-31'},{id:78,title:'Other title',release_date:'2026-01-01'}]});};
+ const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('append_to_response=images'))return Response.json({posters:[poster],backdrops:[backdrop]});return Response.json({results:new URL(url).searchParams.has('year')?[]:[{id:77,title:'Exact title',release_date:'2025-12-31'},{id:78,title:'Other title',release_date:'2026-01-01'}]});};
  const a=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/films/concert/1-exact-2026.html',title:'Exact title'},{token:'secret'});assert.equal(a.artwork.id,77);assert.equal(calls.length,3);
 });
 
 test('an English international title requests English translations even when the catalogue title is Russian',async()=>{
- const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/images'))return Response.json({backdrops:[backdrop],posters:[poster]});const lang=new URL(url).searchParams.get('language');return Response.json({results:lang==='en-US'?[{id:81,title:'International Title',original_title:'한국 영화',release_date:'2026-01-01'}]:[]});};
+ const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('append_to_response=images'))return Response.json({backdrops:[backdrop],posters:[poster]});const lang=new URL(url).searchParams.get('language');return Response.json({results:lang==='en-US'?[{id:81,title:'International Title',original_title:'한국 영화',release_date:'2026-01-01'}]:[]});};
  const result=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/films/concert/81-test-2026.html',title:'Название фильма',original:'International Title'},{token:'secret'});assert.equal(result.artwork.id,81);assert.equal(new URL(calls[0]).searchParams.get('language'),'en-US');assert.ok(result.artwork.backdrop);
 });

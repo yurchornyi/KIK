@@ -14,9 +14,11 @@ import {searchAlternatives} from "./search-fix.mjs";
 import {similar} from "./similar.mjs";
 import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
+import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {synopsis} from "./synopsis.mjs";
 import {adBreaks,adScanner} from "./ad-breaks.mjs";
 const artworkService=createArtworkService();
+const studioCatalogue=createStudioCatalogue({search:params=>catalogue(params,{bounded:true}),genres:category=>catalogueGenres(category,{bounded:true}),film:link=>film(link,{bounded:true})});
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 
@@ -107,7 +109,12 @@ async function api(request,env,ctx){
   const r=json({items:await localizedGenres(db,await catalogueGenres(category))});r.headers.set("Cache-Control","public, max-age=3600");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
  if(path==="/api/catalogue"){
-  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk4"),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:await localizedCards(db,data)});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
+  const params=Object.fromEntries(url.searchParams);
+  if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
+  if(params.studio&&!env.TMDB_READ_TOKEN)fail('Фільтр студій тимчасово недоступний. Спробуйте пізніше.',503);
+  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5"),cached=await caches.default.match(key);if(cached)return cached;
+  const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};
+  const r=json({...result,items:await localizedCards(db,result.items)});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
