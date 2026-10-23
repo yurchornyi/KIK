@@ -37,7 +37,7 @@ footer{width:calc(100% - 2 * var(--page-gutter));max-width:1748px;margin:28px au
 .foot-brand,.foot-links{min-width:0;gap:6px 16px}
 .foot-links a,.foot-links .text-button{min-height:44px;display:inline-flex;align-items:center}@media (pointer:fine){.foot-links a,.foot-links .text-button{min-height:32px}}
 .text-button{min-height:44px}
-dialog{max-height:calc(100dvh - 32px);overscroll-behavior:contain;scrollbar-gutter:stable;padding-top:56px}
+dialog{max-height:calc(100dvh - 32px);overscroll-behavior:contain;scrollbar-gutter:stable;padding-top:24px}
 dialog[open]{animation:dialog-in .16s ease-out}
 dialog h2{padding-right:24px;overflow-wrap:anywhere}
 dialog p,.auth-kicker{overflow-wrap:anywhere}
@@ -107,7 +107,7 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
  .settings-fields{grid-template-columns:1fr}
  .settings-card{padding:20px}
  .manage-heading{margin-bottom:24px}
- dialog{width:calc(100% - 24px);max-height:calc(100dvh - 24px);padding:56px 20px 24px;border-radius:20px}
+ dialog{width:calc(100% - 24px);max-height:calc(100dvh - 24px);padding:24px 20px;border-radius:20px}
  .player-modal{width:calc(100% - 16px);max-width:calc(100% - 16px);padding:54px 12px 20px}
  .player-tools,.player-tools.series-tools{grid-template-columns:repeat(2,minmax(0,1fr))}
  .player-tools .field:first-child{grid-column:1/-1}
