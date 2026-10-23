@@ -163,7 +163,7 @@ public final class HomeActivity extends Activity {
   main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{Map<String,String> got=TitleTranslate.resolve(words(rows));main.post(()->{if(!valid(gen,profile))return;mergeTranslations(got);translateLabels(content);if(hero!=null){heroTitle.setText(tr(hero.title));heroMeta.setText(join(hero.year,tr(hero.genre),hero.rating==null?null:"★ "+hero.rating));}});},"kik-home-text").start();},800);
  }
  private static final class Label{final Item item;final boolean meta;Label(Item i,boolean m){item=i;meta=m;}}
- private void translateLabels(View v){if(v instanceof TextView&&v.getTag() instanceof Label){Label l=(Label)v.getTag();((TextView)v).setText(l.meta?(l.item.resume?l.item.sub:join(l.item.year,tr(l.item.genre))):tr(l.item.title));}if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)translateLabels(((ViewGroup)v).getChildAt(i));}
+ private void translateLabels(View v){if(v instanceof TextView&&v.getTag() instanceof Label){Label l=(Label)v.getTag();String shown=l.meta?(l.item.resume?l.item.sub:join(l.item.year,tr(l.item.genre))):tr(l.item.title);if(!TextUtils.equals(((TextView)v).getText(),shown))((TextView)v).setText(shown);}if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)translateLabels(((ViewGroup)v).getChildAt(i));}
  private void recommendLater(Recommendations.Snapshot preferences,List<Row> catalogue,int gen,String profile){
   main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{
    Recommendations.refresh(this,preferences);if(!valid(gen,profile)||!foreground)return;
@@ -286,7 +286,7 @@ public final class HomeActivity extends Activity {
   frame.setOnFocusChangeListener((v,f)->{
    Ui.focus(v,f,1.05f);ring.animate().alpha(f?1f:0f).setDuration(140).start();
    t.setTextColor(f?Color.WHITE:0xffe6e6ea);
-   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->setHero(i);main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->hs.smoothScrollTo(Math.max(0,box.getLeft()-dp(32)),0));}}
+   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->setHero(i);main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->{View line=(View)box.getParent();if(line==null||destroyed)return;int left=line.getLeft()+box.getLeft(),target=FocusScrollPolicy.target(hs.getScrollX(),hs.getWidth(),hs.getPaddingLeft(),hs.getPaddingRight(),left,left+box.getWidth(),dp(8));if(target!=hs.getScrollX())hs.smoothScrollTo(target,0);});}}
   });
   frame.setOnClickListener(v->open(i));
   frame.setOnLongClickListener(v->{rate(i);return true;});
@@ -296,8 +296,8 @@ public final class HomeActivity extends Activity {
  private void rate(Item i){final String profile=ProfileStore.current(this);int value=RatingStore.get(this,profile,i.link);Ui.dialog(this).setTitle(tr(i.title)).setSingleChoiceItems(new String[]{"Подобається","Не подобається","Без оцінки"},value>0?0:value<0?1:2,(d,n)->{boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,n==0?1:n==1?-1:0);d.dismiss();if(saved)load();else Ui.toast(this,"Не вдалося зберегти оцінку");}).setNegativeButton("Назад",null).show();}
  private void chooseTaste(){TasteActivity.open(this,false);}
  private void scrollRowIntoView(View row){
-  int screen=getResources().getDisplayMetrics().heightPixels;
-  scroll.smoothScrollTo(0,Math.max(0,row.getBottom()-screen+dp(48)));
+  int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
+  if(target!=scroll.getScrollY())scroll.smoothScrollTo(0,target);
  }
 
  private void setHero(Item i){
@@ -447,18 +447,19 @@ public final class HomeActivity extends Activity {
   }
   private static void fetch(final String u,final String key,final int width,final int height,final ImageView view,final boolean cross){
    (cross?HERO_POOL:POOL).execute(()->{
+    if(!key.equals(view.getTag())||!view.isAttachedToWindow())return;
     Bitmap b=null;
     try{
      byte[] data=imageBytes(u);
      BitmapFactory.Options o=new BitmapFactory.Options();o.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(data,0,data.length,o);
-     int s=1;while(o.outWidth/(s*2)>=width)s*=2;
+     int s=ImageDecodePolicy.sample(o.outWidth,o.outHeight,width,height>0?height:Math.max(1,width*3/2));
      o=new BitmapFactory.Options();o.inSampleSize=s;o.inPreferredConfig=Bitmap.Config.RGB_565;b=BitmapFactory.decodeByteArray(data,0,data.length,o);
      if(b!=null&&cross)b=backdrop(b,width,height);
      if(b!=null)b.prepareToDraw();
      if(b!=null)MEM.put(key,b);else Log.w("KIK","Poster not decoded "+u+" bytes="+data.length);
     }catch(Exception e){Log.w("KIK","Poster "+u+": "+e);}
     final Bitmap bitmap=b;
-    MAIN.post(()->{if(!key.equals(view.getTag())||bitmap==null)return;if(cross)swap(view,bitmap);else{view.setImageBitmap(bitmap);view.setAlpha(0f);view.animate().alpha(1f).setDuration(220).start();}});
+    MAIN.post(()->{if(!key.equals(view.getTag())||!view.isAttachedToWindow()||bitmap==null)return;if(cross)swap(view,bitmap);else{view.setImageBitmap(bitmap);view.setAlpha(0f);view.animate().alpha(1f).setDuration(220).start();}});
    });
   }
  }

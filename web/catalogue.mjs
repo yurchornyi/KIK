@@ -44,9 +44,23 @@ const fold=s=>(s||"").toLowerCase().replace(/ї|і/g,"и").replace(/є|э/g,"е"
 export const searchForm=q=>q.toLowerCase().trim().replace(/ї|і/g,"и").replace(/є/g,"е").replace(/ґ/g,"г").replace(/['’ʼ]/g,"");
 /** Stable relevance order: exact title, prefix, whole phrase, all words, then source order. */
 export function relevant(query,items){const q=fold(query),words=q.split(" ").filter(Boolean);if(!q||items.length<2)return items;const score=item=>{const t=fold(item.title);let s=t===q?100:t.startsWith(q)?60:(" "+t+" ").includes(" "+q+" ")?45:t.includes(q)?35:(()=>{const hit=words.filter(w=>w.length>1&&(" "+t).includes(" "+w)).length;return hit===words.length?25:Math.floor(hit*15/words.length);})();const year=(item.info||"").match(/\d{4}/)?.[0];if(year&&words.includes(year))s+=20;return s;};return items.map((item,i)=>({item,i,s:score(item)})).sort((a,b)=>b.s-a.s||a.i-b.i).map(x=>x.item);}
-export async function catalogue({category="",filter="popular",page:pageNumber=1,query=""}){
- if(!["","films","series","cartoons","animation"].includes(category)||!["popular","last","watching"].includes(filter))throw Error("Некоректний фільтр");pageNumber=Math.max(1,Math.min(100,Number(pageNumber)||1));
- const path=query?`/search/?do=search&subaction=search&q=${encodeURIComponent(query.slice(0,150))}&page=${pageNumber}`:`/${category?category+"/":""}${pageNumber>1?"page/"+pageNumber+"/":""}?filter=${filter}`;
+export const CATEGORIES=["films","series","cartoons","animation"],FILTERS=["popular","last","watching"];
+/** Source path of one catalogue page; a genre needs a category, and nothing outside the known names reaches the path. */
+export function cataloguePath({category="",genre="",filter="popular",page:pageNumber=1,query=""}={}){
+ if(!(category===""||CATEGORIES.includes(category))||!FILTERS.includes(filter)||genre&&(!category||!/^[a-z0-9-]{1,60}$/.test(genre)))throw Error("Некоректний фільтр");
+ pageNumber=Math.max(1,Math.min(100,Math.floor(Number(pageNumber)||1)));
+ return query?`/search/?do=search&subaction=search&q=${encodeURIComponent(query.slice(0,150))}&page=${pageNumber}`:`/${category?category+"/":""}${genre?genre+"/":""}${pageNumber>1?"page/"+pageNumber+"/":""}?filter=${filter}`;
+}
+/** Genres the source links from a category page, in source order, one per slug. */
+export function parseGenres(html,category){
+ if(!CATEGORIES.includes(category))throw Error("Некоректний фільтр");
+ const found=new Map(),pattern=new RegExp('href="(?:https?://[^/"]+)?/'+category+'/([a-z0-9-]+)/"[^>]*>([^<]+)</a>','g');
+ for(const m of html.matchAll(pattern))if(m[1]!=="page"&&!found.has(m[1])){const name=text(m[2]);if(name)found.set(m[1],{slug:m[1],name});}
+ return [...found.values()];
+}
+export async function catalogueGenres(category){return parseGenres((await page(cataloguePath({category}),3600000)).html,category);}
+export async function catalogue({category="",genre="",filter="popular",page:pageNumber=1,query=""}){
+ const path=cataloguePath({category,genre,filter,page:pageNumber,query});pageNumber=Math.max(1,Math.min(100,Math.floor(Number(pageNumber)||1)));
  let items=parseCards((await page(path,300000)).html);
  // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms.
  if(query&&!items.length&&searchForm(query)!==query.toLowerCase().trim())items=parseCards((await page(`/search/?do=search&subaction=search&q=${encodeURIComponent(searchForm(query).slice(0,150))}&page=${pageNumber}`,300000)).html);

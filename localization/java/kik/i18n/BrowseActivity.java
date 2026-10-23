@@ -16,7 +16,16 @@ public final class BrowseActivity extends Activity {
  private int columns=6;
  static final class G{String link,title,sub,poster,badge,year,genre,sourceTitle;float progress;}
 
- private String mode,category,genre,filter="last";private int page=0;private boolean loading,end;
+ private String mode,category,genre,filter="popular";private int page=0;private boolean loading,end;
+ /** The last page failed: the cards stay, the same page is asked again by the button (not by scrolling). */
+ private boolean failed;
+ /** Titles already on screen (catalogue and search): a repeated source page adds nothing and ends the list. */
+ private final Set<String> seen=new HashSet<String>();
+ private final List<TextView> categoryChips=new ArrayList<TextView>();
+ private TextView heading,genreButton,summary;private Button loadMore;
+ /** Genre list being fetched for this category, and a counter that makes a late list for another category inert. */
+ private String genresRequest;private int genreGeneration;
+ static final String[][] SECTIONS={{"films","Фільми"},{"series","Серіали"},{"cartoons","Мультфільми"},{"animation","Аніме"}};
  /** The search came with a name already (OpenTitleActivity): results take focus, no keyboard over them. */
  private boolean handedOver;
  /** The search a pause in typing starts. */
@@ -32,14 +41,14 @@ public final class BrowseActivity extends Activity {
  }
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);Ui.screen(this);columns=Math.max(2,(int)((getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density-64)/148));
+  super.onCreate(state);Ui.screen(this);columns=Math.max(1,(int)((getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density-64)/148));
   mode=getIntent().getStringExtra(MODE);category=getIntent().getStringExtra(CATEGORY);if(mode==null)mode="catalog";
   FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
   LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);content.addView(head);
   View logo=Brand.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
-  TextView title=Ui.bold(this,getIntent().getStringExtra(TITLE),30);title.setIncludeFontPadding(false);title.setGravity(Gravity.CENTER_VERTICAL);head.addView(title);
+  String titleText=getIntent().getStringExtra(TITLE);heading=Ui.bold(this,titleText==null?"Каталог":titleText,30);heading.setIncludeFontPadding(false);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
   Ui.enter(head,0);
   Ui.space(content,14);
   if("search".equals(mode)){
@@ -56,26 +65,36 @@ public final class BrowseActivity extends Activity {
     mic.setOnClickListener(v->listen());LinearLayout.LayoutParams ml=new LinearLayout.LayoutParams(dp(60),dp(60));ml.setMargins(0,dp(6),0,0);bar.addView(mic,ml);}
    final Runnable run=typed;
    query.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}
-    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setVisibility(View.GONE);showIdle(true);}}});
+    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;cards.clear();seen.clear();failed=false;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setVisibility(View.GONE);updateMore();showIdle(true);}}});
    query.setOnEditorActionListener((v,a,e)->{Ui.MAIN.removeCallbacks(run);remember(query.getText().toString());reload();InputMethodManager im=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);im.hideSoftInputFromWindow(v.getWindowToken(),0);return true;});
    Ui.space(content,10);
    idle=new LinearLayout(this);idle.setOrientation(1);idle.setClipChildren(false);idle.setClipToPadding(false);content.addView(idle);
   }
   if("catalog".equals(mode)){
+   // The category changes in place: no going back to the home menu to see series after films.
+   if(category==null||category.isEmpty())category="films";
+   LinearLayout sections=new LinearLayout(this);sections.setOrientation(0);sections.setClipChildren(false);sections.setClipToPadding(false);content.addView(Ui.horizontal(this,sections),new LinearLayout.LayoutParams(-1,-2));
+   for(final String[] x:SECTIONS){TextView c=Ui.chip(this,x[1]);c.setTag(x[0]);sections.addView(c,Ui.wrap(this,10));categoryChips.add(c);
+    c.setOnClickListener(v->selectCategory(x[0],x[1]));}
+   paintCategories();Ui.space(content,6);
    LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(Ui.horizontal(this,filters),new LinearLayout.LayoutParams(-1,-2));
    String[][] f={{"last","Нові"},{"popular","Популярні"},{"watching","Зараз дивляться"}};
    for(final String[] x:f){TextView c=Ui.chip(this,x[1]);filters.addView(c,Ui.wrap(this,10));filterChips.add(c);c.setTag(x[0]);
-    c.setOnClickListener(v->{filter=x[0];paintFilters();reload();});}
-   final TextView g=Ui.chip(this,"Жанри ▾");filters.addView(g,Ui.wrap(this,10));
+    c.setOnClickListener(v->{if(filter.equals(x[0]))return;filter=x[0];paintFilters();reload();});}
+   final TextView g=Ui.chip(this,"Жанри ▾");filters.addView(g,Ui.wrap(this,10));genreButton=g;
    g.setOnClickListener(v->toggleGenres());
    paintFilters();
    HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);genres=new LinearLayout(this);genres.setOrientation(0);genres.setClipChildren(false);genres.setClipToPadding(false);genres.setPadding(dp(4),dp(12),dp(4),dp(4));hs.addView(genres);hs.setVisibility(View.GONE);
    content.addView(hs);genres.setTag(hs);
   }
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(dp(8),dp(16),0,dp(6));content.addView(status);
-  status.setBackground(Ui.states(Ui.shape(0,dp(5),0,0),Ui.shape(0xff333337,dp(5),dp(2),Color.WHITE)));status.setOnClickListener(v->reload());status.setFocusable(false);
+  status.setBackground(Ui.states(Ui.shape(0,dp(5),0,0),Ui.shape(0xff333337,dp(5),dp(2),Color.WHITE)));status.setOnClickListener(v->more());status.setFocusable(false);
   grid=new LinearLayout(this);grid.setOrientation(1);grid.setClipChildren(false);grid.setClipToPadding(false);content.addView(grid);
-  scroll.getViewTreeObserver().addOnScrollChangedListener(()->{if(!loading&&!end&&("catalog".equals(mode)||"search".equals(mode))){View last=grid.getChildAt(grid.getChildCount()-1);if(last!=null&&last.getBottom()-scroll.getScrollY()<scroll.getHeight()*2)more();}});
+  // Under the posters: how many are shown, and an explicit next page (also the retry after a failed page).
+  summary=Ui.text(this,"",15,Ui.GREY);summary.setPadding(dp(8),dp(18),0,dp(10));summary.setVisibility(View.GONE);content.addView(summary);
+  loadMore=Ui.pill(this,"Показати ще",false);loadMore.setOnClickListener(v->more());loadMore.setVisibility(View.GONE);
+  LinearLayout.LayoutParams moreLp=new LinearLayout.LayoutParams(-2,-2);moreLp.leftMargin=dp(4);content.addView(loadMore,moreLp);
+  scroll.getViewTreeObserver().addOnScrollChangedListener(()->{if(!loading&&!end&&!failed&&("catalog".equals(mode)||"search".equals(mode))){View last=grid.getChildAt(grid.getChildCount()-1);if(last!=null&&last.getBottom()-scroll.getScrollY()<scroll.getHeight()*2)more();}});
   if("search".equals(mode)){status.setVisibility(View.GONE);showIdle(true);query.requestFocus();
    // A name handed over (OpenTitleActivity found no sure match): typed in already, results load at once.
    String given=getIntent().getStringExtra(QUERY);if(given!=null&&given.trim().length()>=2){handedOver=true;getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);query.setText(given.trim());query.setSelection(query.length());query.clearFocus();}}
@@ -84,16 +103,27 @@ public final class BrowseActivity extends Activity {
  @Override protected void onResume(){super.onResume();if(("history".equals(mode)||"later".equals(mode))&&page>0)reload();}
 
  private void paintFilters(){for(TextView c:filterChips)Ui.select(c,filter.equals(c.getTag()));}
+ private void paintCategories(){for(TextView c:categoryChips)Ui.select(c,c.getTag().equals(category));}
+ /** Another category in place: its own genres (fetched again when opened), the same order, the list from page one. */
+ private void selectCategory(String slug,String name){
+  if(slug.equals(category))return;category=slug;genre=null;genreGeneration++;genresRequest=null;
+  genres.removeAllViews();((View)genres.getTag()).setVisibility(View.GONE);genreButton.setText("Жанри ▾");heading.setText(name);paintCategories();reload();
+ }
+ /** Whether a genre answer still belongs to what is on screen. */
+ private boolean genresCurrent(int request,String requested){return !isFinishing()&&!isDestroyed()&&request==genreGeneration&&requested.equals(category);}
  private void toggleGenres(){
-  View hs=(View)genres.getTag();boolean show=hs.getVisibility()!=View.VISIBLE;hs.setVisibility(show?View.VISIBLE:View.GONE);
-  if(!show||genres.getChildCount()>0)return;
-  Ui.bg(()->{try{final List<Site.Genre> list=Site.genres(category);List<String> names=new ArrayList<String>();for(Site.Genre x:list)names.add(x.name);
+  final View hs=(View)genres.getTag();boolean show=hs.getVisibility()!=View.VISIBLE;hs.setVisibility(show?View.VISIBLE:View.GONE);
+  if(!show||genres.getChildCount()>0||category.equals(genresRequest))return;
+  final int request=++genreGeneration;final String requested=category;genresRequest=requested;genreButton.setText("Жанри · завантаження…");
+  Ui.bg(()->{try{final List<Site.Genre> list=Site.genres(requested);List<String> names=new ArrayList<String>();for(Site.Genre x:list)names.add(x.name);
     final Map<String,String> uk=TitleTranslate.resolve(names,Ui.TRANSLATE_WAIT);
-    Ui.MAIN.post(()->{TextView all=Ui.chip(this,"Усі");genres.addView(all,Ui.wrap(this,10));all.setOnClickListener(v->{genre=null;paintGenres();reload();});
-     for(final Site.Genre x:list){String n=uk.get(x.name);TextView c=Ui.chip(this,n==null?TitleTranslate.shown(x.name):n);c.setTag(x.slug);genres.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{genre=x.slug;paintGenres();reload();});}
+    Ui.MAIN.post(()->{if(!genresCurrent(request,requested))return;genresRequest=null;genreButton.setText("Жанри ▾");
+     if(list.isEmpty()){hs.setVisibility(View.GONE);Ui.toast(this,"Для цієї категорії жанрів немає");return;}
+     TextView all=Ui.chip(this,"Усі");genres.addView(all,Ui.wrap(this,10));all.setOnClickListener(v->{if(genre==null)return;genre=null;genreButton.setText("Жанри ▾");paintGenres();reload();});
+     for(final Site.Genre x:list){String n=uk.get(x.name);final TextView c=Ui.chip(this,n==null?TitleTranslate.shown(x.name):n);c.setTag(x.slug);genres.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{if(x.slug.equals(genre))return;genre=x.slug;genreButton.setText(c.getText()+" ▾");paintGenres();reload();});}
      paintGenres();});
-    Map<String,String> translated=TitleTranslate.resolve(names);Ui.MAIN.post(()->{if(isFinishing()||isDestroyed())return;for(int i=0;i<list.size()&&i+1<genres.getChildCount();i++){String t=translated.get(list.get(i).name);((TextView)genres.getChildAt(i+1)).setText(t!=null?t:list.get(i).name);}});
-   }catch(Exception e){Ui.MAIN.post(()->Ui.toast(this,"Не вдалося завантажити жанри"));}});
+    Map<String,String> translated=TitleTranslate.resolve(names);Ui.MAIN.post(()->{if(!genresCurrent(request,requested))return;for(int i=0;i<list.size()&&i+1<genres.getChildCount();i++){String t=translated.get(list.get(i).name);((TextView)genres.getChildAt(i+1)).setText(t!=null?t:list.get(i).name);}});
+   }catch(Exception e){Ui.MAIN.post(()->{if(!genresCurrent(request,requested))return;genresRequest=null;genreButton.setText("Жанри · повторити ▾");hs.setVisibility(View.GONE);Ui.toast(this,"Не вдалося завантажити жанри. Натисніть «Жанри», щоб повторити.");});}});
  }
  private void paintGenres(){for(int i=0;i<genres.getChildCount();i++){TextView c=(TextView)genres.getChildAt(i);Ui.select(c,genre==null?c.getTag()==null:genre.equals(c.getTag()));}}
 
@@ -124,9 +154,22 @@ public final class BrowseActivity extends Activity {
     for(final G g:items){View card=Ui.card(this,g.title,g.sub,g.poster,null,0,null,()->FilmActivity.open(this,g.link,g.title,g.poster));row.addView(card);}});
   });
  }
- private void reload(){if(idle!=null)showIdle(false);cards.clear();generation++;page=0;end=false;loading=false;grid.removeAllViews();openRow=null;inRow=0;status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);more();}
+ private boolean paged(){return "catalog".equals(mode)||"search".equals(mode);}
+ private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
+ /** The count and the next-page button under the posters. */
+ private void updateMore(){
+  if(loadMore==null)return;boolean show=paged()&&page>0&&(!end||failed)&&!seen.isEmpty();
+  loadMore.setVisibility(show?View.VISIBLE:View.GONE);loadMore.setEnabled(!loading);loadMore.setText(loading?"Завантаження…":failed?"Спробувати ще":"Показати ще");
+  String text=!paged()||seen.isEmpty()?"":failed?"Не вдалося завантажити наступну сторінку. Список збережено.":"Показано: "+cards.size()+(end?" · це всі результати":"");
+  summary.setText(text);summary.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);
+ }
  private void more(){
-  if(loading||end)return;loading=true;final int gen=generation;final int next=page+1;
+  if(loading||end)return;
+  final boolean focusMore=loadMore!=null&&loadMore.hasFocus();loading=true;updateMore();
+  if(page==0){status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);}
+  final int gen=generation;final int next=page+1;
+  // What the request is for, captured now: a chip pressed meanwhile reloads and makes this answer obsolete anyway.
+  final String requestedCategory=category,requestedGenre=genre,requestedFilter=filter;
   final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
   Ui.bg(()->{
    List<G> items=new ArrayList<G>();String error=null;
@@ -134,7 +177,7 @@ public final class BrowseActivity extends Activity {
     // A page can be fully hidden by the country filter: keep paging while the source still has titles.
     if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;tries<5&&items.isEmpty();tries++){
      if("search".equals(mode)&&(q==null||q.length()<2))break;reached[0]=next+tries;
-     for(Site.Card c:"catalog".equals(mode)?Site.list(category,genre,filter,reached[0]):Site.search(q,reached[0]))items.add(of(c));
+     for(Site.Card c:"catalog".equals(mode)?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.search(q,reached[0]))items.add(of(c));
      if(Site.lastRaw()==0)break;}
     else if(next==1&&"history".equals(mode))for(Progress.Entry e:Progress.recent(this)){G g=new G();g.link=e.link;g.title=e.title;g.poster=e.poster;
       g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"переглянуто":"зупинились на "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}
@@ -145,12 +188,18 @@ public final class BrowseActivity extends Activity {
    }catch(Exception e){error="Не вдалося завантажити. Перевірте інтернет і спробуйте ще раз.";}
    final List<G> got=items;final String err=error;
    Ui.MAIN.post(()->{
-    if(gen!=generation||isFinishing()||isDestroyed())return;loading=false;page=reached[0];
-    if(err!=null){status.setText(err+"  Натисніть OK, щоб повторити.");status.setVisibility(View.VISIBLE);status.setFocusable(true);if(next==1)status.requestFocus();end=true;return;}
-    if(got.isEmpty()){end=true;if(next==1){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}return;}
-    if(!"catalog".equals(mode)&&!"search".equals(mode))end=true;
-    status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(got);
-    if(first&&firstCard!=null&&(!"search".equals(mode)||handedOver))firstCard.requestFocus();
+    if(gen!=generation||isFinishing()||isDestroyed())return;loading=false;
+    // A failed page keeps the cards and the page number: OK on the message (first page) or the button asks it again.
+    if(err!=null){failed=true;if(seen.isEmpty()){status.setText(err+"  Натисніть OK, щоб повторити.");status.setVisibility(View.VISIBLE);status.setFocusable(true);status.requestFocus();updateMore();}
+     else{updateMore();loadMore.requestFocus();Ui.toast(this,"Не вдалося завантажити наступну сторінку. Список збережено.");}return;}
+    failed=false;page=reached[0];status.setFocusable(false);
+    List<G> fresh=got;if(paged()){fresh=new ArrayList<G>();for(G g:got)if(seen.add(Progress.norm(g.link)))fresh.add(g);}
+    // Nothing new: an empty page, or the source repeating a page it has already given.
+    if(fresh.isEmpty()){end=true;if(cards.isEmpty()){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}else status.setVisibility(View.GONE);
+     updateMore();if(focusMore)focusLast();return;}
+    if(!paged()||reached[0]>=100)end=true;
+    status.setVisibility(View.GONE);boolean first=grid.getChildCount()==0;View firstCard=add(fresh);updateMore();
+    if(firstCard!=null&&(focusMore||first&&(!"search".equals(mode)||handedOver)))firstCard.requestFocus();
    });
    if(err==null&&!got.isEmpty()){
     Set<String> words=new LinkedHashSet<String>();for(G g:got){words.add(g.sourceTitle);if(g.genre!=null)words.add(g.genre);}Map<String,String> translated=TitleTranslate.resolve(words);
@@ -158,6 +207,8 @@ public final class BrowseActivity extends Activity {
    }
   });
  }
+ /** Focus on the last poster when the button that had it disappears. */
+ private void focusLast(){if(openRow!=null&&openRow.getChildCount()>0){View v=openRow.getChildAt(openRow.getChildCount()-1);if(v instanceof ViewGroup)((ViewGroup)v).getChildAt(0).requestFocus();}}
  private G of(Site.Card c){G g=new G();g.link=c.link;g.title=c.title;g.poster=c.poster;g.year=c.year();g.genre=c.genre();g.sub=Ui.join(g.year,g.genre);return g;}
  private View add(List<G> items){
   View first=null;
@@ -171,7 +222,7 @@ public final class BrowseActivity extends Activity {
   return first;
  }
  @Override public void onBackPressed(){finish();overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
- @Override protected void onDestroy(){generation++;super.onDestroy();}
+ @Override protected void onDestroy(){generation++;genreGeneration++;Ui.MAIN.removeCallbacks(typed);stopListening();cards.clear();super.onDestroy();}
  /** Magnifier for the search field, drawn in the hint colour. */
  private static final class LensIcon extends android.graphics.drawable.Drawable {
   private final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);private final int size;

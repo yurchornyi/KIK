@@ -35,7 +35,8 @@ import java.util.regex.*;
  * does recovery move to another address, a lower quality, fresh links or another voice in the same language.
  */
 public final class KikPlayerActivity extends Activity {
- private static Site.Film film;private static Site.Voice voice;
+ private static Site.Film openingFilm;private static Site.Voice openingVoice;
+ private Site.Film film;private Site.Voice voice;
  private static final float[] SPEEDS={0.75f,1f,1.25f,1.5f,2f};
  /** Buffer: start after 1.5 s, refill to 5 s after a stall, keep up to 2 min but no more than 48 MB of heap. */
  private static final int MIN_BUFFER=30000,MAX_BUFFER=120000,START_BUFFER=1500,REBUFFER=5000,BUFFER_BYTES=48*1024*1024;
@@ -63,7 +64,7 @@ public final class KikPlayerActivity extends Activity {
  private int dp(float n){return Ui.dp(this,n);}
 
  public static void open(Context c,Site.Film f,Site.Voice v,String season,String episode,String title,String poster){
-  film=f;voice=v;c.startActivity(new Intent(c,KikPlayerActivity.class).putExtra("season",season).putExtra("episode",episode).putExtra("title",title).putExtra("poster",poster));
+  openingFilm=f;openingVoice=v;c.startActivity(new Intent(c,KikPlayerActivity.class).putExtra("season",season).putExtra("episode",episode).putExtra("title",title).putExtra("poster",poster));
  }
  /** A stream fetched on the title page while the viewer reads it, so OK starts at once. Links stay valid for minutes. */
  private static final class Warm{final String key;final Site.Voice voice;final Site.Stream stream;final long at=SystemClock.elapsedRealtime();Warm(String k,Site.Voice v,Site.Stream st){key=k;voice=v;stream=st;}}
@@ -78,7 +79,7 @@ public final class KikPlayerActivity extends Activity {
  static Site.Episode next(Site.Film f,String s,String e){boolean seen=false;for(Site.Episode x:f.episodes){if(seen)return x;if(x.season.equals(s)&&x.episode.equals(e))seen=true;}return null;}
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);profileId=ProfileStore.current(this);Ui.screen(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+  super.onCreate(state);film=openingFilm;voice=openingVoice;profileId=ProfileStore.current(this);Ui.screen(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
   if(film==null||voice==null){finish();return;}
   season=getIntent().getStringExtra("season");episode=getIntent().getStringExtra("episode");title=getIntent().getStringExtra("title");poster=getIntent().getStringExtra("poster");
   root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);setContentView(root);
@@ -446,11 +447,12 @@ public final class KikPlayerActivity extends Activity {
   if(on){h.postDelayed(hide,menu!=null?8000:4500);if(!visible){visible=true;fade(top,true);fade(bottom,true);}paint();bottom.post(this::placeSubtitles);return;}
   if(!visible)return;visible=false;closeMenu();progressFocus=false;fade(top,false);fade(bottom,false);placeSubtitles();
  }
- private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();lp.bottomMargin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);subtitle.setLayoutParams(lp);
+ private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();int margin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);if(lp.bottomMargin!=margin){lp.bottomMargin=margin;subtitle.setLayoutParams(lp);}
   // The rating card rises above the open controls, as «Пропустити рекламу» does.
   if(ask!=null){FrameLayout.LayoutParams al=(FrameLayout.LayoutParams)ask.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(28);if(al.bottomMargin!=at){al.bottomMargin=at;ask.setLayoutParams(al);}}}
  private void fade(final View v,boolean on){
   v.animate().cancel();
+  if(!Ui.animations()){v.setAlpha(on?1:0);v.setTranslationY(0);v.setVisibility(on?View.VISIBLE:View.GONE);return;}
   if(on){v.setVisibility(View.VISIBLE);v.setTranslationY(v==top?-dp(12):dp(12));v.animate().alpha(1).translationY(0).setDuration(300).setInterpolator(Ui.EASE).start();}
   else v.animate().alpha(0).translationY(v==top?-dp(12):dp(12)).setDuration(320).withEndAction(()->v.setVisibility(View.GONE)).start();
  }
@@ -526,8 +528,8 @@ public final class KikPlayerActivity extends Activity {
   if(player!=null){long watched=watchTracker.sample(now,prepared?pos():0,prepared&&!seeking&&active&&playWhenReady&&player.isPlaying());watchedPending+=watched;watchedItem+=watched;}
   if(prepared&&player!=null){
    long p=pos(),d=dur();left.setText(Ui.time(p));right.setText(d>0?"-"+Ui.time(d-p):"");
-   int w=((View)played.getParent()).getWidth();ViewGroup.LayoutParams lp=played.getLayoutParams();lp.width=d>0&&w>0?(int)(w*Math.min(1f,(float)p/d)):0;played.setLayoutParams(lp);knob.setTranslationX(Math.max(0,lp.width-dp(8)));
-   controls.get(1).setText(playWhenReady?"❚❚":"▶");
+   int w=((View)played.getParent()).getWidth();ViewGroup.LayoutParams lp=played.getLayoutParams();int width=d>0&&w>0?(int)(w*Math.min(1f,(float)p/d)):0;if(lp.width!=width){lp.width=width;played.setLayoutParams(lp);}knob.setTranslationX(Math.max(0,lp.width-dp(8)));
+   String icon=playWhenReady?"❚❚":"▶";if(!icon.contentEquals(controls.get(1).getText()))controls.get(1).setText(icon);
    if(!cues.isEmpty()){String txt="";for(Object[] c:cues)if(p>=(Long)c[0]&&p<=(Long)c[1]){txt=(String)c[2];break;}if(!txt.equals(subtitle.getText().toString()))subtitle.setText(txt);}
   }
  }
@@ -543,6 +545,7 @@ public final class KikPlayerActivity extends Activity {
 
  @Override public boolean dispatchKeyEvent(KeyEvent e){
   int k=e.getKeyCode();
+  if(!playerKey(k))return super.dispatchKeyEvent(e);
   if(intro!=null){if(e.getAction()==KeyEvent.ACTION_UP)endIntro();return true;}
   if(k==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   if(e.getAction()!=KeyEvent.ACTION_DOWN)return true;
@@ -587,5 +590,7 @@ public final class KikPlayerActivity extends Activity {
   else if(center)((Runnable)controls.get(focus).getTag()).run();
   paint();return true;
  }
+ /** Remote keys the player handles; any other key (volume, mute, power, home…) keeps its system behaviour. */
+ private static boolean playerKey(int key){switch(key){case KeyEvent.KEYCODE_BACK:case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_SPACE:case KeyEvent.KEYCODE_MEDIA_PLAY:case KeyEvent.KEYCODE_MEDIA_PAUSE:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:case KeyEvent.KEYCODE_MEDIA_REWIND:case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_DPAD_DOWN:return true;default:return false;}}
  @Override public void onBackPressed(){if(menu!=null){closeMenu();return;}if(visible){show(false);return;}if(askOn){answer(0);return;}save();finish();}
 }

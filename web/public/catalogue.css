@@ -1,0 +1,35 @@
+/* Catalogue section (catalogue-view.js). */
+.catalogue-page{padding-bottom:60px}
+.catalogue-page .page-head{margin-bottom:22px;align-items:flex-end}
+.catalogue-page h1{margin:6px 0 0}
+.catalogue-page .eyebrow{margin:0;color:#aaaab4}
+.catalogue-page .page-head>.subtle{color:var(--muted);font-size:12px;white-space:nowrap}
+.catalogue-toolbar{display:flex;flex-wrap:wrap;gap:16px 24px;align-items:center;justify-content:space-between;margin-bottom:28px;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.catalogue-categories{display:flex;gap:9px;flex-wrap:wrap;padding:4px;min-width:0}
+.catalogue-categories .pill{background:#ffffff09;border:1px solid #ffffff14;white-space:nowrap}
+.catalogue-categories .pill[aria-pressed=true]{background:#eeeef3;color:#161619;border-color:#eeeef3}
+.catalogue-selects{display:flex;gap:12px 18px;flex-wrap:wrap;align-items:center;min-width:0}
+.catalogue-selects [hidden]{display:none}
+.catalogue-sort{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;white-space:nowrap;min-width:0}
+.catalogue-sort select{border-radius:24px;font-size:14px;min-height:44px;width:auto;min-width:180px}
+.catalogue-bottom{display:flex;flex-direction:column;align-items:center;gap:12px;min-height:150px;padding:30px 0 10px}
+.catalogue-bottom [hidden]{display:none}
+.catalogue-note{color:var(--muted);font-size:13px;text-align:center;line-height:1.6;max-width:480px;margin:0}
+.catalogue-note:empty{display:none}
+.catalogue-note.error{color:#ff8e91}
+.catalogue-grid[aria-busy=true]:empty{min-height:220px;border-radius:16px;background:linear-gradient(110deg,#17171c,#212127,#17171c);background-size:200% 100%;animation:catalogue-loading 1.5s infinite}
+@keyframes catalogue-loading{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.catalogue-grid[aria-busy=true]:empty{animation:none}}
+@media(max-width:850px){
+ .catalogue-toolbar{align-items:stretch;flex-direction:column;gap:14px}
+ .catalogue-selects{width:100%}
+ .catalogue-selects .catalogue-sort{flex:1;min-width:200px;justify-content:space-between}
+ .catalogue-sort select{flex:1;min-width:0;max-width:75%}
+}
+@media(max-width:650px){
+ .catalogue-page .page-head{margin-bottom:16px}
+ .catalogue-categories{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%;padding:0}
+ .catalogue-categories .pill{padding:10px 12px;min-height:42px;font-size:13px;text-align:center;justify-content:center}
+ .catalogue-selects .catalogue-sort{min-width:100%}
+ .catalogue-toolbar{margin-bottom:20px}
+}

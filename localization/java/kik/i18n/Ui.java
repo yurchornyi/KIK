@@ -31,8 +31,10 @@ public final class Ui {
   if(Build.VERSION.SDK_INT>=33)a.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,a::onBackPressed);
  }
  /** Short, one-shot entrance; animate only small content, never the full-screen backdrop. */
- public static void enter(View v,int delay){v.setAlpha(0f);v.setTranslationY(dp(v.getContext(),10));v.animate().alpha(1f).translationY(0).setStartDelay(delay).setDuration(240).setInterpolator(EASE).start();}
- public static void focus(View v,boolean on,float scale){v.animate().cancel();v.animate().setStartDelay(0).scaleX(on?scale:1f).scaleY(on?scale:1f).setDuration(160).setInterpolator(EASE).start();}
+ /** Off when the TV's developer options or accessibility turn animations off; the views then just appear. */
+ public static boolean animations(){return Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled();}
+ public static void enter(View v,int delay){if(!animations()){v.setAlpha(1f);v.setTranslationY(0);return;}v.setAlpha(0f);v.setTranslationY(dp(v.getContext(),10));v.animate().alpha(1f).translationY(0).setStartDelay(delay).setDuration(240).setInterpolator(EASE).start();}
+ public static void focus(View v,boolean on,float scale){v.animate().cancel();if(!animations()){v.setScaleX(on?scale:1f);v.setScaleY(on?scale:1f);return;}v.animate().setStartDelay(0).scaleX(on?scale:1f).scaleY(on?scale:1f).setDuration(160).setInterpolator(EASE).start();}
  public static TextView text(Context c,String s,int size,int color){TextView t=new TextView(c);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
  public static TextView bold(Context c,String s,int size){TextView t=text(c,s,size,Color.WHITE);t.setTypeface(Typeface.DEFAULT_BOLD);return t;}
  public static void space(LinearLayout l,int h){l.addView(new View(l.getContext()),new LinearLayout.LayoutParams(1,dp(l.getContext(),h)));}
