@@ -84,7 +84,7 @@ public final class KikPlayerActivity extends Activity {
   screen.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol||b-t!=ob-ot)fit();});
   subtitle=Ui.text(this,"",26,Color.WHITE);subtitle.setGravity(Gravity.CENTER);subtitle.setShadowLayer(8,0,2,Color.BLACK);subtitle.setPadding(dp(80),0,dp(80),0);
   FrameLayout.LayoutParams sl=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);sl.bottomMargin=dp(48);root.addView(subtitle,sl);
-  skipAd=Ui.text(this,"Пропустити рекламу  ▸",20,Color.BLACK);skipAd.setPadding(dp(26),dp(12),dp(26),dp(12));skipAd.setBackground(Ui.shape(0xffffffff,dp(26),0,0));skipAd.setVisibility(View.GONE);
+  skipAd=Ui.text(this,"Пропустити рекламу",20,Color.BLACK);skipAd.setGravity(Gravity.CENTER);skipAd.setIncludeFontPadding(false);skipAd.setMinHeight(dp(52));skipAd.setPadding(dp(30),0,dp(30),0);skipAd.setBackground(Ui.shape(0xffffffff,dp(26),0,0));skipAd.setVisibility(View.GONE);
   FrameLayout.LayoutParams kl=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);kl.rightMargin=dp(56);kl.bottomMargin=dp(52);root.addView(skipAd,kl);
   // KIK's waiting screen: the intro's settled frame (logo, «Створено Чорним» below), with what is happening under the logo.
   wait=new FrameLayout(this);wait.setBackgroundColor(Color.BLACK);ImageView mark=new ImageView(this);mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
