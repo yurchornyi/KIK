@@ -3,7 +3,7 @@ import {localizedCards,localizedFilm,localizedRecords} from './localization.mjs'
 import {recommendations} from './recommendations.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
-import {admin,registrationAllowed,cleanSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
+import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -84,7 +84,7 @@ async function api(request,env,ctx){
  if(path==="/api/settings"){
   const b=request.method==="POST"?await body(request,8192):null,p=await owned(db,user,b?.profile_id||url.searchParams.get("profile_id"));
   if(b){const settings=cleanSettings(b.settings);await db.prepare("INSERT INTO profile_settings(profile_id,data,updated_at) VALUES(?,?,?) ON CONFLICT(profile_id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at").bind(p.id,JSON.stringify(settings),Date.now()).run();return json({settings});}
-  const row=await db.prepare("SELECT data FROM profile_settings WHERE profile_id=?").bind(p.id).first();return json({settings:row?cleanSettings(JSON.parse(row.data)):DEFAULT_SETTINGS});
+  const row=await db.prepare("SELECT data FROM profile_settings WHERE profile_id=?").bind(p.id).first();return json({settings:row?storedSettings(row.data):DEFAULT_SETTINGS});
  }
  if(path==="/api/profiles/update"&&request.method==="POST"){
   const b=await body(request,8192),p=await owned(db,user,b.profile_id),name=b.name===undefined?p.name:typeof b.name==="string"?b.name.trim().slice(0,40):"",avatar=b.avatar===undefined?p.avatar:b.avatar;if(!name)fail("Введіть ім’я профілю");if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");await db.prepare("UPDATE profiles SET name=?,avatar=? WHERE id=?").bind(name,avatar,p.id).run();return json({...p,name,avatar});
