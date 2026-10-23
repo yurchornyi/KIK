@@ -37,6 +37,11 @@ jobs:
           mkdir -p /tmp/kik-checks
           javac -d /tmp/kik-checks localization/java/kik/i18n/UpdatePolicy.java scripts/UpdatePolicyCheck.java
           java -cp /tmp/kik-checks UpdatePolicyCheck
+      - name: TV pairing QR encoder
+        run: |
+          mkdir -p /tmp/kik-qr
+          javac -encoding UTF-8 -d /tmp/kik-qr localization/java/kik/i18n/QrCode.java scripts/QrCheck.java
+          java -cp /tmp/kik-qr QrCheck
       - name: Playback recovery policy
         run: |
           javac -d /tmp/kik-checks localization/java/kik/i18n/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java

@@ -1,0 +1,4 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+const worker=(await import('./server.mjs')).default,env={ASSETS:{fetch:async()=>new Response('<main>KIK</main>')}};
+test('TV QR links open the pairing confirmation with a normalised code',async()=>{const r=await worker.fetch(new Request('https://kik.example/pair?code=abcd-2345'),env,{});assert.equal(r.status,302);assert.equal(r.headers.get('Location'),'/?pair=ABCD2345');assert.equal(r.headers.get('Cache-Control'),'no-store');assert.ok(r.headers.get('Content-Security-Policy'));});
+test('malformed QR codes fall back to the home page',async()=>{for(const q of ['','?code=<script>','?code=ABCD234','?code=ABCD23450'])assert.equal((await worker.fetch(new Request('https://kik.example/pair'+q),env,{})).headers.get('Location'),'/');});
