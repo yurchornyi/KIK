@@ -40,6 +40,11 @@ public class PolicyCheck {
   if(PlaybackPolicy.adSkip(ads,899_900,2_500_000)!=-1||PlaybackPolicy.adSkip(ads,900_000,2_500_000)!=920_600||PlaybackPolicy.adSkip(ads,1750_000,2_501_500)!=1_770_000)throw new AssertionError("Jump over a known ad clip");
   if(PlaybackPolicy.adSkip(ads,919_500,2_500_000)!=-1||PlaybackPolicy.adSkip(ads,910_000,2_510_000)!=-1||PlaybackPolicy.adSkip(null,910_000,2_500_000)!=-1||PlaybackPolicy.adSkip(ads,910_000,0)!=-1)throw new AssertionError("Never skip on another cut, at the very end or without data");
   if(!PlaybackPolicy.sponsoredVoice("колдфильм (Coldfilm)")||PlaybackPolicy.sponsoredVoice("TVShows"))throw new AssertionError("Sponsored voices");
-  System.out.println("Playback policy checks passed: 18");
+  long film=6_600_000;
+  if(PlaybackPolicy.creditsAt(film)!=6_270_000||PlaybackPolicy.creditsAt(1_320_000)!=1_254_000||PlaybackPolicy.creditsAt(9_000_000)!=8_640_000)throw new AssertionError("Credits are the last 5%, 45 s to 6 min");
+  if(!PlaybackPolicy.askRating(6_300_000,film,3_000_000,false,false,0)||PlaybackPolicy.askRating(6_200_000,film,3_000_000,false,false,0))throw new AssertionError("Ask at a film's credits");
+  if(PlaybackPolicy.askRating(6_300_000,film,60_000,false,false,0)||PlaybackPolicy.askRating(59_000,60_000,60_000,false,false,0))throw new AssertionError("Never ask after a seek to the end or a preview");
+  if(PlaybackPolicy.askRating(2_600_000,2_700_000,2_000_000,true,false,2)||!PlaybackPolicy.askRating(2_600_000,2_700_000,2_000_000,true,true,0)||!PlaybackPolicy.askRating(2_600_000,2_700_000,2_000_000,true,false,3))throw new AssertionError("A series is asked at its last episode or after three episodes");
+  System.out.println("Playback policy checks passed: 22");
  }
 }

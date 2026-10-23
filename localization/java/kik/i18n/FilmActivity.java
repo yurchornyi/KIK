@@ -58,7 +58,7 @@ public final class FilmActivity extends Activity {
   later.requestFocus();Ui.enter(name,0);Ui.enter(buttons,70);
   load();
  }
- @Override protected void onResume(){super.onResume();if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();warm();}}
+ @Override protected void onResume(){super.onResume();paintTaste();if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();warm();}}
 
  private int loadGeneration;
  private void load(){
@@ -189,14 +189,14 @@ public final class FilmActivity extends Activity {
   else watch.setText("▶  Дивитися");
  }
  private void paintLater(boolean on){later.setText(on?"✓  У списку":"＋  Мій список");}
- private TextView thumb(boolean down){TextView button=Ui.chip(this,"");button.setPadding(dp(16),0,dp(16),0);ThumbIcon icon=new ThumbIcon(dp(24),down);icon.setBounds(0,0,dp(24),dp(24));button.setCompoundDrawables(icon,null,null,null);button.setContentDescription(down?"Не цікаво":"Подобається");return button;}
+ private TextView thumb(boolean down){TextView button=Ui.chip(this,"");button.setPadding(dp(16),0,dp(16),0);ThumbIcon icon=new ThumbIcon(dp(24),down);icon.setBounds(0,0,dp(24),dp(24));button.setCompoundDrawables(icon,null,null,null);button.setContentDescription(down?"Не подобається":"Подобається");return button;}
  private void paintTaste(){if(tasteChip==null||dislikeChip==null)return;int value=RatingStore.get(this,profile,link);Ui.select(tasteChip,value>0);Ui.select(dislikeChip,value<0);}
  private void rate(int desired){
   int value=RatingStore.get(this,profile,link)==desired?0:desired;
-  boolean saved=RatingStore.set(this,profile,link,name.getText().toString(),poster,film==null?null:TextUtils.join(", ",film.genres),value);paintTaste();Ui.toast(this,saved?(value==0?"Оцінку скасовано":"Оцінку збережено"):"Не вдалося зберегти оцінку");
+  boolean saved=RatingStore.set(this,profile,link,name.getText().toString(),poster,film==null?null:TextUtils.join(", ",film.genres),value);paintTaste();Ui.toast(this,saved?RatingStore.said(value):"Не вдалося зберегти оцінку");
  }
  /** Monochrome, state-aware icons match the shared focused and selected button palette. */
- private static final class ThumbIcon extends Drawable {
+ static final class ThumbIcon extends Drawable {
   private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path hand=new Path();private final int size;private final boolean down;
   ThumbIcon(int size,boolean down){this.size=size;this.down=down;paint.setColor(Color.WHITE);hand.addRect(2,10,6,21,Path.Direction.CW);hand.moveTo(8,10);hand.lineTo(13,4);hand.quadTo(14,2,15,3);hand.quadTo(16,4,15.5f,6);hand.lineTo(15,9);hand.lineTo(20,9);hand.quadTo(22,9,21.5f,11.5f);hand.lineTo(19.2f,19.5f);hand.quadTo(19,21,17.5f,21);hand.lineTo(9,21);hand.quadTo(8,21,8,20);hand.close();}
   @Override public void draw(Canvas canvas){Rect r=getBounds();canvas.save();canvas.translate(r.left,r.top);canvas.scale(r.width()/24f,r.height()/24f);if(down)canvas.rotate(180,12,12);canvas.drawPath(hand,paint);canvas.restore();}

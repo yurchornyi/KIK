@@ -15,6 +15,8 @@ final class RatingStore {
  static synchronized List<Rating> list(Context c,String profile){
   List<Rating> out=new ArrayList<Rating>();JSONObject ratings=all(c,profile).optJSONObject("ratings");if(ratings==null)return out;Iterator<String> keys=ratings.keys();while(keys.hasNext()){JSONObject o=ratings.optJSONObject(keys.next());if(o==null)continue;Rating r=new Rating();r.link=o.optString("link");r.title=o.optString("title");r.poster=o.optString("poster",null);r.genre=o.optString("genre",null);r.value=o.optInt("value");r.time=o.optLong("time");out.add(r);}Collections.sort(out,(a,b)->Long.compare(b.time,a.time));return out;
  }
+ /** What a tap did, in the same words on the TV and the web. */
+ static String said(int value){return value>0?"Подобається · покажемо більше схожого":value<0?"Не подобається · сховаємо це й схоже":"Оцінку скасовано";}
  static synchronized int get(Context c,String profile,String link){for(Rating r:list(c,profile))if(RecommendationRanker.key(r.link).equals(RecommendationRanker.key(link)))return r.value;return 0;}
  static synchronized boolean set(Context c,String profile,String link,String title,String poster,String genre,int value){
   if(!profile.equals(ProfileStore.current(c))||ProfileStore.nameOf(c,profile)==null||RecommendationRanker.parts(link)[0].isEmpty())return false;
@@ -34,6 +36,13 @@ final class RatingStore {
   // Moving back and forth with the remote is a single exposure, not repeated rejection.
   if(old!=null&&now-old.optLong("time")<86_400_000L)return;
   try{all.put(key,new JSONObject().put("count",old==null?1:Math.min(4,old.optInt("count")+1)).put("time",now));List<String> remove=new ArrayList<String>();Iterator<String> keys=all.keys();while(keys.hasNext()){String k=keys.next();if(now-all.optJSONObject(k).optLong("time")>14*86_400_000L)remove.add(k);}for(String k:remove)all.remove(k);if(all.length()>200){final JSONObject entries=all;List<String> keysByAge=new ArrayList<String>();Iterator<String> it=all.keys();while(it.hasNext())keysByAge.add(it.next());Collections.sort(keysByAge,(a,b)->Long.compare(entries.optJSONObject(a).optLong("time"),entries.optJSONObject(b).optLong("time")));for(int i=0;i<keysByAge.size()-200;i++)all.remove(keysByAge.get(i));}root.put("exposures",all);write(c,profile,root);}catch(Exception e){Log.w("KIK","Recommendation exposure",e);}
+ }
+ /** Titles the player already asked «Як вам?» about, on this device: never asked twice, whatever the answer. */
+ static synchronized boolean asked(Context c,String profile,String link){JSONObject a=all(c,profile).optJSONObject("asked");return a!=null&&a.has(RecommendationRanker.key(link));}
+ static synchronized void markAsked(Context c,String profile,String link){
+  if(!profile.equals(ProfileStore.current(c))||ProfileStore.nameOf(c,profile)==null||RecommendationRanker.parts(link)[0].isEmpty())return;
+  JSONObject root=all(c,profile),a=root.optJSONObject("asked");if(a==null)a=new JSONObject();
+  try{a.put(RecommendationRanker.key(link),System.currentTimeMillis());if(a.length()>500){final JSONObject entries=a;List<String> keys=new ArrayList<String>();Iterator<String> it=a.keys();while(it.hasNext())keys.add(it.next());Collections.sort(keys,(x,y)->Long.compare(entries.optLong(x),entries.optLong(y)));for(int i=0;i<keys.size()-500;i++)a.remove(keys.get(i));}root.put("asked",a);write(c,profile,root);}catch(Exception e){Log.w("KIK","Rating prompt",e);}
  }
  static synchronized void delete(Context c,String profile){file(c,profile).delete();}
 }

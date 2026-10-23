@@ -13,15 +13,15 @@ final class Recommendations {
  private static final AtomicBoolean WARMING=new AtomicBoolean();
  static final class Snapshot {
   final String profile;final List<RecommendationRanker.Signal> signals=new ArrayList<RecommendationRanker.Signal>();
-  final Set<String> excluded=new HashSet<String>();String fingerprint;
+  final Set<String> excluded=new HashSet<String>(),disliked=new HashSet<String>();String fingerprint;
   final Map<String,String> titles=new HashMap<String,String>();final Map<String,Integer> exposures;
   Snapshot(String p,Map<String,Integer> e){profile=p;exposures=e;}
  }
  static Snapshot snapshot(Context c,String profile){
   Snapshot s=new Snapshot(profile,RatingStore.exposures(c,profile));long now=System.currentTimeMillis();int count=0;Set<String> rated=new HashSet<String>();
   for(RatingStore.Rating r:RatingStore.list(c,profile)){
-   String key=RecommendationRanker.key(r.link);rated.add(key);s.excluded.add(r.link);s.titles.put(key,r.title);
-   if(count++<50)s.signals.add(new RecommendationRanker.Signal(r.link,r.genre,r.value>0?6:-5));
+   String key=RecommendationRanker.key(r.link);rated.add(key);s.excluded.add(r.link);s.titles.put(key,r.title);if(r.value<0)s.disliked.add(key);
+   if(count++<50)s.signals.add(new RecommendationRanker.Signal(r.link,r.genre,r.value>0?RecommendationRanker.LIKED:RecommendationRanker.DISLIKED));
   }count=0;
   for(Progress.Entry e:Progress.recent(c,profile)){
    long engagement=e.observed?e.watchedMs:e.pos;boolean meaningful=RecommendationRanker.meaningful(engagement,e.dur);if(meaningful)s.excluded.add(e.link);
@@ -111,6 +111,12 @@ final class Recommendations {
    for(RecommendationRanker.Candidate x:RecommendationRanker.rank(s.profile,context,excluded,pool,30)){if(!seeAlso.contains(x.key)&&index.similarity(x.link,x.genre,x.document,seed.link,seed.genre,seed.document)<0.25)continue;reason.items.add(items.get(RecommendationRanker.key(x.link)));if(reason.items.size()>=8)break;}
    if(reason.items.size()>=3){rows.add(reason);for(HomeActivity.Item x:reason.items)excluded.add(x.link);if(++count==2)break;}
   }return rows;
+ }
+ /** «Не подобається» hides the title from the catalogue rows too; search, history and «Мій список» still show it. */
+ static List<HomeActivity.Row> withoutDisliked(Snapshot s,List<HomeActivity.Row> rows){
+  if(s.disliked.isEmpty())return rows;List<HomeActivity.Row> out=new ArrayList<HomeActivity.Row>();
+  for(HomeActivity.Row r:rows){HomeActivity.Row copy=new HomeActivity.Row(r.title);copy.personalized=r.personalized;copy.recommendationId=r.recommendationId;for(HomeActivity.Item x:r.items)if(!s.disliked.contains(RecommendationRanker.key(x.link)))copy.items.add(x);if(!copy.items.isEmpty())out.add(copy);}
+  return out;
  }
  static void enrich(Context c,Snapshot s,List<HomeActivity.Row> catalogue,BooleanSupplier valid){
   if(catalogue.isEmpty()||!WARMING.compareAndSet(false,true))return;

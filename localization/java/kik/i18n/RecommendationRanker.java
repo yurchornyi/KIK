@@ -4,6 +4,8 @@ import java.util.*;
 
 /** Content-based ranking. No Android state or shared user preferences. */
 final class RecommendationRanker {
+ /** An explicit «Подобається» / «Не подобається» outweighs any watching signal; the same weights as the web. */
+ static final double LIKED=6,DISLIKED=-6;
  static final class Candidate {
   final String link,genre,key,group;final String[] parts;
   ContentSimilarity.Document document;int impressions;
