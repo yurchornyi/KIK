@@ -15,8 +15,9 @@ import java.util.concurrent.*;
 import org.json.*;
 
 /**
- * Mandatory sign-in, one question per screen for the remote: email, then the password (or a new one for an invited
- * address), then a profile and its avatar when the account has none. The server decides which emails may enter.
+ * Mandatory sign-in, one question per screen for the remote: email, then the password (or, for an invited address,
+ * the administrator's invitation code and a new password), then a profile and its avatar when the account has none.
+ * The server decides which emails may enter.
  */
 public final class SignInActivity extends Activity {
  private static final int LOADING=0,EMAIL=1,PASSWORD=2,CREATE=3,PICK=4,NAME=5,AVATAR=6;
@@ -55,11 +56,12 @@ public final class SignInActivity extends Activity {
    LinearLayout row=actions();final Button login=button(row,"Увійти",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
    login.setOnClickListener(v->login(field,login));submit(field,login);field.requestFocus();
   }else if(step==CREATE){
-   head("Створіть пароль","Для "+email+" ще немає пароля. Щонайменше 6 символів.");
+   head("Створіть пароль","Для "+email+" ще немає пароля. Введіть код запрошення від адміністратора і новий пароль — щонайменше 6 символів.");
+   final EditText code=input("Код запрошення, наприклад K7M2-9QXA",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,EditorInfo.IME_ACTION_NEXT);code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(9),new android.text.InputFilter.AllCaps()});
    final EditText field=input("Новий пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_NEXT);
    final EditText again=input("Повторіть пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
    LinearLayout row=actions();final Button create=button(row,"Створити пароль",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
-   create.setOnClickListener(v->register(field,again,create));field.setOnEditorActionListener((v,a,e)->{again.requestFocus();return true;});submit(again,create);field.requestFocus();
+   create.setOnClickListener(v->register(code,field,again,create));code.setOnEditorActionListener((v,a,e)->{field.requestFocus();return true;});field.setOnEditorActionListener((v,a,e)->{again.requestFocus();return true;});submit(again,create);code.requestFocus();
   }else if(step==PICK){
    head("Хто дивиться?","Виберіть свій профіль. Історія й місце, де ви зупинилися, підтягнуться з облікового запису.");
    LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);row.setClipChildren(false);
@@ -111,13 +113,15 @@ public final class SignInActivity extends Activity {
   busy(button,"Вхід…");
   call(button,"/api/auth/login",json("email",email,"password",password,"device",true),null,this::signedIn,()->{field.setText("");field.requestFocus();error("Неправильний пароль. Спробуйте ще раз.");});
  }
- private void register(EditText field,EditText again,Button button){
+ private void register(EditText code,EditText field,EditText again,Button button){
+  String invitation=code.getText().toString().toUpperCase(java.util.Locale.ROOT).replaceAll("[\\s-]","");
+  if(!invitation.matches("[A-HJ-NP-Z2-9]{8}")){error("Введіть 8 символів коду запрошення від адміністратора");code.requestFocus();return;}
   String password=field.getText().toString();
   if(password.length()<6){error("Пароль — щонайменше 6 символів");field.requestFocus();return;}
   if(password.length()>256){error("Пароль задовгий");field.requestFocus();return;}
   if(!password.equals(again.getText().toString())){error("Паролі не збігаються");again.setText("");again.requestFocus();return;}
   busy(button,"Створення…");
-  call(button,"/api/auth/register",json("email",email,"password",password,"profile",false,"device",true),null,this::signedIn,null);
+  call(button,"/api/auth/register",json("email",email,"password",password,"invitation",invitation,"profile",false,"device",true),null,this::signedIn,null);
  }
  private void signedIn(JSONObject result)throws Exception{
   String token=result.getString("token");if(!token.matches("[a-f0-9]{64}"))throw new java.io.IOException("Token");
