@@ -76,7 +76,7 @@ async function api(request,env,ctx){
  if(path==="/api/pair/start"&&request.method==="POST"){
   const device=randomToken(),code=Array.from(crypto.getRandomValues(new Uint8Array(8)),n=>"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[n%32]).join("");
   await db.batch([db.prepare("DELETE FROM pairs WHERE expires_at<?").bind(Date.now()),db.prepare("INSERT INTO pairs(device_hash,user_code,expires_at) VALUES(?,?,?)").bind(await hash(device),code,Date.now()+10*60_000)]);
-  return json({device_code:device,user_code:code,verification_uri:url.origin+"/?pair="+code,expires_in:600});
+  return json({device_code:device,user_code:code,verification_uri:url.origin+"/pair?code="+code,expires_in:600});
  }
  if(path==="/api/pair/poll"&&request.method==="POST"){
   const b=await body(request,8192);if(typeof b.device_code!=="string"||!/^[a-f0-9]{64}$/.test(b.device_code))fail("Некоректний код");const device=await hash(b.device_code),pair=await db.prepare("SELECT * FROM pairs WHERE device_hash=? AND expires_at>?").bind(device,Date.now()).first();if(!pair||pair.consumed)fail("Код прострочений",410);if(!pair.user_id)return json({pending:true});
@@ -113,5 +113,7 @@ async function api(request,env,ctx){
  }
  fail("Не знайдено",404);
 }
+/** TV QR codes open /pair?code=…; the app shell reads ?pair= and asks the signed-in user to confirm the link. */
+function pairRedirect(request){const code=String(new URL(request.url).searchParams.get("code")||"").replace(/[\s-]/g,"").toUpperCase();return new Response(null,{status:302,headers:{Location:/^[A-Z2-9]{8}$/.test(code)?"/?pair="+code:"/","Cache-Control":"no-store"}});}
 function secure(response){const r=new Response(response.body,response);r.headers.set("Permissions-Policy","camera=(), microphone=(), geolocation=(), payment=()");r.headers.set("Cross-Origin-Opener-Policy","same-origin");r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Referrer-Policy","no-referrer");r.headers.set("X-Frame-Options","DENY");r.headers.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https: blob:; connect-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'");return r;}
-export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;return secure(path.startsWith("/api/")?await api(request,env,ctx):await env.ASSETS.fetch(request));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname,status,e.status?"handled":e.message?.slice(0,180));return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status));}}};
+export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));return secure(path.startsWith("/api/")?await api(request,env,ctx):await env.ASSETS.fetch(request));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname,status,e.status?"handled":e.message?.slice(0,180));return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status));}}};

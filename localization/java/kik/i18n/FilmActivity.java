@@ -31,10 +31,10 @@ public final class FilmActivity extends Activity {
   ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   body=new LinearLayout(this);body.setOrientation(1);body.setClipChildren(false);body.setClipToPadding(false);body.setPadding(dp(40),dp(24),dp(40),dp(40));scroll.addView(body,new ScrollView.LayoutParams(-1,-2));
   body.addView(Brand.logo(this,56,26));Ui.space(body,16);
-  name=Ui.bold(this,title==null?"":title,34);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(dp(760),-2));
+  name=Ui.bold(this,title==null?"":title,34);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
   meta=Ui.text(this,"",14,0xffd8d8dc);body.addView(meta);Ui.space(body,12);
-  desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(dp(640),-2));
+  desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(Ui.contentWidth(this,640,80),-2));
   sourceInfo=Ui.text(this,"",13,Ui.GREY);sourceInfo.setVisibility(View.GONE);body.addView(sourceInfo);
   Ui.space(body,20);
   LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);buttons.setGravity(Gravity.CENTER_VERTICAL);buttons.setPadding(dp(8),0,dp(8),0);HorizontalScrollView actionsBox=new HorizontalScrollView(this);actionsBox.setHorizontalScrollBarEnabled(false);actionsBox.setClipChildren(false);actionsBox.setClipToPadding(false);actionsBox.setPadding(0,dp(4),0,dp(4));actionsBox.addView(buttons);LinearLayout.LayoutParams actionsLp=new LinearLayout.LayoutParams(-1,-2);actionsLp.setMargins(-dp(8),0,-dp(8),0);body.addView(actionsBox,actionsLp);

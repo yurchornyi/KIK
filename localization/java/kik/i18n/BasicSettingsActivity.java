@@ -1,95 +1,105 @@
 package kik.i18n;
+
 import android.app.*;
 import android.content.*;
-import android.graphics.Color;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.RectF;
-import android.graphics.Typeface;
+import android.content.res.ColorStateList;
+import android.graphics.*;
 import android.graphics.drawable.*;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.*;
 import android.widget.*;
 import java.io.File;
+import java.util.*;
 
-/** Small, remote-friendly settings surface. Playback preferences keep the existing adapter keys. */
+/** Balanced settings cards with compact controls and a continuous D-pad focus path. */
 public final class BasicSettingsActivity extends Activity {
  private SharedPreferences prefs;
  private TextView updateStatus;
  private final Runnable updateChanged=()->{if(updateStatus!=null)updateStatus.setText(AppUpdater.status(this));};
- private final String[] qualities={"1080p","720p","480p","360p","2k","4k"};
- private LinearLayout content;
- private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
+ private final String[] qualities={"4k","2k","1080p","720p","480p","360p"};
+ private final List<Button> qualityButtons=new ArrayList<>();
+ private int cardWidth;
+ private int dp(float n){return Ui.dp(this,n);}
+
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);UiRuntime.settingsOpen=true;Ui.screen(this);
-  getWindow().setFlags(1024,1024);
-  getWindow().getDecorView().setSystemUiVisibility(5894);
-  prefs=getSharedPreferences("settings",0);
-  ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(0xff0d0d0f);scroll.setFillViewport(true);
-  content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(48),dp(26),dp(48),dp(24));
-  scroll.addView(content,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
-  TextView title=text("Налаштування",30);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(title);Ui.enter(title,0);
-  TextView subtitle=text("Відео та відтворення",16);subtitle.setTextColor(0xffb5b1be);space(6);content.addView(subtitle);space(18);
-  TextView quality=text("Якість за замовчуванням",20);content.addView(quality);space(6);
-  LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);content.addView(row);
+  super.onCreate(state);UiRuntime.settingsOpen=true;Ui.screen(this);prefs=getSharedPreferences("settings",0);
+  ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);scroll.setClipToPadding(false);
+  LinearLayout page=column();page.setPadding(dp(40),dp(24),dp(40),dp(28));
+  scroll.addView(page,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
+  LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);
+  heading.addView(Brand.logo(this,56,26));TextView title=Ui.bold(this,"Налаштування",28);
+  LinearLayout.LayoutParams titleLp=new LinearLayout.LayoutParams(0,-2,1);titleLp.leftMargin=dp(20);heading.addView(title,titleLp);
+  Button done=Ui.pill(this,"Готово",false);done.setTextSize(15);heading.addView(done,new LinearLayout.LayoutParams(-2,dp(44)));done.setOnClickListener(v->finish());
+  page.addView(heading);Ui.space(page,8);page.addView(Ui.text(this,"Ваш профіль, перегляд і пристрої",14,Ui.GREY));Ui.space(page,22);
+
+  int available=Ui.contentWidth(this,1120,80);boolean wide=available>=dp(720);
+  LinearLayout layout=new LinearLayout(this);layout.setOrientation(wide?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);layout.setClipChildren(false);layout.setClipToPadding(false);
+  page.addView(layout,new LinearLayout.LayoutParams(available,-2));
+  LinearLayout left=column(),right=column();cardWidth=wide?(available-dp(20))/2:available;
+  layout.addView(left,new LinearLayout.LayoutParams(cardWidth,-2));
+  LinearLayout.LayoutParams rightLp=new LinearLayout.LayoutParams(cardWidth,-2);if(wide)rightLp.leftMargin=dp(20);layout.addView(right,rightLp);
+  int inner=cardWidth-dp(40);
+
+  LinearLayout playback=card(left,"Відтворення","Мова та якість залежать від джерела.");
+  playback.addView(Ui.text(this,"Якість за замовчуванням",14,Ui.GREY));Ui.space(playback,10);
+  int columns=Math.max(2,Math.min(3,(inner+dp(8))/dp(100)));
+  GridLayout qualityGrid=new GridLayout(this);qualityGrid.setColumnCount(columns);qualityGrid.setClipChildren(false);qualityGrid.setClipToPadding(false);
+  playback.addView(qualityGrid,new LinearLayout.LayoutParams(-1,-2));
   String selected=prefs.getString("default_quality","1080p");Button selectedButton=null;
-  for(final String q:qualities){
-   Button b=button(q);b.setTextSize(16);b.setPadding(dp(12),0,dp(12),0);if(q.equals(selected)){b.setText("✓ "+q);selectedButton=b;}
-   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(105),dp(50));lp.setMargins(0,0,dp(8),0);row.addView(b,lp);
-   b.setOnClickListener(v->{prefs.edit().putString("default_quality",q).apply();UiRuntime.updateState("j",q);for(int i=0;i<row.getChildCount();i++)((Button)row.getChildAt(i)).setText(qualities[i]);b.setText("✓ "+q);});
+  for(String quality:qualities){
+   Button b=Ui.pill(this,quality,false);b.setTextSize(14);b.setPadding(dp(8),0,dp(8),0);qualityButtons.add(b);
+   GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=(inner+dp(8))/columns-dp(8);lp.height=dp(44);lp.rightMargin=dp(8);lp.bottomMargin=dp(10);qualityGrid.addView(b,lp);
+   if(quality.equals(selected)){b.setText("✓ "+quality);b.setSelected(true);selectedButton=b;}
+   b.setOnClickListener(v->{prefs.edit().putString("default_quality",quality).apply();UiRuntime.updateState("j",quality);for(int i=0;i<qualityButtons.size();i++){Button choice=qualityButtons.get(i);boolean active=qualities[i].equals(quality);choice.setText((active?"✓ ":"")+qualities[i]);choice.setSelected(active);}});
   }
-  space(6);TextView help=text("Якщо вибрана якість недоступна, плеєр використає доступний варіант.",14);help.setTextColor(0xffa29daa);content.addView(help);space(18);
-  Switch next=new Switch(this);next.setText("Автоматично вмикати наступну серію");next.setTextColor(Color.WHITE);next.setTextSize(19);next.setPadding(dp(14),dp(8),dp(14),dp(8));next.setFocusable(true);next.setBackground(focusBackground());next.setThumbTintList(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{Ui.RED,Ui.GREY}));next.setTrackTintList(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff713038,0xff46464b}));next.setChecked(prefs.getBoolean("auto_play_next_episode",true));next.setOnCheckedChangeListener((v,on)->{prefs.edit().putBoolean("auto_play_next_episode",on).apply();UiRuntime.updateState("E",on);});content.addView(next,new LinearLayout.LayoutParams(dp(670),dp(52)));space(6);
-  Switch ident=new Switch(this);ident.setText("Заставка KIK перед відео");ident.setTextColor(Color.WHITE);ident.setTextSize(19);ident.setPadding(dp(14),dp(8),dp(14),dp(8));ident.setFocusable(true);ident.setBackground(focusBackground());ident.setThumbTintList(next.getThumbTintList());ident.setTrackTintList(next.getTrackTintList());ident.setChecked(prefs.getBoolean("intro",true));ident.setOnCheckedChangeListener((v,on)->prefs.edit().putBoolean("intro",on).apply());content.addView(ident,new LinearLayout.LayoutParams(dp(670),dp(52)));space(18);
-  space(18);TextView countries=text("Приховати фільми з країн",20);content.addView(countries);space(6);
-  final java.util.Set<String> hidden=new java.util.LinkedHashSet<String>(CountryFilter.excluded());
-  LinearLayout countryRow=null;
-  for(int i=0;i<CountryFilter.CHOICES.length;i++){
-   final String[] choice=CountryFilter.CHOICES[i];
-   if(i%4==0){countryRow=new LinearLayout(this);countryRow.setOrientation(0);countryRow.setClipChildren(false);countryRow.setClipToPadding(false);content.addView(countryRow);space(8);}
-   final Button b=button((hidden.contains(choice[0])?"✓ ":"")+choice[1]);b.setTextSize(16);b.setPadding(dp(12),0,dp(12),0);
-   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(200),dp(50));lp.setMargins(0,0,dp(8),0);countryRow.addView(b,lp);
-   b.setOnClickListener(v->{if(!hidden.remove(choice[0]))hidden.add(choice[0]);b.setText((hidden.contains(choice[0])?"✓ ":"")+choice[1]);
-    prefs.edit().putString("excluded_countries",String.join(",",hidden)).apply();CountryFilter.set(hidden);
-    // Cached rows were built with the old filter.
-    getSharedPreferences("kik_home",0).edit().clear().apply();});
+  Ui.space(playback,6);
+  Switch next=toggle(playback,"Наступна серія автоматично",prefs.getBoolean("auto_play_next_episode",true));
+  next.setOnCheckedChangeListener((v,on)->{prefs.edit().putBoolean("auto_play_next_episode",on).apply();UiRuntime.updateState("E",on);});
+  Switch intro=toggle(playback,"Заставка перед відео",prefs.getBoolean("intro",true));intro.setOnCheckedChangeListener((v,on)->prefs.edit().putBoolean("intro",on).apply());
+
+  LinearLayout countries=card(left,"Каталог","Приховайте країни, які не хочете бачити в добірках.");
+  Set<String> hidden=new LinkedHashSet<>(CountryFilter.excluded());GridLayout countryGrid=new GridLayout(this);countryGrid.setColumnCount(2);countryGrid.setClipChildren(false);countryGrid.setClipToPadding(false);countries.addView(countryGrid);
+  for(String[] choice:CountryFilter.CHOICES){
+   Button b=Ui.pill(this,(hidden.contains(choice[0])?"✓ ":"")+choice[1],false);b.setTextSize(14);b.setPadding(dp(8),0,dp(8),0);b.setSelected(hidden.contains(choice[0]));
+   GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=(inner-dp(10))/2;lp.height=dp(42);lp.rightMargin=dp(10);lp.bottomMargin=dp(10);countryGrid.addView(b,lp);
+   b.setOnClickListener(v->{if(!hidden.remove(choice[0]))hidden.add(choice[0]);boolean active=hidden.contains(choice[0]);b.setText((active?"✓ ":"")+choice[1]);b.setSelected(active);prefs.edit().putString("excluded_countries",String.join(",",hidden)).apply();CountryFilter.set(hidden);getSharedPreferences("kik_home",0).edit().clear().apply();});
   }
-  TextView countryHelp=text("Позначені країни не показуються в каталозі, пошуку й рекомендаціях. Історія та «Мій список» не змінюються.",14);countryHelp.setTextColor(0xffa29daa);content.addView(countryHelp,new LinearLayout.LayoutParams(dp(900),-2));space(18);
-  Button cache=button("Очистити кеш зображень");content.addView(cache,new LinearLayout.LayoutParams(dp(350),dp(48)));
-  cache.setOnClickListener(v->Ui.dialog(this).setTitle("Очистити кеш зображень?").setMessage("Обране та історія перегляду збережуться.").setNegativeButton("Скасувати",null).setPositiveButton("Очистити",(dialog,which)->{new Thread(()->{long deleted=clearImages(getCacheDir());HomeActivity.Images.clear();runOnUiThread(()->Toast.makeText(this,"Кеш зображень очищено",Toast.LENGTH_SHORT).show());}).start();}).show());
-  space(18);String who=ProfileStore.nameOf(this,ProfileStore.current(this));
-  Button profiles=button(who==null?"Профілі":"Профіль: "+who+" • змінити");content.addView(profiles,new LinearLayout.LayoutParams(dp(420),dp(48)));
-  profiles.setOnClickListener(v->startActivity(new Intent(this,ProfilesActivity.class)));
-  space(18);Button sync=button("Синхронізація профілю");content.addView(sync,new LinearLayout.LayoutParams(dp(350),dp(48)));sync.setOnClickListener(v->startActivity(new Intent(this,SyncActivity.class)));
-  space(22);TextView updates=text("Оновлення KIK • "+AppUpdater.version(this),20);content.addView(updates);space(8);
-  Switch automatic=new Switch(this);automatic.setText("Оновлювати автоматично");automatic.setTextColor(Color.WHITE);automatic.setTextSize(19);automatic.setPadding(dp(14),dp(8),dp(14),dp(8));automatic.setFocusable(true);automatic.setBackground(focusBackground());automatic.setThumbTintList(next.getThumbTintList());automatic.setTrackTintList(next.getTrackTintList());automatic.setChecked(AppUpdater.enabled(this));automatic.setOnCheckedChangeListener((v,on)->AppUpdater.setEnabled(this,on));content.addView(automatic,new LinearLayout.LayoutParams(dp(670),dp(52)));space(8);
-  updateStatus=text(AppUpdater.status(this),14);updateStatus.setTextColor(0xffb5b1be);content.addView(updateStatus,new LinearLayout.LayoutParams(dp(670),-2));space(10);
-  Button check=button("Перевірити оновлення");content.addView(check,new LinearLayout.LayoutParams(dp(350),dp(48)));check.setOnClickListener(v->AppUpdater.manual(this));space(8);
-  Button permission=button("Дозвіл на встановлення");content.addView(permission,new LinearLayout.LayoutParams(dp(350),dp(48)));permission.setOnClickListener(v->AppUpdater.permission(this));
-  space(18);TextView about=text("KIK • Вбудований плеєр • Українська → російська",14);about.setTextColor(0xffa29daa);content.addView(about);space(10);
-  Button sources=button("Джерела даних");content.addView(sources,new LinearLayout.LayoutParams(dp(350),dp(46)));sources.setOnClickListener(v->FreeSources.credits(this));space(14);
-  LinearLayout author=new LinearLayout(this);author.setOrientation(0);author.setGravity(Gravity.CENTER_VERTICAL);
-  halfCircle=new HalfCircle(this);author.addView(halfCircle,new LinearLayout.LayoutParams(dp(18),dp(18)));
-  TextView name=text("Створено Чорним",15);name.setTextColor(0xffd8d6de);name.setLetterSpacing(0.06f);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-2,-2);np.setMargins(dp(10),0,0,0);author.addView(name,np);
-  content.addView(author);space(14);
-  Button back=button("Готово");content.addView(back,new LinearLayout.LayoutParams(dp(160),dp(46)));back.setOnClickListener(v->finish());
+  TextView help=Ui.text(this,"Історія та «Мій список» збережуться.",13,Ui.GREY);help.setPadding(0,dp(4),0,0);countries.addView(help);
+
+  LinearLayout profile=card(right,"Профіль і пристрої",null);
+  LinearLayout identity=new LinearLayout(this);identity.setGravity(Gravity.CENTER_VERTICAL);ImageView avatar=Avatars.view(this,ProfileStore.avatarOf(this,ProfileStore.current(this)),40);avatar.setFocusable(false);identity.addView(avatar,new LinearLayout.LayoutParams(dp(40),dp(40)));
+  TextView name=Ui.bold(this,ProfileStore.nameOf(this,ProfileStore.current(this)),17);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);LinearLayout.LayoutParams nameLp=new LinearLayout.LayoutParams(0,-2,1);nameLp.leftMargin=dp(12);identity.addView(name,nameLp);profile.addView(identity);Ui.space(profile,14);
+  action(profile,"Керувати профілями",()->startActivity(new Intent(this,ProfilesActivity.class)));
+  action(profile,"Синхронізація профілю",()->startActivity(new Intent(this,SyncActivity.class)));
+
+  LinearLayout updates=card(right,"Оновлення KIK","Версія "+AppUpdater.version(this));
+  Switch automatic=toggle(updates,"Оновлювати автоматично",AppUpdater.enabled(this));automatic.setOnCheckedChangeListener((v,on)->AppUpdater.setEnabled(this,on));
+  updateStatus=Ui.text(this,AppUpdater.status(this),13,Ui.GREY);updateStatus.setLineSpacing(0,1.15f);updateStatus.setPadding(0,dp(6),0,dp(12));updates.addView(updateStatus);
+  action(updates,"Перевірити оновлення",()->AppUpdater.manual(this));action(updates,"Дозвіл на встановлення",()->AppUpdater.permission(this));
+
+  LinearLayout about=card(right,"Про KIK","Українська → російська · Вбудований плеєр");
+  action(about,"Джерела даних",()->FreeSources.credits(this));
+  action(about,"Очистити кеш зображень",()->Ui.dialog(this).setTitle("Очистити кеш зображень?").setMessage("Обране та історія перегляду збережуться.").setNegativeButton("Скасувати",null).setPositiveButton("Очистити",(dialog,which)->Ui.bg(()->{clearImages(getCacheDir());HomeActivity.Images.clear();runOnUiThread(()->Ui.toast(this,"Кеш зображень очищено"));})).show());
+  TextView author=Ui.text(this,"◐  Створено Чорним",13,Ui.GREY);author.setPadding(0,dp(8),0,0);about.addView(author);
   if(selectedButton!=null)selectedButton.requestFocus();
  }
- /** Author mark: a circle with one filled half, turning slowly only while settings are visible. */
- private static final class HalfCircle extends View {
-  private final Paint line=new Paint(Paint.ANTI_ALIAS_FLAG),fill=new Paint(Paint.ANTI_ALIAS_FLAG);private final RectF box=new RectF();
-  HalfCircle(Context c){super(c);line.setStyle(Paint.Style.STROKE);line.setColor(0xffd8d6de);line.setStrokeWidth(c.getResources().getDisplayMetrics().density);fill.setColor(0xffd8d6de);setLayerType(LAYER_TYPE_HARDWARE,null);}
-  @Override protected void onDraw(Canvas canvas){float s=line.getStrokeWidth();box.set(s,s,getWidth()-s,getHeight()-s);canvas.drawArc(box,-90,180,true,fill);canvas.drawOval(box,line);}
+ private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setClipChildren(false);l.setClipToPadding(false);return l;}
+ private LinearLayout card(LinearLayout parent,String title,String description){
+  LinearLayout card=column();card.setPadding(dp(20),dp(18),dp(20),dp(18));card.setBackground(Ui.shape(Ui.CARD,dp(20),dp(1),0xff2c2c32));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(18);parent.addView(card,lp);
+  card.addView(Ui.bold(this,title,19));Ui.space(card,8);
+  if(description!=null){TextView text=Ui.text(this,description,13,Ui.GREY);text.setLineSpacing(0,1.2f);card.addView(text);Ui.space(card,14);}else Ui.space(card,6);
+  return card;
  }
- private HalfCircle halfCircle;private android.animation.ObjectAnimator turning;
- private TextView text(String s,int size){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(Color.WHITE);return t;}
- private void space(int size){View v=new View(this);content.addView(v,new LinearLayout.LayoutParams(1,dp(size)));}
- private Button button(String text){return Ui.pill(this,text,false);}
- private StateListDrawable focusBackground(){StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},shape(Ui.CARD,Ui.RED));s.addState(new int[]{},shape(0xff1f1f23,0xff2e2e33));return s;}
- private GradientDrawable shape(int fill,int stroke){GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(dp(24));d.setStroke(dp(2),stroke);return d;}
- private long clearImages(File root){long n=0;File[] files=root.listFiles();if(files==null)return 0;for(File f:files){String name=f.getName().toLowerCase(java.util.Locale.ROOT);if(f.isDirectory()&&(name.contains("image")||name.contains("coil"))){n+=removeTree(f);} }return n;}
+ private Button action(LinearLayout card,String label,Runnable run){Button b=Ui.pill(this,label,false);b.setTextSize(15);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.bottomMargin=dp(10);card.addView(b,lp);b.setOnClickListener(v->run.run());return b;}
+ private Switch toggle(LinearLayout card,String label,boolean checked){
+  Switch toggle=new Switch(this);toggle.setText(label);toggle.setTextColor(Color.WHITE);toggle.setTextSize(16);toggle.setMaxLines(2);toggle.setEllipsize(TextUtils.TruncateAt.END);toggle.setMinHeight(dp(48));toggle.setSwitchPadding(dp(14));toggle.setPadding(dp(12),dp(8),dp(12),dp(8));toggle.setFocusable(true);toggle.setBackground(Ui.states(Ui.shape(0xff25252b,dp(14),0,0),Ui.shape(0xff33333a,dp(14),dp(2),Ui.RED)));
+  toggle.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{Ui.RED,Ui.GREY}));toggle.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff713038,0xff46464b}));toggle.setChecked(checked);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(10);card.addView(toggle,lp);return toggle;
+ }
+ private long clearImages(File root){long n=0;File[] files=root.listFiles();if(files!=null)for(File f:files){String name=f.getName().toLowerCase(Locale.ROOT);if(f.isDirectory()&&(name.contains("image")||name.contains("coil")))n+=removeTree(f);}return n;}
  private long removeTree(File f){long n=f.length();if(f.isDirectory()){File[] a=f.listFiles();if(a!=null)for(File c:a)n+=removeTree(c);}f.delete();return n;}
- @Override protected void onResume(){super.onResume();if(halfCircle!=null){turning=android.animation.ObjectAnimator.ofFloat(halfCircle,"rotation",halfCircle.getRotation(),halfCircle.getRotation()+360);turning.setDuration(6000);turning.setRepeatCount(android.animation.ValueAnimator.INFINITE);turning.setInterpolator(new android.view.animation.LinearInterpolator());turning.start();}AppUpdater.listen(updateChanged);updateChanged.run();AppUpdater.resumed(this);}
- @Override protected void onPause(){if(turning!=null){turning.cancel();turning=null;}AppUpdater.paused(this);AppUpdater.unlisten(updateChanged);super.onPause();}
+ @Override protected void onResume(){super.onResume();AppUpdater.listen(updateChanged);updateChanged.run();AppUpdater.resumed(this);}
+ @Override protected void onPause(){AppUpdater.paused(this);AppUpdater.unlisten(updateChanged);super.onPause();}
  @Override protected void onDestroy(){UiRuntime.settingsOpen=false;super.onDestroy();}
 }

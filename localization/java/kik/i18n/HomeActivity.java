@@ -58,9 +58,9 @@ public final class HomeActivity extends Activity {
   heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
   heroMeta=text("",14,0xffd8d8dc);heroMeta.setSingleLine(true);heroSub=text("",13,0xffefb8bb);heroSub.setSingleLine(true);heroSub.setTypeface(Typeface.DEFAULT_BOLD);
   heroText=text("",14,0xffd0d0d4);heroText.setLines(2);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
-  info.addView(heroTitle,new LinearLayout.LayoutParams(dp(650),-2));space(info,5);info.addView(heroMeta);space(info,3);info.addView(heroSub);space(info,8);
-  info.addView(heroText,new LinearLayout.LayoutParams(dp(500),-2));space(info,14);
-  LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);info.addView(buttons);
+  info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);info.addView(heroSub);space(info,8);
+  info.addView(heroText,new LinearLayout.LayoutParams(Ui.contentWidth(this,500,80),-2));space(info,14);
+  LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);info.addView(Ui.horizontal(this,buttons),new LinearLayout.LayoutParams(-1,-2));
   watch=action("Дивитися",HeroActions.PLAY,true);buttons.addView(watch,new LinearLayout.LayoutParams(-2,dp(48)));
   later=action("Мій список",HeroActions.ADD,false);LinearLayout.LayoutParams lp0=new LinearLayout.LayoutParams(-2,dp(48));lp0.setMargins(dp(10),0,0,0);buttons.addView(later,lp0);
   later.setOnClickListener(v->toggleLater(hero));
@@ -98,16 +98,17 @@ public final class HomeActivity extends Activity {
  }
 
  private View topBar(){
-  LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
+  LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
-  View gap=new View(this);bar.addView(gap,new LinearLayout.LayoutParams(dp(22),1));
-  bar.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
-  bar.addView(menu("Каталог ▾",v->Ui.dialog(this).setTitle("Що подивимось?").setItems(new String[]{"Фільми","Серіали","Мультфільми","Аніме"},(d,n)->BrowseActivity.open(this,"catalog",new String[]{"films","series","cartoons","animation"}[n],new String[]{"Фільми","Серіали","Мультфільми","Аніме"}[n])).show()));
-  bar.addView(menu("Пошук",v->BrowseActivity.open(this,"search",null,"Пошук")));
-  bar.addView(menu("Мій список",v->BrowseActivity.open(this,"later",null,"Переглянути пізніше")));
-  bar.addView(menu("Історія",v->BrowseActivity.open(this,"history",null,"Історія переглядів")));
-  bar.addView(menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class))));
-  View fill=new View(this);bar.addView(fill,new LinearLayout.LayoutParams(0,1,1));
+  LinearLayout menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
+  HorizontalScrollView navigation=Ui.horizontal(this,menuRow);LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,-2,1);navLp.setMargins(dp(14),0,dp(10),0);bar.addView(navigation,navLp);
+  menuRow.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
+  menuRow.addView(menu("Каталог ▾",v->Ui.dialog(this).setTitle("Що подивимось?").setItems(new String[]{"Фільми","Серіали","Мультфільми","Аніме"},(d,n)->BrowseActivity.open(this,"catalog",new String[]{"films","series","cartoons","animation"}[n],new String[]{"Фільми","Серіали","Мультфільми","Аніме"}[n])).show()));
+  menuRow.addView(menu("Пошук",v->BrowseActivity.open(this,"search",null,"Пошук")));
+  menuRow.addView(menu("Мій список",v->BrowseActivity.open(this,"later",null,"Переглянути пізніше")));
+  menuRow.addView(menu("Історія",v->BrowseActivity.open(this,"history",null,"Історія переглядів")));
+  menuRow.addView(menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class))));
+
   String name=ProfileStore.nameOf(this,ProfileStore.current(this));lastProfileName=name;lastProfileAvatar=ProfileStore.avatarOf(this,ProfileStore.current(this));
   ImageView avatar=Avatars.view(this,lastProfileAvatar,36);
   avatar.setOnClickListener(v->startActivity(new Intent(this,ProfilesActivity.class)));
@@ -155,8 +156,8 @@ public final class HomeActivity extends Activity {
  }
  private boolean valid(int gen,String profile){return !isFinishing()&&!destroyed&&gen==loadGeneration&&profile.equals(ProfileStore.current(this));}
  private Set<String> words(List<Row> rows){Set<String> words=new LinkedHashSet<String>();for(Row r:rows)for(Item i:r.items){if(i.title!=null)words.add(i.title);if(i.genre!=null)words.add(i.genre);}return words;}
- /** Off the main thread, before rows appear: Ukrainian labels from the first frame. */
- private void translateNow(List<Row> rows){mergeTranslations(TitleTranslate.resolve(words(rows),Ui.TRANSLATE_WAIT));}
+ /** Cached labels before the first frame; missing translations update later. */
+ private void translateNow(List<Row> rows){mergeTranslations(TitleTranslate.cached(words(rows)));}
  private synchronized void mergeTranslations(Map<String,String> m){Map<String,String> n=new HashMap<String,String>(uk);n.putAll(m);uk=n;}
  private void translateLater(List<Row> rows,int gen,String profile){
   main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{Map<String,String> got=TitleTranslate.resolve(words(rows));main.post(()->{if(!valid(gen,profile))return;mergeTranslations(got);translateLabels(content);if(hero!=null){heroTitle.setText(tr(hero.title));heroMeta.setText(join(hero.year,tr(hero.genre),hero.rating==null?null:"★ "+hero.rating));}});},"kik-home-text").start();},800);
@@ -331,7 +332,7 @@ public final class HomeActivity extends Activity {
  }
 
  private TextView menu(String label,View.OnClickListener l){
-  TextView t=text(label,14,0xffd0d0d4);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
+  TextView t=text(label,14,0xffd0d0d4);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
   t.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));t.setTextColor(Ui.buttonText(false));
   t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f)scroll.smoothScrollTo(0,0);});
   t.setOnClickListener(l);return t;
