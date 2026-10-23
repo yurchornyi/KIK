@@ -173,6 +173,8 @@ public final class TvChannels {
  private static boolean started(Context c,String profile,String link){String k=Progress.norm(link);for(Progress.Entry e:Progress.recent(c,profile))if(k.equals(Progress.norm(e.link)))return true;return false;}
 
  // ---------- artwork ----------
+ /** The same backdrops for the home hero's slides, keyed by Progress.norm(link); call off the main thread. */
+ static Map<String,String> backdrops(Context c,List<String> links,List<String> titles){List<Program> ps=new ArrayList<Program>();for(int i=0;i<links.size();i++){Program p=new Program();p.link=links.get(i);p.title=titles.get(i);ps.add(p);}return backdrops(c,ps);}
  /** 16:9 TMDB backdrops (w1280) through the KIK server, cached for a month (misses for three days). */
  private static Map<String,String> backdrops(Context c,List<Program> programs){
   SharedPreferences cache=c.getSharedPreferences("kik_tv_artwork_v2",0);Map<String,String> out=new HashMap<String,String>();long now=System.currentTimeMillis();

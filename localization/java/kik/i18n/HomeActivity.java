@@ -23,7 +23,7 @@ import org.json.*;
 public final class HomeActivity extends Activity {
  static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
 
- static final class Item{String link,title,poster,wide,year,genre,rating,sub,heroLine,description;boolean resume;float progress;}
+ static final class Item{String link,title,poster,wide,year,genre,rating,sub,heroLine,description;boolean resume,wideArt;float progress;}
  static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
@@ -71,6 +71,7 @@ public final class HomeActivity extends Activity {
   more=action("",HeroActions.INFO,false);HeroActions.round(more);more.setContentDescription("Детальніше");LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(48),dp(48));lp.setMargins(dp(10),0,0,0);buttons.addView(more,lp);
   watch.setOnClickListener(v->{if(hero!=null)startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));});
   more.setOnClickListener(v->open(hero));
+  dots=new LinearLayout(this);dots.setOrientation(0);dots.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams dl=new LinearLayout.LayoutParams(-2,dp(6));dl.topMargin=dp(16);info.addView(dots,dl);
   content.addView(info);
   Ui.enter(info,60);
   heroText.setText("Завантаження…");
@@ -304,8 +305,8 @@ public final class HomeActivity extends Activity {
   detailTask=()->new Thread(()->{
    try{Site.Film f=Site.film(i.link);String d=f.description==null?"":DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);mergeTranslations(TitleTranslate.resolve(f.genres.isEmpty()?Collections.<String>emptySet():Collections.singleton(f.genres.get(0)),Ui.TRANSLATE_WAIT));
     final String[] g=new String[]{d,f.poster,f.rating,f.year,f.genres.isEmpty()?null:f.genres.get(0)};DETAILS.put(norm(i.link),g);
-    main.post(()->{i.description=g[0];if(g[1]!=null)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];
-     if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null)Images.crossfade(i.wide,heroImage);}});
+    main.post(()->{i.description=g[0];if(g[1]!=null&&!i.wideArt)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];
+     if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null&&!i.wideArt)Images.crossfade(i.wide,heroImage);}});
     String translated=DescTranslate.tr(f.description);Map<String,String> got=TitleTranslate.resolve(Collections.singleton(g[4]));
     main.post(()->{if(destroyed)return;mergeTranslations(got);g[0]=translated;i.description=translated;if(hero==i){heroText.setText(translated);heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));}});
    }catch(Exception e){Log.w("KIK","Hero details: "+e);}
@@ -334,7 +335,7 @@ public final class HomeActivity extends Activity {
   watch.setOnClickListener(v->{if(hero!=null){startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}});
   if(pendingHero!=null){Item keep=pendingHero;pendingHero=null;hero=null;setHero(keep);later.requestFocus();return;}
   if(again!=null&&!actionFocused){((ViewGroup)again).getChildAt(0).requestFocus();return;}
-  setHero(rows.get(0).items.get(0));
+  startSlides(rows);
   if(initial){watch.requestFocus();scroll.scrollTo(0,0);}else if(actionFocused)watch.requestFocus();
  }
 
@@ -352,6 +353,7 @@ public final class HomeActivity extends Activity {
  }
  private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
 
+ /** A shelf card; the focused one stays at the row's left edge and the row slides under it, as on Netflix. */
  private View card(final Item i){
   LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setClipChildren(false);box.setClipToPadding(false);box.setPadding(dp(8),dp(8),dp(8),dp(6));
   FrameLayout frame=new FrameLayout(this);frame.setFocusable(true);frame.setClickable(true);
@@ -359,21 +361,21 @@ public final class HomeActivity extends Activity {
   ImageView img=new PosterView(this,dp(8));frame.addView(img,new FrameLayout.LayoutParams(-1,-1));
   final View ring=new View(this);ring.setBackground(shape(0,dp(8),dp(3),RED));ring.setAlpha(0f);frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
   if(i.rating!=null){TextView r=text("★ "+i.rating,12,Color.WHITE);r.setPadding(dp(6),dp(2),dp(6),dp(2));r.setBackground(shape(0xcc000000,dp(4),0,0));FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);p.setMargins(0,dp(6),dp(6),0);frame.addView(r,p);}
-  if(i.resume){View track=new View(this);track.setBackgroundColor(0xff77777b);frame.addView(track,new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM));View bar=new View(this);bar.setBackgroundColor(RED);frame.addView(bar,new FrameLayout.LayoutParams(Math.max(dp(3),Math.round(dp(124)*i.progress)),dp(3),Gravity.BOTTOM|Gravity.START));}
-  box.addView(frame,new LinearLayout.LayoutParams(dp(124),dp(164)));
+  if(i.resume){View track=new View(this);track.setBackgroundColor(0xff77777b);frame.addView(track,new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM));View bar=new View(this);bar.setBackgroundColor(RED);frame.addView(bar,new FrameLayout.LayoutParams(Math.max(dp(3),Math.round(dp(150)*i.progress)),dp(3),Gravity.BOTTOM|Gravity.START));}
+  box.addView(frame,new LinearLayout.LayoutParams(dp(150),dp(200)));
   TextView t=text(tr(i.title),14,0xffe6e6ea);t.setTag(new Label(i,false));t.setSingleLine(true);t.setEllipsize(TextUtils.TruncateAt.END);t.setPadding(dp(2),dp(8),dp(2),0);
-  box.addView(t,new LinearLayout.LayoutParams(dp(124),-2));
+  box.addView(t,new LinearLayout.LayoutParams(dp(150),-2));
   TextView s=text(i.resume?i.sub:join(i.year,tr(i.genre)),12,GREY);s.setTag(new Label(i,true));s.setSingleLine(true);s.setEllipsize(TextUtils.TruncateAt.END);s.setPadding(dp(2),dp(2),dp(2),0);
-  box.addView(s,new LinearLayout.LayoutParams(dp(124),-2));
+  box.addView(s,new LinearLayout.LayoutParams(dp(150),-2));
   frame.setContentDescription(tr(i.title));
   frame.setOnFocusChangeListener((v,f)->{
    Ui.focus(v,f,1.05f);ring.animate().alpha(f?1f:0f).setDuration(140).start();
    t.setTextColor(f?Color.WHITE:0xffe6e6ea);
-   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->setHero(i);main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->{View line=(View)box.getParent();if(line==null||destroyed)return;int left=line.getLeft()+box.getLeft(),target=FocusScrollPolicy.target(hs.getScrollX(),hs.getWidth(),hs.getPaddingLeft(),hs.getPaddingRight(),left,left+box.getWidth(),dp(8));if(target!=hs.getScrollX())hs.smoothScrollTo(target,0);});}}
+   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->{stopSlides();setHero(i);};main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->{View line=(View)box.getParent();if(line==null||destroyed)return;int left=line.getLeft()+box.getLeft(),target=Math.max(0,left-dp(40));if(target!=hs.getScrollX())hs.smoothScrollTo(target,0);});}}
   });
   frame.setOnClickListener(v->open(i));
   frame.setOnLongClickListener(v->{rate(i);return true;});
-  Images.load(i.poster,img,dp(136));
+  Images.load(i.poster,img,dp(168));
   return box;
  }
  /** Long press on a card: like, dislike (the chosen one is red; pressing it again clears it) and, for a started title, remove it from history. */
@@ -401,6 +403,45 @@ public final class HomeActivity extends Activity {
   int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
   if(target!=scroll.getScrollY())scroll.smoothScrollTo(0,target);
  }
+
+ // ---------- featured slideshow ----------
+ /** As on the website, the hero features recommendations, never a title already in «Продовжити перегляд»; it turns to the
+  *  next one (up to 10) every 9 s until a card takes the focus (then the hero follows the focus as before). */
+ private final List<Item> slides=new ArrayList<Item>();private int slide;private LinearLayout dots;
+ private final Runnable nextSlide=()->{if(destroyed||slides.size()<2)return;if(foreground&&!expanded)showSlide((slide+1)%slides.size());else scheduleSlide();};
+ private List<Item> candidates=new ArrayList<Item>();private String slideKeys="";
+ private void startSlides(List<Row> rows){
+  Set<String> started=new HashSet<String>();for(Row r:rows)for(Item i:r.items)if(i.resume)started.add(norm(i.link));
+  List<Item> found=new ArrayList<Item>();Set<String> seen=new HashSet<String>();
+  for(int pass=0;pass<2&&found.isEmpty();pass++)for(Row r:rows){if(pass==0&&!r.personalized)continue;for(Item i:r.items){if(found.size()>=24)break;if(!i.resume&&!started.contains(norm(i.link))&&seen.add(norm(i.link)))found.add(i);}}
+  if(found.isEmpty())found.add(rows.get(0).items.get(0));
+  // A card chose the hero (the slideshow stopped) and the remote went up to its buttons: keep that title.
+  if(slides.isEmpty()&&!slideKeys.isEmpty()&&hero!=null&&(watch.hasFocus()||later.hasFocus()||more.hasFocus()))return;
+  // Home redraws every few seconds while it syncs: the same picks keep the slide on screen and its timer.
+  StringBuilder keys=new StringBuilder();for(Item i:found)keys.append(norm(i.link)).append(',');
+  if(keys.toString().equals(slideKeys)&&!slides.isEmpty())return;
+  slideKeys=keys.toString();candidates=found;arrange();showSlide(0);wideArt(found);
+ }
+ /** Up to 10 slides. Once three or more picks have a wide picture, only those are shown, so the hero is always filled
+ *  like the website's; until then (or without enough), the rest follow with their posters. */
+ private void arrange(){slides.clear();for(Item x:candidates)if(x.wideArt&&slides.size()<10)slides.add(x);if(slides.size()>=3)return;for(Item x:candidates)if(!x.wideArt&&slides.size()<10)slides.add(x);}
+ /** Wide 16:9 pictures for the candidates, as the website's hero shows; a title without one keeps its poster. */
+ private void wideArt(final List<Item> want){
+  final List<String> links=new ArrayList<String>(),titles=new ArrayList<String>();for(Item x:want)if(!x.wideArt){links.add(x.link);titles.add(x.title==null?"":x.title);}
+  if(links.isEmpty())return;
+  Ui.bg(()->{final Map<String,String> art=TvChannels.backdrops(this,links,titles);main.post(()->{if(destroyed)return;boolean any=false;
+   for(Item x:want){String w=art.get(norm(x.link));if(w==null)continue;x.wide=w;x.wideArt=true;any=true;if(hero==x)Images.crossfade(w,heroImage);}
+   if(!any||slides.isEmpty()||want!=candidates)return;Item now=hero;arrange();int at=slides.indexOf(now);if(at<0)showSlide(0);else{slide=at;paintDots();}});});
+ }
+ private void showSlide(int n){slide=n;setHero(slides.get(n));paintDots();scheduleSlide();}
+ private void scheduleSlide(){main.removeCallbacks(nextSlide);if(slides.size()>1)main.postDelayed(nextSlide,9000);}
+ private void stopSlides(){main.removeCallbacks(nextSlide);slides.clear();paintDots();}
+ /** Small pills under the buttons. The slide on screen is a wider track that fills up in white over the 9 s it stays,
+ *  like Netflix; the fill only scales (a render property), so the weak GPU never redraws the hero for it. */
+ private void paintDots(){dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
+  if(!on){View d=new View(this);d.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));dots.addView(d,lp);continue;}
+  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));fill.setPivotX(0);fill.setScaleX(0);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
+  fill.animate().scaleX(1f).setDuration(9000).setInterpolator(new android.view.animation.LinearInterpolator()).start();}}
 
  private void setHero(Item i){
   if(i==hero)return;hero=i;expanded=false;heroText.setLines(2);

@@ -51,7 +51,7 @@ public final class KikPlayerActivity extends Activity {
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
  private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
- private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
+ private final List<TextView> controls=new ArrayList<TextView>();private int focus=1,playIndex=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
  private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
  private long lastMovement,lastPosition,recoveryStarted,bufferingSince,seekAt,stableSince;private final List<Long> rebuffers=new ArrayList<Long>();
@@ -76,7 +76,9 @@ public final class KikPlayerActivity extends Activity {
   Ui.bg(()->{try{Site.Voice use=v;if(f.series&&s!=null){Site.Voice has=Site.voiceFor(f,s,e,Progress.voice(app,f.link));if(has!=null)use=has;}warm=new Warm(key,use,Site.stream(f,use,s,e,false));Log.d("KIK.Player","Prefetched "+key);}catch(Exception x){Log.w("KIK","Prefetch",x);}finally{if(key.equals(warming))warming=null;}});
  }
  private static Warm takeWarm(Site.Film f,Site.Voice v,String s,String e){Warm w=warm;if(w==null||!w.key.equals(warmKey(f,v,s,e))||SystemClock.elapsedRealtime()-w.at>WARM_MS)return null;warm=null;return w;}
- static Site.Episode next(Site.Film f,String s,String e){boolean seen=false;for(Site.Episode x:f.episodes){if(seen)return x;if(x.season.equals(s)&&x.episode.equals(e))seen=true;}return null;}
+ /** The episode list can name one episode more than once (an entry per voice): both steps skip to a different episode. */
+ static Site.Episode previous(Site.Film f,String s,String e){Site.Episode before=null;for(Site.Episode x:f.episodes){boolean same=x.season.equals(s)&&x.episode.equals(e);if(same)return before;before=x;}return null;}
+ static Site.Episode next(Site.Film f,String s,String e){boolean seen=false;for(Site.Episode x:f.episodes){boolean same=x.season.equals(s)&&x.episode.equals(e);if(seen&&!same)return x;if(same)seen=true;}return null;}
 
  @Override public void onCreate(Bundle state){
   super.onCreate(state);film=openingFilm;voice=openingVoice;profileId=ProfileStore.current(this);Ui.screen(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -363,10 +365,12 @@ public final class KikPlayerActivity extends Activity {
   bar.addView(left,new LinearLayout.LayoutParams(dp(96),-2));bar.addView(tr,new LinearLayout.LayoutParams(0,dp(30),1));bar.addView(right,new LinearLayout.LayoutParams(dp(96),-2));
   bottom.addView(bar);
   buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);buttons.setGravity(Gravity.CENTER_VERTICAL);buttons.setPadding(0,dp(14),0,0);bottom.addView(buttons);
-  addControl("⟲10",()->seek(-10000));addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
+  // Series: previous and next episode sit as icons on both sides of the transport, like Netflix.
+  if(film.series)addControl("⏮",()->{if(!prepared&&!failed)return;Site.Episode n=previous(film,season,episode);Log.d("KIK.Player","Episode step previous S"+season+"E"+episode+" -> "+(n==null?"none":"S"+n.season+"E"+n.episode)+" of "+film.episodes.size());if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це перша серія");});
+  addControl("⟲10",()->seek(-10000));playIndex=controls.size();focus=playIndex;addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
+  if(film.series)addControl("⏭",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);Log.d("KIK.Player","Episode step next S"+season+"E"+episode+" -> "+(n==null?"none":"S"+n.season+"E"+n.episode)+" of "+film.episodes.size());if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це остання серія");});
   View gap=new View(this);buttons.addView(gap,new LinearLayout.LayoutParams(0,1,1));
-  if(film.series)addControl("Наступна серія",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це остання серія");});
-  if(PlaybackPolicy.langs(voiceNames()).size()>1)addControl("Озвучка",()->openVoices());
+  if(voiceNames().size()>1)addControl("Озвучка",()->openVoices());
   addControl("Якість",()->openQualities());
   addControl("Швидкість",()->openSpeeds());
   addControl("Субтитри",()->openSubtitles());
@@ -377,13 +381,15 @@ public final class KikPlayerActivity extends Activity {
   root.addView(flash,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));
   top.setAlpha(0);bottom.setAlpha(0);top.setVisibility(View.GONE);bottom.setVisibility(View.GONE);
  }
- /** Round transport button drawn as vectors: replay 10, play/pause, forward 10. The text only names the state. */
+ /** Round transport button drawn as vectors: previous/next episode, replay 10, play/pause, forward 10. The text only names the state. */
  private static final class Icon extends TextView {
   private final Paint ink=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path path=new Path();private final RectF box=new RectF();
   Icon(Context c,String state){super(c);setText(state);ink.setStrokeCap(Paint.Cap.ROUND);ink.setStrokeJoin(Paint.Join.ROUND);ink.setTextAlign(Paint.Align.CENTER);ink.setTypeface(Typeface.DEFAULT_BOLD);}
   @Override protected void onDraw(Canvas canvas){
    float w=getWidth(),h=getHeight(),cx=w/2,cy=h/2,r=Math.min(w,h)/2,u=r/10f;String s=getText().toString();ink.setColor(getCurrentTextColor());
    if(s.equals("❚❚")){ink.setStyle(Paint.Style.FILL);box.set(cx-3.6f*u,cy-4.4f*u,cx-1.2f*u,cy+4.4f*u);canvas.drawRoundRect(box,u*.7f,u*.7f,ink);box.offset(4.8f*u,0);canvas.drawRoundRect(box,u*.7f,u*.7f,ink);}
+   else if(s.equals("⏮")||s.equals("⏭")){boolean back=s.equals("⏮");float d=back?-1:1;ink.setStyle(Paint.Style.FILL);path.reset();path.moveTo(cx-d*3.6f*u,cy-4.4f*u);path.lineTo(cx+d*2.8f*u,cy);path.lineTo(cx-d*3.6f*u,cy+4.4f*u);path.close();canvas.drawPath(path,ink);
+    box.set(cx+d*3.2f*u-(back?1.6f*u:0),cy-4.4f*u,cx+d*3.2f*u+(back?0:1.6f*u),cy+4.4f*u);canvas.drawRoundRect(box,u*.6f,u*.6f,ink);}
    else if(s.equals("▶")){ink.setStyle(Paint.Style.FILL);path.reset();path.moveTo(cx-2.8f*u,cy-4.8f*u);path.lineTo(cx+5f*u,cy);path.lineTo(cx-2.8f*u,cy+4.8f*u);path.close();canvas.drawPath(path,ink);}
    else{boolean back=s.startsWith("⟲");ink.setStyle(Paint.Style.STROKE);ink.setStrokeWidth(1.1f*u);box.set(cx-5.6f*u,cy-5.6f*u,cx+5.6f*u,cy+5.6f*u);
     // Circle open at the top; the arrowhead sits at one end of the gap and points across it.
@@ -393,10 +399,10 @@ public final class KikPlayerActivity extends Activity {
   }
  }
  private void addControl(String label,Runnable r){
-  if(label.equals("⟲10")||label.equals("❚❚")||label.equals("10⟳")){boolean main=label.equals("❚❚");Icon t=new Icon(this,label);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
-   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(main?64:54),dp(main?64:54));lp.setMargins(0,0,dp(14),0);buttons.addView(t,lp);controls.add(t);return;}
-  boolean icon=label.length()<=4;TextView t=Ui.bold(this,label,icon?20:16);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(icon?0:dp(12),0,icon?0:dp(12),0);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
-  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(icon?dp(54):-2,dp(48));lp.setMargins(0,0,dp(8),0);buttons.addView(t,lp);controls.add(t);
+  if(label.equals("⟲10")||label.equals("❚❚")||label.equals("10⟳")||label.equals("⏮")||label.equals("⏭")){boolean main=label.equals("❚❚");Icon t=new Icon(this,label);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
+   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(main?54:44),dp(main?54:44));lp.setMargins(0,0,dp(10),0);buttons.addView(t,lp);controls.add(t);return;}
+  boolean icon=label.length()<=4;TextView t=Ui.bold(this,label,icon?18:14);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(icon?0:dp(14),0,icon?0:dp(14),0);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(icon?dp(44):-2,dp(38));lp.setMargins(0,0,dp(8),0);buttons.addView(t,lp);controls.add(t);
  }
  private List<String> voiceNames(){List<String> n=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)n.add(v.name);return n;}
  private void paintSub(){
@@ -410,12 +416,12 @@ public final class KikPlayerActivity extends Activity {
   options.setVisibility(View.VISIBLE);show(true);options.post(this::placeSubtitles);
  }
  private void closeMenu(){menu=null;options.setVisibility(View.GONE);paint();}
+ /** Every free studio, best first (Ukrainian, then Russian, then the rest), named with its language. */
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  List<String> names=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)names.add(v.name);
-  for(final String lang:PlaybackPolicy.langs(names)){Site.Voice best=null;for(Site.Voice x:film.voices)if(!x.premium&&PlaybackPolicy.lang(x.name).equals(lang)){best=x;break;}final Site.Voice v=best;
-   if(voice!=null&&PlaybackPolicy.lang(voice.name).equals(lang))sel=l.size();l.add(PlaybackPolicy.label(lang));
-   a.add(()->{if(voice!=null&&PlaybackPolicy.lang(voice.name).equals(lang))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
+  for(final Site.Voice v:film.voices){if(v.premium)continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
+   String lang=PlaybackPolicy.lang(v.name);l.add(("other".equals(lang)?"":lang.toUpperCase(Locale.ROOT).replace("UK","UA")+" · ")+Ua.t(v.name));
+   a.add(()->{if(voice!=null&&v.id.equals(voice.id))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
  }
  private void openQualities(){
@@ -529,7 +535,7 @@ public final class KikPlayerActivity extends Activity {
   if(prepared&&player!=null){
    long p=pos(),d=dur();left.setText(Ui.time(p));right.setText(d>0?"-"+Ui.time(d-p):"");
    int w=((View)played.getParent()).getWidth();ViewGroup.LayoutParams lp=played.getLayoutParams();int width=d>0&&w>0?(int)(w*Math.min(1f,(float)p/d)):0;if(lp.width!=width){lp.width=width;played.setLayoutParams(lp);}knob.setTranslationX(Math.max(0,lp.width-dp(8)));
-   String icon=playWhenReady?"❚❚":"▶";if(!icon.contentEquals(controls.get(1).getText()))controls.get(1).setText(icon);
+   String icon=playWhenReady?"❚❚":"▶";if(!icon.contentEquals(controls.get(playIndex).getText()))controls.get(playIndex).setText(icon);
    if(!cues.isEmpty()){String txt="";for(Object[] c:cues)if(p>=(Long)c[0]&&p<=(Long)c[1]){txt=(String)c[2];break;}if(!txt.equals(subtitle.getText().toString()))subtitle.setText(txt);}
   }
  }
@@ -557,7 +563,7 @@ public final class KikPlayerActivity extends Activity {
    case KeyEvent.KEYCODE_MEDIA_REWIND:seek(-10000);pulse("« 10");return true;
   }
   boolean center=k==KeyEvent.KEYCODE_DPAD_CENTER||k==KeyEvent.KEYCODE_ENTER;
-  if(failed&&center&&menu==null&&focus==1){autoRetry=0;offline=false;retryNow();return true;}
+  if(failed&&center&&menu==null&&focus==playIndex){autoRetry=0;offline=false;retryNow();return true;}
   // While «Пропустити рекламу» is on screen, OK always means it, whatever the controls have in focus.
   if(center&&hintTo>0&&menu==null&&!failed){skipHint();return true;}
   // «Як вам?» takes ◀ ▶ and OK while the controls are hidden; ▲ ▼ still open them and playback goes on.
@@ -568,8 +574,9 @@ public final class KikPlayerActivity extends Activity {
   if(!visible){
    if(k==KeyEvent.KEYCODE_DPAD_LEFT){seek(-10000);pulse("« 10");return true;}
    if(k==KeyEvent.KEYCODE_DPAD_RIGHT){seek(10000);pulse("10 »");return true;}
-   if(center){toggle();pulse(playWhenReady?"▶":"❚❚");show(true);return true;}
-   focus=1;progressFocus=false;show(true);return true;
+   // OK only brings the controls up on play/pause; pausing takes a second OK (seeking with ◀ ▶ and then OK used to pause).
+   if(center){focus=playIndex;progressFocus=false;show(true);return true;}
+   focus=playIndex;progressFocus=false;show(true);return true;
   }
   show(true);
   if(menu!=null){
