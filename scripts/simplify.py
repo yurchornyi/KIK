@@ -262,6 +262,27 @@ s=s.replace(m[0],'')
 assert re.search(r'<activity [^>]*android:name="kik\.i18n\.HomeActivity"',s), 'KIK launcher must remain declared'
 s=s.replace('    </application>','    <activity-alias android:name="rezkatv.web.app.PlayerActivity" android:targetActivity="kik.i18n.HomeActivity" android:exported="false"/>\n    </application>',1)
 p.write_text(s);changes.append('manifest:old_screen_removed_open_title')
+# Voice search on KIK's search screen (BrowseActivity) starts the TV's voice input, which Android 11+ only lets
+# KIK see when it is declared here.
+p=D/'AndroidManifest.xml';s=p.read_text()
+assert s.count('<queries>')==1
+s=s.replace('<queries>','<queries>\n        <intent>\n            <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>\n        </intent>',1)
+p.write_text(s);changes.append('manifest:voice_search_query')
+# Android's search: KIK's own provider returns real titles (the inherited one returned nothing), and OpenTitleActivity
+# is the searchable activity it belongs to (the old screen that carried searchable.xml is gone), opening the chosen
+# title by its link.
+p=D/'AndroidManifest.xml';s=p.read_text()
+old='android:name="rezkatv.web.app.providers.SearchSuggestionsProvider"/>'
+assert s.count(old)==1
+s=s.replace(old,'android:name="kik.i18n.SearchProvider"/>')
+open_title='<intent-filter><action android:name="android.intent.action.SEARCH"/><category android:name="android.intent.category.DEFAULT"/></intent-filter></activity>'
+assert s.count(open_title)==1
+s=s.replace(open_title,'<intent-filter><action android:name="android.intent.action.SEARCH"/><category android:name="android.intent.category.DEFAULT"/></intent-filter><intent-filter><action android:name="kik.intent.action.OPEN_TITLE"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="https"/></intent-filter><meta-data android:name="android.app.searchable" android:resource="@xml/searchable"/></activity>')
+p.write_text(s)
+p=D/'res/xml/searchable.xml';s=p.read_text()
+assert 'android:searchSuggestIntentAction="android.intent.action.VIEW"' in s
+p.write_text(s.replace('android:searchSuggestIntentAction="android.intent.action.VIEW"','android:searchSuggestIntentAction="kik.intent.action.OPEN_TITLE"'))
+changes.append('search:kik_provider')
 # KIK's own Android TV home-screen channels (TvChannels) replace RezkaTV's: its channel manager (na7) publishes
 # nothing, and the periodic refresh runs as KIK's job.
 p=D/'AndroidManifest.xml';s=p.read_text()

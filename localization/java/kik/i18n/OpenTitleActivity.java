@@ -20,6 +20,7 @@ import java.util.Locale;
  * KIK search opens with the name already typed, so nothing ever lands in the old HDRezka screen.
  *   action kik.intent.action.OPEN_TITLE (or android.intent.action.SEARCH)
  *   extras query (SearchManager.QUERY), kik.original, kik.year
+ * or, from Android's search (SearchProvider), the title's link as the intent data.
  */
 public final class OpenTitleActivity extends Activity {
 
@@ -32,9 +33,11 @@ public final class OpenTitleActivity extends Activity {
   super.onCreate(state);if(Account.gate(this))return;Ui.screen(this);
   Intent in=getIntent();
   String link=clean(in.getStringExtra(LINK));
+  // Android's search (SearchProvider): the chosen title's link as the data, its name as the extra data.
+  String chosen=null;if(link.isEmpty()&&in.getData()!=null){link=clean(in.getDataString());chosen=in.getStringExtra(SearchManager.EXTRA_DATA_KEY);}
   if(RecoveryPolicy.title(link)){
    ProfileStore.use(this,in.getStringExtra(PROFILE));
-   startActivity(new Intent(this,FilmActivity.class).putExtra("link",link).putExtra("title",in.getStringExtra(SearchManager.QUERY)).putExtra("poster",in.getStringExtra(POSTER))
+   startActivity(new Intent(this,FilmActivity.class).putExtra("link",link).putExtra("title",chosen!=null?chosen:in.getStringExtra(SearchManager.QUERY)).putExtra("poster",in.getStringExtra(POSTER))
     .putExtra("play",in.getBooleanExtra(PLAY,false)).putExtra("season",in.getStringExtra(SEASON)).putExtra("episode",in.getStringExtra(EPISODE)));
    overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);finish();return;
   }

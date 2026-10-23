@@ -50,7 +50,7 @@ public final class BrowseActivity extends Activity {
    LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setClipChildren(false);bar.setClipToPadding(false);content.addView(bar);
    LinearLayout.LayoutParams ql=new LinearLayout.LayoutParams(dp(760),dp(60));ql.setMargins(dp(4),dp(6),dp(14),0);bar.addView(query,ql);
    // Spoken search: the TV's own voice screen (Google's), in Ukrainian; the remote's microphone key does the same.
-   if(voiceAvailable()){TextView mic=new TextView(this);mic.setFocusable(true);mic.setContentDescription("Пошук голосом");
+   if(voiceAvailable()){mic=new TextView(this);mic.setFocusable(true);mic.setContentDescription("Пошук голосом");
     android.graphics.drawable.Drawable icon=new MicIcon(dp(26));icon.setBounds(0,0,dp(26),dp(26));mic.setCompoundDrawables(icon,null,null,null);mic.setPadding(dp(17),0,0,0);
     mic.setBackground(Ui.states(Ui.shape(0xff1f1f23,dp(30),dp(2),0xff2e2e33),Ui.shape(0xff26262b,dp(30),dp(2),Ui.RED)));
     mic.setOnClickListener(v->listen());LinearLayout.LayoutParams ml=new LinearLayout.LayoutParams(dp(60),dp(60));ml.setMargins(0,dp(6),0,0);bar.addView(mic,ml);}
@@ -182,20 +182,61 @@ public final class BrowseActivity extends Activity {
  }
 
  private static final int VOICE=41;
+ private TextView mic;private android.speech.SpeechRecognizer recognizer;
  private Intent voiceIntent(){return new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
   .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,"uk-UA").putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"Скажіть назву фільму або серіалу").putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS,1);}
  private boolean voiceAvailable(){return voiceIntent().resolveActivity(getPackageManager())!=null;}
- private void listen(){try{startActivityForResult(voiceIntent(),VOICE);}catch(Exception e){Ui.toast(this,"Голосовий пошук недоступний");}}
+ /**
+  * Listens in place, the way the launcher does: no screen over KIK, the words appear in the field as they are heard,
+  * the microphone pulses with the voice. The remote's own microphone reaches the recognizer through the TV's remote
+  * service. Without the microphone permission (asked once) or a recognition service, Google's voice screen instead.
+  */
+ private void listen(){
+  if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+   if(!getPreferences(0).getBoolean("mic_asked",false)){getPreferences(0).edit().putBoolean("mic_asked",true).apply();requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},VOICE);return;}
+   voiceScreen();return;}
+  if(!android.speech.SpeechRecognizer.isRecognitionAvailable(this)){voiceScreen();return;}
+  stopListening();
+  try{recognizer=android.speech.SpeechRecognizer.createSpeechRecognizer(this);}catch(RuntimeException e){voiceScreen();return;}
+  recognizer.setRecognitionListener(new android.speech.RecognitionListener(){
+   public void onReadyForSpeech(Bundle b){}public void onBeginningOfSpeech(){}public void onBufferReceived(byte[] b){}public void onEvent(int t,Bundle b){}
+   public void onRmsChanged(float db){if(mic!=null&&recognizer!=null){float sc=1.05f+0.25f*Math.max(0f,Math.min(1f,(db+2f)/12f));mic.animate().cancel();mic.animate().scaleX(sc).scaleY(sc).setDuration(120).start();}}
+   public void onEndOfSpeech(){}
+   public void onPartialResults(Bundle b){String w=first(b);if(!w.isEmpty()){query.setText(w);query.setSelection(query.length());}}
+   public void onResults(Bundle b){stopListening();String w=first(b);if(w.length()>=2)searchHeard(w);else notHeard();}
+   public void onError(int error){stopListening();notHeard();}
+  });
+  query.setText("");query.setHint("Слухаю…");if(mic!=null){mic.setActivated(true);mic.requestFocus();}
+  try{recognizer.startListening(voiceIntent().putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS,true).putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE,getPackageName()));}
+  catch(RuntimeException e){stopListening();voiceScreen();}
+ }
+ private void stopListening(){
+  if(recognizer!=null){try{recognizer.cancel();recognizer.destroy();}catch(RuntimeException ignored){}recognizer=null;}
+  if(mic!=null){mic.setActivated(false);mic.animate().cancel();mic.animate().scaleX(1f).scaleY(1f).setDuration(200).start();}
+  if(query!=null)query.setHint("Назва фільму або серіалу");
+ }
+ private void notHeard(){if(query.length()==0)query.setHint("Не почув. Натисніть мікрофон і скажіть ще раз");}
+ private static String first(Bundle b){ArrayList<String> l=b==null?null:b.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);return l==null||l.isEmpty()||l.get(0)==null?"":l.get(0).trim();}
+ private void searchHeard(String q){handedOver=true;query.setText(q);query.setSelection(query.length());query.clearFocus();remember(q);Ui.MAIN.removeCallbacks(typed);reload();}
+ @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){
+  super.onRequestPermissionsResult(request,permissions,results);if(request==VOICE)listen();
+ }
+ @Override protected void onPause(){stopListening();super.onPause();}
+ /** Google TV's own voice screen (the Google app's) when there is one, not the chooser between it and the speech module. */
+ private void voiceScreen(){
+  Intent i=voiceIntent();for(android.content.pm.ResolveInfo r:getPackageManager().queryIntentActivities(i,0))if(r.activityInfo!=null&&"com.google.android.katniss".equals(r.activityInfo.packageName)){i.setClassName(r.activityInfo.packageName,r.activityInfo.name);break;}
+  try{startActivityForResult(i,VOICE);}catch(Exception e){Ui.toast(this,"Голосовий пошук недоступний");}}
  /** What was said goes into the field and is searched at once; the first result takes focus, as from the launcher. */
  @Override protected void onActivityResult(int request,int result,Intent data){
   super.onActivityResult(request,result,data);if(request!=VOICE||result!=RESULT_OK||data==null||query==null)return;
   ArrayList<String> heard=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(heard==null||heard.isEmpty()||heard.get(0)==null||heard.get(0).trim().length()<2)return;
-  String q=heard.get(0).trim();handedOver=true;query.setText(q);query.setSelection(query.length());query.clearFocus();remember(q);Ui.MAIN.removeCallbacks(typed);reload();
+  searchHeard(heard.get(0).trim());
  }
- /** The remote's microphone key on the search screen: KIK's own voice search, not the TV's assistant. */
+ /** The remote's microphone key on the search screen: KIK's own voice search, not the TV's assistant; it starts on the
+  * press, so a remote that sends the voice only while the key is held is heard too. */
  @Override public boolean dispatchKeyEvent(KeyEvent e){
   int k=e.getKeyCode();
-  if(query!=null&&(k==KeyEvent.KEYCODE_SEARCH||k==KeyEvent.KEYCODE_VOICE_ASSIST)&&voiceAvailable()){if(e.getAction()==KeyEvent.ACTION_UP&&!e.isCanceled())listen();return true;}
+  if(query!=null&&(k==KeyEvent.KEYCODE_SEARCH||k==KeyEvent.KEYCODE_VOICE_ASSIST)&&voiceAvailable()){if(e.getAction()==KeyEvent.ACTION_DOWN&&e.getRepeatCount()==0)listen();return true;}
   return super.dispatchKeyEvent(e);
  }
  /** A microphone, drawn in the hint colour like the magnifier. */
