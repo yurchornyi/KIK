@@ -15,10 +15,14 @@ public final class Ui {
  public static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
  public static final android.view.animation.Interpolator EASE=new DecelerateInterpolator(1.6f);
  public static final Handler MAIN=new Handler(Looper.getMainLooper());
- /** How long a screen waits for missing translations before showing text, so the Russian original does not flash first. */
- public static final long TRANSLATE_WAIT=2500;
+ /** Short grace period for missing translations; network services must not hold screen navigation. */
+ public static final long TRANSLATE_WAIT=180;
 
  public static int dp(Context c,float n){return Math.round(n*c.getResources().getDisplayMetrics().density);}
+ /** Clamp a design width to the usable window; TV density differs across manufacturers. */
+ public static int contentWidth(Context c,int maximum,int horizontalPadding){return Math.max(1,Math.min(dp(c,maximum),c.getResources().getDisplayMetrics().widthPixels-dp(c,horizontalPadding)));}
+ /** Scroll a focusable row while leaving enough room for the focus ring on every edge. */
+ public static HorizontalScrollView horizontal(Context c,LinearLayout row){HorizontalScrollView scroll=new HorizontalScrollView(c);scroll.setHorizontalScrollBarEnabled(false);scroll.setClipToPadding(false);scroll.setClipChildren(false);scroll.setPadding(dp(c,8),dp(c,6),dp(c,8),dp(c,6));row.setClipChildren(false);row.setClipToPadding(false);scroll.addView(row);return scroll;}
  public static void bg(Runnable r){new Thread(r,"kik-ui").start();}
 
  /** Full-screen dark window with immersive mode; Back on Android 13+ is routed to onBackPressed. */
@@ -77,7 +81,7 @@ public final class Ui {
 
  /** White primary pill or translucent secondary pill, Netflix style. */
  public static Button pill(Context c,String label,boolean primary){
-  Button b=new Button(c);b.setText(label);b.setAllCaps(false);b.setSingleLine(true);b.setTextSize(16);b.setTypeface(Typeface.DEFAULT_BOLD);b.setPadding(dp(c,24),0,dp(c,26),0);
+  Button b=new Button(c);b.setText(label);b.setAllCaps(false);b.setSingleLine(true);b.setEllipsize(TextUtils.TruncateAt.END);b.setTextSize(16);b.setTypeface(Typeface.DEFAULT_BOLD);b.setPadding(dp(c,24),0,dp(c,26),0);
   b.setTextColor(buttonText(primary));b.setStateListAnimator(null);b.setBackground(buttonBackground(c,primary));
   b.setOnFocusChangeListener((v,f)->focus(v,f,1.04f));
   return b;

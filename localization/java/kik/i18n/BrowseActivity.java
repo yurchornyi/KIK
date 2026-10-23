@@ -48,7 +48,7 @@ public final class BrowseActivity extends Activity {
    android.graphics.drawable.Drawable lens=new LensIcon(dp(22));lens.setBounds(0,0,dp(22),dp(22));query.setCompoundDrawables(lens,null,null,null);
    query.setBackground(Ui.states(Ui.shape(0xff1f1f23,dp(30),dp(2),0xff2e2e33),Ui.shape(0xff26262b,dp(30),dp(2),Ui.RED)));
    LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setClipChildren(false);bar.setClipToPadding(false);content.addView(bar);
-   LinearLayout.LayoutParams ql=new LinearLayout.LayoutParams(dp(760),dp(60));ql.setMargins(dp(4),dp(6),dp(14),0);bar.addView(query,ql);
+   LinearLayout.LayoutParams ql=new LinearLayout.LayoutParams(Ui.contentWidth(this,760,146),dp(60));ql.setMargins(dp(4),dp(6),dp(14),0);bar.addView(query,ql);
    // Spoken search: the TV's own voice screen (Google's), in Ukrainian; the remote's microphone key does the same.
    if(voiceAvailable()){mic=new TextView(this);mic.setFocusable(true);mic.setContentDescription("Пошук голосом");
     android.graphics.drawable.Drawable icon=new MicIcon(dp(26));icon.setBounds(0,0,dp(26),dp(26));mic.setCompoundDrawables(icon,null,null,null);mic.setPadding(dp(17),0,0,0);
@@ -62,7 +62,7 @@ public final class BrowseActivity extends Activity {
    idle=new LinearLayout(this);idle.setOrientation(1);idle.setClipChildren(false);idle.setClipToPadding(false);content.addView(idle);
   }
   if("catalog".equals(mode)){
-   LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(filters);
+   LinearLayout filters=new LinearLayout(this);filters.setOrientation(0);filters.setClipChildren(false);filters.setClipToPadding(false);content.addView(Ui.horizontal(this,filters),new LinearLayout.LayoutParams(-1,-2));
    String[][] f={{"last","Нові"},{"popular","Популярні"},{"watching","Зараз дивляться"}};
    for(final String[] x:f){TextView c=Ui.chip(this,x[1]);filters.addView(c,Ui.wrap(this,10));filterChips.add(c);c.setTag(x[0]);
     c.setOnClickListener(v->{filter=x[0];paintFilters();reload();});}
