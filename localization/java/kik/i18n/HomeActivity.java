@@ -28,11 +28,13 @@ public final class HomeActivity extends Activity {
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
  private TextView heroTitle,heroMeta,heroSub,heroText;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
- private Item hero,pendingHero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
+ private Item hero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
  private static final android.view.animation.Interpolator EASE=new android.view.animation.DecelerateInterpolator(1.6f);private boolean expanded,loadedOnce;
  private final Handler main=new Handler(Looper.getMainLooper());
  private volatile Map<String,String> uk=new HashMap<String,String>();
  private LinearLayout recommendedLine;private TextView recommendedHeading;private String recommendationKeys="";
+ /** The heading and the line of every row on screen, by title, and the rows themselves: one row can be redrawn alone. */
+ private final Map<String,View[]> rowViews=new HashMap<String,View[]>();private List<Row> shownRows=new ArrayList<Row>();
  private final Map<String,LinearLayout> recommendationLines=new HashMap<String,LinearLayout>();private final Map<String,String> recommendationSignatures=new HashMap<String,String>();private List<Item> tasteChoices=new ArrayList<Item>();
 
  private volatile boolean foreground;
@@ -253,7 +255,7 @@ public final class HomeActivity extends Activity {
  }
  private List<Row> localRows(String profile){
   List<Row> rows=new ArrayList<Row>();
-  Row resume=new Row("Продовжити перегляд");
+  Row resume=new Row(RESUME_ROW);
   for(Progress.Entry e:Progress.recent(this,profile)){
    if(e.finished()&&e.season==null)continue;
    Item i=new Item();i.link=e.link;i.title=e.title;i.poster=e.poster;i.resume=true;
@@ -265,10 +267,14 @@ public final class HomeActivity extends Activity {
    resume.items.add(i);if(resume.items.size()>=20)break;
   }
   if(!resume.items.isEmpty())rows.add(resume);
-  Row saved=new Row("Переглянути пізніше");JSONArray a=Progress.later(this,profile);
-  for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=o.optString("link",null);i.title=o.optString("title",null);i.poster=o.optString("poster",null);i.year=o.optString("year",null);i.genre=o.optString("genre",null);if(i.link!=null&&i.title!=null)saved.items.add(i);}
-  if(!saved.items.isEmpty())rows.add(saved);
+  Row saved=laterRow(profile);if(!saved.items.isEmpty())rows.add(saved);
   return rows;
+ }
+ static final String LATER_ROW="Переглянути пізніше",RESUME_ROW="Продовжити перегляд";
+ private Row laterRow(String profile){
+  Row saved=new Row(LATER_ROW);JSONArray a=Progress.later(this,profile);
+  for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=o.optString("link",null);i.title=o.optString("title",null);i.poster=o.optString("poster",null);i.year=o.optString("year",null);i.genre=o.optString("genre",null);if(i.link!=null&&i.title!=null)saved.items.add(i);}
+  return saved;
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
   final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();
@@ -324,7 +330,7 @@ public final class HomeActivity extends Activity {
   shownSignature=signature(rows);
   boolean initial=!loadedOnce;loadedOnce=true;boolean actionFocused=watch.hasFocus()||later.hasFocus()||more.hasFocus();
   recommendedLine=null;recommendedHeading=null;recommendationKeys="";
-  recommendationLines.clear();recommendationSignatures.clear();tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
+  recommendationLines.clear();recommendationSignatures.clear();rowViews.clear();shownRows=new ArrayList<Row>(rows);tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
   while(content.getChildCount()>2)content.removeViewAt(2);
   View first=null;
   View again=null;
@@ -333,7 +339,6 @@ public final class HomeActivity extends Activity {
   if(rows.isEmpty()){heroTitle.setText("Ласкаво просимо");heroText.setText("Завантажуємо новинки… Тим часом можна відкрити «Фільми», «Серіали» або «Пошук».");watch.setVisibility(View.GONE);more.setVisibility(View.GONE);return;}
   watch.setVisibility(View.VISIBLE);more.setVisibility(View.VISIBLE);later.setVisibility(View.VISIBLE);
   watch.setOnClickListener(v->{if(hero!=null){startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}});
-  if(pendingHero!=null){Item keep=pendingHero;pendingHero=null;hero=null;setHero(keep);later.requestFocus();return;}
   if(again!=null&&!actionFocused){((ViewGroup)again).getChildAt(0).requestFocus();return;}
   startSlides(rows);
   if(initial){watch.requestFocus();scroll.scrollTo(0,0);}else if(actionFocused)watch.requestFocus();
@@ -341,17 +346,34 @@ public final class HomeActivity extends Activity {
 
  private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];
   for(Row r:rows){
-   TextView h=text(r.title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);
-   if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));content.addView(header);}else content.addView(h);
-   HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
-   LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);content.addView(hs);
+   TextView h=rowHeading(r.title);View head=h;
+   if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));head=header;}
+   content.addView(head);HorizontalScrollView hs=rowLine(r);LinearLayout line=(LinearLayout)hs.getChildAt(0);content.addView(hs);rowViews.put(r.title,new View[]{head,hs});
    if(r.personalized){recommendedLine=line;recommendedHeading=h;recommendationKeys=recommendationKeys(r);}
    if(r.recommendationId!=null){recommendationLines.put(r.recommendationId,line);recommendationSignatures.put(r.recommendationId,recommendationKeys(r));}
-   for(Item i:r.items){View c=card(i);line.addView(c);if(focus[0]==null)focus[0]=c;if(focus[1]==null&&focusedLink!=null&&focusedLink.equals(i.link))focus[1]=c;}
+   for(int n=0;n<line.getChildCount();n++){View c=line.getChildAt(n);Item i=r.items.get(n);if(focus[0]==null)focus[0]=c;if(focus[1]==null&&focusedLink!=null&&focusedLink.equals(i.link))focus[1]=c;}
   }
   return focus;
  }
- private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
+ private TextView rowHeading(String title){TextView h=text(title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);return h;}
+ private HorizontalScrollView rowLine(Row r){
+  HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
+  LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);for(Item i:r.items)line.addView(card(i));return hs;
+ }
+ /** «Мій список» on the hero changes one row: it is redrawn in place (added after «Продовжити перегляд» or taken away), so the
+  *  other rows keep their scroll, the hero and its focus stay, and the next load sees nothing to rebuild. */
+ private void refreshLaterRow(){
+  if(!loadedOnce||content.getChildCount()<2)return;
+  Row fresh=laterRow(ProfileStore.current(this));View[] views=rowViews.get(LATER_ROW);int at=-1;for(int n=0;n<shownRows.size();n++)if(LATER_ROW.equals(shownRows.get(n).title))at=n;
+  if(fresh.items.isEmpty()){if(views!=null){content.removeView(views[0]);content.removeView(views[1]);rowViews.remove(LATER_ROW);}if(at>=0)shownRows.remove(at);}
+  else if(views!=null){LinearLayout line=(LinearLayout)((HorizontalScrollView)views[1]).getChildAt(0);line.removeAllViews();for(Item i:fresh.items)line.addView(card(i));if(at>=0)shownRows.set(at,fresh);else shownRows.add(0,fresh);}
+  else{
+   View[] resume=rowViews.get(RESUME_ROW);int index=resume!=null?content.indexOfChild(resume[1])+1:2,rowIndex=0;for(int n=0;n<shownRows.size();n++)if(RESUME_ROW.equals(shownRows.get(n).title))rowIndex=n+1;
+   TextView h=rowHeading(fresh.title);HorizontalScrollView hs=rowLine(fresh);content.addView(h,index);content.addView(hs,index+1);rowViews.put(LATER_ROW,new View[]{h,hs});shownRows.add(rowIndex,fresh);
+  }
+  shownSignature=signature(shownRows);
+ }
+ private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);shownRows.addAll(rows);shownSignature=signature(shownRows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
 
  /** A shelf card; the focused one stays at the row's left edge and the row slides under it, as on Netflix. */
  private View card(final Item i){
@@ -474,7 +496,7 @@ public final class HomeActivity extends Activity {
   if(on)laterLinks.add(norm(i.link));else laterLinks.remove(norm(i.link));
   paintLater();
   HeroActions.focus(later,later.isFocused());Ui.toast(this,on?"Додано до мого списку":"Прибрано з мого списку");
-  pendingHero=hero;load();
+  refreshLaterRow();
  }
  private void paintLater(){if(hero==null)return;boolean saved=laterLinks.contains(norm(hero.link));HeroActions.label(later,saved?"У списку":"Мій список",saved?HeroActions.CHECK:HeroActions.ADD);later.setSelected(saved);}
 

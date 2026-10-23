@@ -16,7 +16,10 @@ export function dropdown(select,label='',settings={}){
  for(const key of ['value','selectedIndex']){const d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,key);Object.defineProperty(select,key,{configurable:true,get(){return d.get.call(this);},set(v){d.set.call(this,v);paint();}});}
  new MutationObserver(()=>{paint();if(openPanel?.select===select)openPanel.hidePopover();}).observe(select,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','hidden','selected','label']});
  select.addEventListener('change',paint);
- const title=()=>label||name();trigger.onclick=()=>open(select,trigger,title(),settings);
+ const title=()=>label||name();// A tap on the pill of the open panel: the browser closes the panel at pointerup (light dismiss), so the click that follows must
+ // not reopen it; the state is read at pointerdown, before that. A click with the panel still open (keyboard) closes it here.
+ trigger.addEventListener('pointerdown',()=>{trigger.dataset.closing=openPanel?.trigger===trigger&&openPanel.matches(':popover-open')?'1':'';});
+ trigger.onclick=()=>{const closing=trigger.dataset.closing==='1';trigger.dataset.closing='';if(openPanel?.trigger===trigger&&openPanel.matches(':popover-open')){openPanel.hidePopover();return;}if(closing)return;open(select,trigger,title(),settings);};
  trigger.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();open(select,trigger,title(),settings);}};
  wrap.append(select,trigger);paint();return wrap;
 }

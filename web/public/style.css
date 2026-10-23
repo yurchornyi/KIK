@@ -63,11 +63,6 @@
 .player-modal .player-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .player-tools .dropdown{flex:1 1 150px}.player-tools .dropdown[hidden]{display:none}
 .player-tools .dropdown-trigger{min-height:46px;border-radius:14px;padding:6px 14px;flex-direction:row}
-.player-foot{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin-top:12px}
-.player-foot .player-note{margin:0;font-size:12px;color:#8f8f99}
-.player-actions{display:flex;align-items:center;gap:14px}
-.player-actions .text-button{min-height:36px;padding:0;color:#b8b8c1}
-.player-actions .text-button:hover{color:#fff}
 .pill.small{min-height:36px;padding:8px 16px;font-size:13px}
 /* Title details: poster glow behind, poster beside the text, round secondary actions. */
 dialog.detail-modal{width:min(860px,94vw);padding:0;overflow-x:hidden}
@@ -245,6 +240,6 @@ dialog.detail-loading #modal-content{min-height:min(420px,70dvh);padding:36px 28
 .hero-dots{display:flex;gap:4px;margin-top:22px;position:relative;z-index:1}.hero-dots[hidden]{display:none}
 .hero-dot{display:block;padding:7px 2px;background:transparent;border:0}.hero-dot-track{display:block;width:8px;height:6px;border-radius:3px;background:#ffffff55;overflow:hidden;position:relative;transition:width .3s}
 .hero-dot.on .hero-dot-track{width:30px}.hero-dot i{position:absolute;inset:0;background:#fff;transform-origin:left;transform:scaleX(0);animation:hero-dot linear forwards}
-@keyframes hero-dot{to{transform:scaleX(1)}}.hero:hover .hero-dot i,.hero:has(:focus-visible) .hero-dot i{animation-play-state:paused}
+@keyframes hero-dot{to{transform:scaleX(1)}}.hero:has(:focus-visible) .hero-dot i{animation-play-state:paused}@media(hover:hover){.hero:hover .hero-dot i{animation-play-state:paused}}
 .hero-resume{display:flex;align-items:center;gap:10px;font-size:13px;color:#d1d1d5;margin-bottom:14px}.hero-bar{flex:0 0 120px;height:3px;border-radius:2px;background:#ffffff40;overflow:hidden}.hero-bar i{display:block;height:100%;background:var(--red)}
 @media (max-width:650px){.hero:after{background:linear-gradient(0deg,var(--bg) 1%,#0d0d0fe6 28%,#0d0d0f40 70%,#0d0d0f99)}}
