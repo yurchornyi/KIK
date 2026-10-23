@@ -24,30 +24,30 @@ adb -s "$DEVICE" install -r work/KIK-audit.apk
 adb -s "$DEVICE" shell input keyevent 224
 if [ "${KIK_AUDIT_MODE:-full}" = onboarding ]; then
  adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.OnboardingAudit | tee outputs/design-audit/onboarding-instrumentation.txt
- adb -s "$DEVICE" pull /sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/onboarding.json outputs/design-audit/onboarding.json
- adb -s "$DEVICE" pull /sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/onboarding-selected.png outputs/design-audit/onboarding-selected.png
+ adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/design-audit/onboarding.json outputs/design-audit/onboarding.json
+ adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/design-audit/onboarding-selected.png outputs/design-audit/onboarding-selected.png
  python3 -c 'import json; assert json.load(open("outputs/design-audit/onboarding.json"))["passed"]'
- adb -s "$DEVICE" shell am start -n rezkatv.web.app.uk/kik.i18n.HomeActivity
+ adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity
  exit 0
 fi
 if [ "${KIK_AUDIT_MODE:-full}" = loading ]; then
  adb -s "$DEVICE" shell am instrument -w -r -e label measured kik.audit/kik.qa.LoadingAudit | tee outputs/design-audit/loading-instrumentation.txt
- adb -s "$DEVICE" pull /sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/loading-measured.json outputs/design-audit/loading-measured.json
+ adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/design-audit/loading-measured.json outputs/design-audit/loading-measured.json
  python3 -c 'import json; assert json.load(open("outputs/design-audit/loading-measured.json"))["passed"]'
- adb -s "$DEVICE" shell am start -n rezkatv.web.app.uk/kik.i18n.HomeActivity
+ adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity
  exit 0
 fi
 if [ "${KIK_AUDIT_MODE:-full}" = recommendations ]; then
  adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.RecommendationAudit | tee outputs/design-audit/recommendation-instrumentation.txt
- adb -s "$DEVICE" pull /sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/recommendations.json outputs/design-audit/recommendations.json
+ adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/design-audit/recommendations.json outputs/design-audit/recommendations.json
  python3 -c 'import json; assert json.load(open("outputs/design-audit/recommendations.json"))["passed"]'
  exit 0
 fi
 if [ "${KIK_AUDIT_MODE:-full}" = performance ]; then
  adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.UiPerformanceAudit | tee outputs/design-audit/ui-performance-instrumentation.txt
- adb -s "$DEVICE" pull /sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/ui-performance.json outputs/design-audit/ui-performance.json
+ adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/design-audit/ui-performance.json outputs/design-audit/ui-performance.json
  python3 -c 'import json; r=json.load(open("outputs/design-audit/ui-performance.json")); print({k:r[k] for k in ("frames","frame_p50_ms","frame_p95_ms","frames_over_32ms") if k in r}); assert r["passed"]'
- adb -s "$DEVICE" shell am start -n rezkatv.web.app.uk/kik.i18n.HomeActivity
+ adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity
  exit 0
 fi
 AUDIT_SCREEN_ARGS=(-e noScreenshots false)
@@ -57,11 +57,11 @@ adb -s "$DEVICE" shell am instrument -w -r "${AUDIT_SCREEN_ARGS[@]}" -e geometry
 python3 - "$DEVICE" <<'PY'
 import subprocess,re,sys,json
 from pathlib import Path
-adb=['adb','-s',sys.argv[1]];remote='/sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/'
+adb=['adb','-s',sys.argv[1]];remote='/sdcard/Android/data/kik.app/files/design-audit/'
 for name in subprocess.check_output(adb+['shell','ls',remote],text=True).splitlines():
  if re.fullmatch(r'\d+-[a-z-]+\.png|report\.json|geometry\.json',name):subprocess.run(adb+['pull',remote+name,str(Path('outputs/design-audit')/name)],check=True,capture_output=True)
 for name in ['report.json','geometry.json']:
  report=json.loads((Path('outputs/design-audit')/name).read_text());assert report['passed'],name
 print('Functional and focus geometry audits passed.')
 PY
-adb -s "$DEVICE" shell am start -n rezkatv.web.app.uk/kik.i18n.HomeActivity
+adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity

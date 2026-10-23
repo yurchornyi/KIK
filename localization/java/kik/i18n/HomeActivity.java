@@ -77,7 +77,7 @@ public final class HomeActivity extends Activity {
 
  private long cloudRevision=CloudSync.revision();
  private final Runnable cloudTick=new Runnable(){public void run(){if(destroyed||!foreground)return;CloudSync.now(HomeActivity.this);long next=CloudSync.revision();if(next!=cloudRevision){cloudRevision=next;load();}main.postDelayed(this,15000);}};
- @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
+ @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
  @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
  @Override protected void onDestroy(){destroyed=true;loadGeneration++;main.removeCallbacksAndMessages(null);super.onDestroy();}
  private long backAt;private TextView backHint;
@@ -110,6 +110,9 @@ public final class HomeActivity extends Activity {
   popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));popup.setOutsideTouchable(true);popup.setElevation(dp(10));popup.setAnimationStyle(android.R.style.Animation_Dialog);
   popup.showAsDropDown(anchor,-dp(6),dp(4));list.getChildAt(0).requestFocus();
  }
+ private TextView settingsItem;
+ /** A red dot on «Налаштування» while a postponed update waits there. */
+ private void paintSettingsBadge(){if(settingsItem==null||destroyed)return;boolean waiting=AppUpdater.availableName(this)!=null;if(!waiting){settingsItem.setText("Налаштування");return;}android.text.SpannableString t=new android.text.SpannableString("Налаштування  ●");t.setSpan(new android.text.style.ForegroundColorSpan(RED),t.length()-1,t.length(),0);settingsItem.setText(t);}
  private View topBar(){
   LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
@@ -120,7 +123,7 @@ public final class HomeActivity extends Activity {
   menuRow.addView(menu("Пошук",v->BrowseActivity.open(this,"search",null,"Пошук")));
   menuRow.addView(menu("Мій список",v->BrowseActivity.open(this,"later",null,"Переглянути пізніше")));
   menuRow.addView(menu("Історія",v->BrowseActivity.open(this,"history",null,"Історія переглядів")));
-  TextView settings=menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class)));menuRow.addView(settings);
+  TextView settings=menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class)));menuRow.addView(settings);settingsItem=settings;paintSettingsBadge();
 
   String name=ProfileStore.nameOf(this,ProfileStore.current(this));lastProfileName=name;lastProfileAvatar=ProfileStore.avatarOf(this,ProfileStore.current(this));
   ImageView avatar=Avatars.view(this,lastProfileAvatar,36);
@@ -362,7 +365,7 @@ public final class HomeActivity extends Activity {
 
  private void open(Item i){
   if(i==null||i.link==null)return;
-  FilmActivity.open(this,i.link,tr(i.title),i.poster);overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);
+  FilmActivity.open(this,i.link,tr(i.title),i.poster,i.year);overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);
  }
 
  private TextView menu(String label,View.OnClickListener l){

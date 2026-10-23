@@ -15,11 +15,11 @@ try:
   print('Testing',label,flush=True)
   run(['shell','wm','size',f'{w}x{h}']);run(['shell','wm','density',str(d)]);run(['shell','input','keyevent','224'])
   result=run(['shell','am','instrument','-w','-r','-e','label',label,'kik.audit/kik.qa.ResponsiveAudit']);(out/f'tv-{label}.log').write_text(result.stdout)
-  run(['pull',f'/sdcard/Android/data/rezkatv.web.app.uk/files/ui-audit/{label}.json',str(out/'tv'/f'{label}.json')])
+  run(['pull',f'/sdcard/Android/data/kik.app/files/ui-audit/{label}.json',str(out/'tv'/f'{label}.json')])
   report=json.loads((out/'tv'/f'{label}.json').read_text());print(label,'passed=',report['passed'],'checks=',len(report['checks']),flush=True)
   if not report['passed']:failures.append(label)
   for name in ['settings-initial','home-initial','film-initial']:
-   try:run(['pull',f'/sdcard/Android/data/rezkatv.web.app.uk/files/ui-audit/{label}-{name}.png',str(out/'tv'/f'{label}-{name}.png')])
+   try:run(['pull',f'/sdcard/Android/data/kik.app/files/ui-audit/{label}-{name}.png',str(out/'tv'/f'{label}-{name}.png')])
    except subprocess.CalledProcessError:pass
 finally:
  for kind,value in [('size',size),('density',density)]:

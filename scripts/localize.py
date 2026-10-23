@@ -19,6 +19,7 @@ suffixes={'" \u0438\u0437 \u0438\u0441\u0442\u043e\u0440\u0438\u0438 \u043f\u043
 q=lambda s:json.dumps(s,ensure_ascii=True)
 java_dir=ROOT/'localization/java/kik/i18n';java_dir.mkdir(parents=True,exist_ok=True)
 release=json.loads((ROOT/'localization/release.json').read_text())
+APP=release['application_id']
 assert re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',release['repository'])
 (java_dir/'UpdateConfig.java').write_text('package kik.i18n;\npublic final class UpdateConfig {\n public static final String REPOSITORY='+json.dumps(release['repository'])+';\n public static final String MANIFEST_URL='+json.dumps(release['update_url'])+';\n public static final String WEB_ORIGIN='+json.dumps(release.get('web_url','https://kik.basic-175.workers.dev'))+';\n private UpdateConfig(){}\n}\n')
 
@@ -81,12 +82,12 @@ if dst.exists(): shutil.rmtree(dst)
 shutil.copytree(ROOT/'decoded',dst)
 # Distinct identity allows the signed localization to coexist with the untouched original.
 manifest=dst/'AndroidManifest.xml'
-s=manifest.read_text().replace('package="rezkatv.web.app"','package="rezkatv.web.app.uk"')
+s=manifest.read_text().replace('package="rezkatv.web.app"','package="'+APP+'"')
 for suffix in ['.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION','.androidx-startup','.search','.fileprovider','.firebaseinitprovider','.main','.player']:
- s=s.replace('"rezkatv.web.app'+suffix+'"','"rezkatv.web.app.uk'+suffix+'"')
+ s=s.replace('"rezkatv.web.app'+suffix+'"','"'+APP+suffix+'"')
 manifest.write_text(s)
 for p in dst.glob('res/xml/*.xml'):
- s=p.read_text();new=s.replace('rezkatv.web.app.search','rezkatv.web.app.uk.search')
+ s=p.read_text();new=s.replace('rezkatv.web.app.search',APP+'.search')
  if s!=new:p.write_text(new)
 # Translate only literal markup strings used by the local remote-control screen.
 html_count=0
@@ -105,7 +106,7 @@ for p in dst.glob('smali*/**/*.smali'):
  s=re.sub(r'(const-string(?:/jumbo)?\s+[^,]+,\s*)"((?:[^"\\]|\\.)*)"',html,s)
  # Authorities embedded in code must agree with the clone manifest.
  for suffix in ['.fileprovider','.search','.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION']:
-  s=s.replace('"rezkatv.web.app'+suffix+'"','"rezkatv.web.app.uk'+suffix+'"')
+  s=s.replace('"rezkatv.web.app'+suffix+'"','"'+APP+suffix+'"')
  if s!=old:p.write_text(s)
 # Hook Compose Text entry points, not TextField values or AnnotatedString constructors.
 p=dst/'smali/xv6.smali';s=p.read_text();hooks=[]
@@ -197,6 +198,6 @@ for p in dst.glob('res/values*/strings.xml'):
  s=p.read_text();s=re.sub(r'(<string name="app_name">).*?(</string>)',r'\1RezkaTV UA\2',s);p.write_text(s)
 # Remove compiler profile artifacts because bytecode offsets no longer match the original APK.
 shutil.rmtree(dst/'assets/dexopt',ignore_errors=True)
-summary={'exact_translations':len(exact),'dynamic_prefixes':len(prefixes),'dynamic_suffixes':len(suffixes),'compose_text_hooks':len(hooks),'locale_hooks':locale_hooks,'native_ui_hooks':ui_calls,'html_literals':html_count,'package':'rezkatv.web.app.uk'}
+summary={'exact_translations':len(exact),'dynamic_prefixes':len(prefixes),'dynamic_suffixes':len(suffixes),'compose_text_hooks':len(hooks),'locale_hooks':locale_hooks,'native_ui_hooks':ui_calls,'html_literals':html_count,'package':APP}
 (ROOT/'localization/patch-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2))
 print(json.dumps(summary,ensure_ascii=False))

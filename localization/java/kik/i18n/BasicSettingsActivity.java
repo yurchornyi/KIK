@@ -16,7 +16,9 @@ import java.util.*;
 public final class BasicSettingsActivity extends Activity {
  private SharedPreferences prefs;
  private TextView updateStatus;
- private final Runnable updateChanged=()->{if(updateStatus!=null)updateStatus.setText(AppUpdater.status(this));};
+ private Button updateNow;
+ // A postponed update stays visible here: a red «Оновити до …» on top of the updates card until it is installed.
+ private final Runnable updateChanged=()->{if(updateStatus!=null)updateStatus.setText(AppUpdater.status(this));if(updateNow!=null){String name=AppUpdater.availableName(this);updateNow.setVisibility(name==null?View.GONE:View.VISIBLE);if(name!=null)updateNow.setText("Оновити до "+name);}};
  private final String[] qualities={"4k","2k","1080p","720p","480p","360p"};
  private final List<Button> qualityButtons=new ArrayList<>();
  private int cardWidth;
@@ -75,6 +77,7 @@ public final class BasicSettingsActivity extends Activity {
   action(profile,"Синхронізація профілю",()->startActivity(new Intent(this,SyncActivity.class)));
 
   LinearLayout updates=card(right,"Оновлення KIK","Версія "+AppUpdater.version(this));
+  updateNow=Ui.pill(this,"Оновити",true);updateNow.setTextSize(15);updateNow.setBackground(Ui.states(Ui.shape(Ui.RED,dp(22),0,0),Ui.shape(Color.WHITE,dp(22),dp(2),Ui.RED)));LinearLayout.LayoutParams now=new LinearLayout.LayoutParams(-1,dp(44));now.bottomMargin=dp(12);updates.addView(updateNow,now);updateNow.setOnClickListener(v->AppUpdater.manual(this));updateNow.setVisibility(View.GONE);
   Switch automatic=toggle(updates,"Оновлювати автоматично",AppUpdater.enabled(this));automatic.setOnCheckedChangeListener((v,on)->AppUpdater.setEnabled(this,on));
   updateStatus=Ui.text(this,AppUpdater.status(this),13,Ui.GREY);updateStatus.setLineSpacing(0,1.15f);updateStatus.setPadding(0,dp(6),0,dp(12));updates.addView(updateStatus);
   action(updates,"Перевірити оновлення",()->AppUpdater.manual(this));action(updates,"Дозвіл на встановлення",()->AppUpdater.permission(this));
@@ -100,7 +103,7 @@ public final class BasicSettingsActivity extends Activity {
  }
  private long clearImages(File root){long n=0;File[] files=root.listFiles();if(files!=null)for(File f:files){String name=f.getName().toLowerCase(Locale.ROOT);if(f.isDirectory()&&(name.contains("image")||name.contains("coil")))n+=removeTree(f);}return n;}
  private long removeTree(File f){long n=f.length();if(f.isDirectory()){File[] a=f.listFiles();if(a!=null)for(File c:a)n+=removeTree(c);}f.delete();return n;}
- @Override protected void onResume(){super.onResume();AppUpdater.listen(updateChanged);updateChanged.run();AppUpdater.resumed(this);}
+ @Override protected void onResume(){super.onResume();AppUpdater.listen(updateChanged);updateChanged.run();AppUpdater.resumed(this);AppUpdater.lookup(this,updateChanged);}
  @Override protected void onPause(){AppUpdater.paused(this);AppUpdater.unlisten(updateChanged);super.onPause();}
  @Override protected void onDestroy(){UiRuntime.settingsOpen=false;super.onDestroy();}
 }
