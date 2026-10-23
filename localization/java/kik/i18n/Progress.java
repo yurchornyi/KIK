@@ -40,6 +40,11 @@ public final class Progress {
   JSONObject x=all(c).optJSONObject(norm(link));if(x==null)return null;JSONObject eps=x.optJSONObject("eps");if(eps==null)return null;
   JSONArray a=eps.optJSONArray((season==null?"0":season)+":"+(episode==null?"0":episode));return a==null?null:new long[]{a.optLong(0),a.optLong(1)};
  }
+ /** Episodes of a series watched to the credits (93%, as Entry.finished). */
+ public static synchronized int finishedEpisodes(Context c,String link){
+  JSONObject x=all(c).optJSONObject(norm(link)),eps=x==null?null:x.optJSONObject("eps");if(eps==null)return 0;int n=0;
+  Iterator<String> k=eps.keys();while(k.hasNext()){JSONArray a=eps.optJSONArray(k.next());if(a!=null&&a.optLong(1)>0&&a.optLong(0)>a.optLong(1)*0.93)n++;}return n;
+ }
  public static synchronized List<Entry> recent(Context c){return recent(c,ProfileStore.current(c));}
  public static synchronized List<Entry> recent(Context c,String profile){
   List<Entry> out=new ArrayList<Entry>();JSONObject o=all(c,profile);Iterator<String> k=o.keys();

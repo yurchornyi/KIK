@@ -61,6 +61,14 @@ public final class PlaybackPolicy {
   for(int i=1;i+1<ads.length;i+=2)if(t>=ads[i]&&t<ads[i+1]-1.5)return (long)(ads[i+1]*1000);
   return -1;
  }
+ /** Where the closing credits are taken to start: the last 5% of the file, 45 s to 6 min. Same rule as rate-prompt.js on the web. */
+ public static long creditsAt(long durMs){return durMs<=0?-1:durMs-Math.max(45_000L,Math.min(360_000L,durMs/20));}
+ /** «Як вам?» after a title: at the credits of a film watched for real (20 min or 40% in this sitting, not a seek to the end
+  *  or a 60-second preview); for a series at the credits of its last episode, or once three episodes were watched to the end. */
+ public static boolean askRating(long posMs,long durMs,long watchedMs,boolean series,boolean lastEpisode,int finishedEpisodes){
+  if(durMs<180_000L||posMs<creditsAt(durMs)||watchedMs<Math.min(20*60_000L,durMs*2/5))return false;
+  return !series||lastEpisode||finishedEpisodes>=3;
+ }
  public static boolean sponsoredVoice(String title){return sponsored(title==null?"":title.toLowerCase(Locale.ROOT));}
  /** Automatic choice never starts original or third-language audio. */
  public static int rank(String title) {

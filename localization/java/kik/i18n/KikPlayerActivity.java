@@ -45,6 +45,9 @@ public final class KikPlayerActivity extends Activity {
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  /** Ad clips of the playing file (AdBreaks): confirmed ones are jumped over, AI hints get the «Пропустити рекламу» button. */
  private double[] ads,hints;private long hintTo=-1;private TextView skipAd;
+ /** «Як вам?» at the credits (PlaybackPolicy.askRating): playback goes on, it hides by itself, each title is asked once. */
+ private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
+ private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
  private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1;private boolean visible,progressFocus;
@@ -333,7 +336,7 @@ public final class KikPlayerActivity extends Activity {
   long d=dur(),at=pos();if(d>0&&at<d-ENDED_SLACK_MS&&earlyEnds++<3){Log.w("KIK.Player","Ended early at "+at+" of "+d+", resuming");resumeAt=at;retrySame();return;}
   save();Site.Episode n=film.series?next(film,season,episode):null;
   boolean auto=getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true);
-  if(n!=null&&auto){season=n.season;episode=n.episode;playIntro();start(true);}else finish();
+  if(n!=null&&auto){season=n.season;episode=n.episode;playIntro();start(true);}else if(ask!=null&&ask.getVisibility()==View.VISIBLE)finishAfterAsk=true;else finish();
  }
  private void save(){
   if(!prepared||film==null||player==null||!profileId.equals(ProfileStore.current(this)))return;
@@ -443,7 +446,9 @@ public final class KikPlayerActivity extends Activity {
   if(on){h.postDelayed(hide,menu!=null?8000:4500);if(!visible){visible=true;fade(top,true);fade(bottom,true);}paint();bottom.post(this::placeSubtitles);return;}
   if(!visible)return;visible=false;closeMenu();progressFocus=false;fade(top,false);fade(bottom,false);placeSubtitles();
  }
- private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();lp.bottomMargin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);subtitle.setLayoutParams(lp);}
+ private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();lp.bottomMargin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);subtitle.setLayoutParams(lp);
+  // The rating card rises above the open controls, as «Пропустити рекламу» does.
+  if(ask!=null){FrameLayout.LayoutParams al=(FrameLayout.LayoutParams)ask.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(28);if(al.bottomMargin!=at){al.bottomMargin=at;ask.setLayoutParams(al);}}}
  private void fade(final View v,boolean on){
   v.animate().cancel();
   if(on){v.setVisibility(View.VISIBLE);v.setTranslationY(v==top?-dp(12):dp(12));v.animate().alpha(1).translationY(0).setDuration(300).setInterpolator(Ui.EASE).start();}
@@ -452,6 +457,51 @@ public final class KikPlayerActivity extends Activity {
  /** The «Пропустити рекламу» button for an AI hint: shown while playback is inside the clip, OK jumps to its end. */
  private void showHint(long to){hintTo=to;if(skipAd==null)return;int v=to>0?View.VISIBLE:View.GONE;if(skipAd.getVisibility()!=v)skipAd.setVisibility(v);}
  private void skipHint(){long to=hintTo;showHint(-1);if(player==null||to<=0)return;Log.d("KIK.Player","Ad hint skipped "+pos()+" -> "+to);resumeAt=to;seekAt=SystemClock.elapsedRealtime();lastMovement=seekAt;player.seekTo(to);}
+ private void maybeAsk(long position){
+  long d=dur();if(askChecked||d<=0||position<PlaybackPolicy.creditsAt(d)||!profileId.equals(ProfileStore.current(this)))return;askChecked=true;
+  boolean last=film.series&&next(film,season,episode)==null;Progress.Entry saved=film.series?null:Progress.get(this,film.link);
+  long watched=Math.max(watchedItem,saved==null?0:saved.watchedMs+watchedPending);int finished=film.series?Progress.finishedEpisodes(this,film.link):0;
+  if(!PlaybackPolicy.askRating(position,d,watched,film.series,last,finished)||RatingStore.get(this,profileId,film.link)!=0||RatingStore.asked(this,profileId,film.link))return;
+  Log.d("KIK.Player","Rating prompt at "+position+" of "+d+" watched="+watched+" finished="+finished);showAsk();
+ }
+ private void showAsk(){
+  if(ask==null){
+   // One quiet line, as on Netflix: the question, two round thumbs, «Пропустити»; a thin line under it runs out before it hides.
+   ask=new LinearLayout(this);ask.setOrientation(1);ask.setClipChildren(false);ask.setClipToPadding(false);ask.setPadding(dp(22),dp(10),dp(14),dp(8));ask.setBackground(Ui.shape(0xe6141418,dp(32),0,0));
+   LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setGravity(Gravity.CENTER_VERTICAL);line.setClipChildren(false);line.setClipToPadding(false);ask.addView(line);
+   askTitle=Ui.bold(this,"",17);askTitle.setSingleLine(true);askTitle.setEllipsize(TextUtils.TruncateAt.END);askTitle.setMaxWidth(dp(420));line.addView(askTitle,new LinearLayout.LayoutParams(-2,-2));
+   String[] labels={"Подобається","Не подобається","Пропустити"};
+   for(int i=0;i<labels.length;i++){final int value=i==0?1:i==1?-1:0;TextView t=Ui.bold(this,i<2?"":labels[i],15);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setContentDescription(labels[i]);LinearLayout.LayoutParams lp;
+    if(i<2){FilmActivity.ThumbIcon icon=new FilmActivity.ThumbIcon(dp(20),i==1);icon.setBounds(0,0,dp(20),dp(20));t.setCompoundDrawables(icon,null,null,null);t.setPadding(dp(12),0,0,0);lp=new LinearLayout.LayoutParams(dp(44),dp(44));lp.setMargins(dp(i==0?16:10),dp(2),0,dp(2));}
+    else{t.setPadding(dp(16),0,dp(16),0);lp=new LinearLayout.LayoutParams(-2,dp(44));lp.setMargins(dp(10),dp(2),0,dp(2));}
+    t.setOnClickListener(v->answer(value));line.addView(t,lp);askChoices.add(t);}
+   askTimer=new View(this);askTimer.setBackground(Ui.shape(Ui.RED,dp(1),0,0));askTimer.setPivotX(0);LinearLayout.LayoutParams tl=new LinearLayout.LayoutParams(-1,dp(2));tl.setMargins(0,dp(6),dp(8),0);ask.addView(askTimer,tl);
+   FrameLayout.LayoutParams al=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.LEFT);al.leftMargin=dp(48);al.bottomMargin=dp(28);root.addView(ask,al);
+  }
+  // The card owns ◀ ▶ OK while it is up, so open controls (not a menu) step aside for it.
+  if(visible&&menu==null)show(false);
+  askTitle.setText("Як вам «"+title+"»?");for(TextView t:askChoices)t.setVisibility(View.VISIBLE);askTimer.setVisibility(View.VISIBLE);askFocus=0;askOn=true;paintAsk();placeSubtitles();
+  // Slides in from the left; the thumbs follow one after another.
+  ask.animate().cancel();ask.setVisibility(View.VISIBLE);ask.setAlpha(0);ask.setTranslationX(-dp(40));ask.setTranslationY(0);ask.animate().alpha(1).translationX(0).setDuration(380).setInterpolator(Ui.EASE).start();
+  for(int i=0;i<askChoices.size();i++){View t=askChoices.get(i);t.setAlpha(0);t.setTranslationX(-dp(12));t.animate().alpha(1).translationX(0).setStartDelay(160+i*70).setDuration(260).setInterpolator(Ui.EASE).start();}
+  RatingStore.markAsked(this,profileId,film.link);askCountdown();
+ }
+ /** Hides after ASK_MS without a press; any press on the card starts the count again. */
+ private void askCountdown(){h.removeCallbacks(askHide);h.postDelayed(askHide,ASK_MS);askTimer.animate().cancel();askTimer.setScaleX(1);askTimer.animate().scaleX(0).setStartDelay(0).setDuration(ASK_MS).setInterpolator(new android.view.animation.LinearInterpolator()).start();}
+ private void paintAsk(){for(int i=0;i<askChoices.size();i++){TextView t=askChoices.get(i);boolean f=i==askFocus;Ui.paintControl(t,f);if(!f&&i==2){t.setBackground(null);t.setTextColor(0xffbdb9c6);}android.graphics.drawable.Drawable icon=t.getCompoundDrawables()[0];if(icon!=null)icon.setColorFilter(new PorterDuffColorFilter(f?Color.BLACK:Color.WHITE,PorterDuff.Mode.SRC_IN));}}
+ /** 👍 / 👎 save the same rating as the title page (synced, moves recommendations); 0 is «Пропустити». */
+ private void answer(int value){
+  if(!askOn)return;askOn=false;h.removeCallbacks(askHide);
+  if(value==0){hideAsk(true);return;}
+  boolean saved=RatingStore.set(this,profileId,film.link,title,poster,TextUtils.join(", ",film.genres),value);
+  View chosen=askChoices.get(value>0?0:1);chosen.animate().cancel();chosen.setAlpha(1);chosen.setTranslationX(0);chosen.animate().setStartDelay(0).scaleX(1.3f).scaleY(1.3f).setDuration(140).withEndAction(()->chosen.animate().scaleX(1).scaleY(1).setDuration(180).start()).start();askTimer.animate().cancel();askTimer.setVisibility(View.GONE);
+  askTitle.setText(saved?RatingStore.thanks(value):"Не вдалося зберегти оцінку");for(int i=0;i<askChoices.size();i++)if(i!=(value>0?0:1))askChoices.get(i).setVisibility(View.GONE);h.postDelayed(askHide,2200);
+ }
+ private void hideAsk(boolean fade){
+  askOn=false;h.removeCallbacks(askHide);if(ask==null)return;ask.animate().cancel();
+  Runnable gone=()->{ask.setVisibility(View.GONE);if(finishAfterAsk&&!destroyed){finishAfterAsk=false;finish();}};
+  if(fade)ask.animate().alpha(0).translationX(-dp(40)).setDuration(300).withEndAction(gone).start();else gone.run();
+ }
  private void pulse(String s){flash.setText(s);flash.animate().cancel();flash.setScaleX(0.9f);flash.setScaleY(0.9f);flash.animate().alpha(1).scaleX(1).scaleY(1).setDuration(200).setInterpolator(Ui.EASE).withEndAction(()->flash.animate().alpha(0).setStartDelay(500).setDuration(300).start()).start();}
  private void update(){
   long now=SystemClock.elapsedRealtime();
@@ -467,11 +517,13 @@ public final class KikPlayerActivity extends Activity {
     long skip=seeking?-1:PlaybackPolicy.adSkip(ads,position,dur());if(skip>0){Log.d("KIK.Player","Ad skipped "+position+" -> "+skip);resumeAt=skip;seekAt=now;lastMovement=now;player.seekTo(skip);Ui.toast(this,"Рекламу пропущено");return;}
     // A clip only the AI saw is never skipped on its own: the viewer decides with OK.
     showHint(seeking?-1:PlaybackPolicy.adSkip(hints,position,dur()));
+    if(!seeking)maybeAsk(position);
     if(position>lastPosition+50||position<lastPosition-500){lastMovement=now;lastPosition=position;recovery.progress(now);if(stableSince==0)stableSince=now;if(now-stableSince>30000){sameAttempt=0;voiceAttempt=0;failedVoices.clear();recoveryStarted=now;stableSince=now;}}
     else if(player.isPlaying()&&now-lastMovement>FROZEN_MS){Log.w("KIK.Player","Picture frozen at "+position);lastMovement=now;recover(null);}
    }
   }
-  if(player!=null)watchedPending+=watchTracker.sample(now,prepared?pos():0,prepared&&!seeking&&active&&playWhenReady&&player.isPlaying());
+  String item=season+":"+episode;if(!item.equals(askItem)){askItem=item;watchedItem=0;askChecked=false;if(ask!=null&&ask.getVisibility()==View.VISIBLE)hideAsk(false);}
+  if(player!=null){long watched=watchTracker.sample(now,prepared?pos():0,prepared&&!seeking&&active&&playWhenReady&&player.isPlaying());watchedPending+=watched;watchedItem+=watched;}
   if(prepared&&player!=null){
    long p=pos(),d=dur();left.setText(Ui.time(p));right.setText(d>0?"-"+Ui.time(d-p):"");
    int w=((View)played.getParent()).getWidth();ViewGroup.LayoutParams lp=played.getLayoutParams();lp.width=d>0&&w>0?(int)(w*Math.min(1f,(float)p/d)):0;played.setLayoutParams(lp);knob.setTranslationX(Math.max(0,lp.width-dp(8)));
@@ -505,6 +557,11 @@ public final class KikPlayerActivity extends Activity {
   if(failed&&center&&menu==null&&focus==1){autoRetry=0;offline=false;retryNow();return true;}
   // While «Пропустити рекламу» is on screen, OK always means it, whatever the controls have in focus.
   if(center&&hintTo>0&&menu==null&&!failed){skipHint();return true;}
+  // «Як вам?» takes ◀ ▶ and OK while the controls are hidden; ▲ ▼ still open them and playback goes on.
+  if(askOn&&!visible&&menu==null&&!failed){
+   if(k==KeyEvent.KEYCODE_DPAD_LEFT||k==KeyEvent.KEYCODE_DPAD_RIGHT){askFocus=Math.max(0,Math.min(askChoices.size()-1,askFocus+(k==KeyEvent.KEYCODE_DPAD_LEFT?-1:1)));paintAsk();askCountdown();return true;}
+   if(center){answer(askFocus==0?1:askFocus==1?-1:0);return true;}
+  }
   if(!visible){
    if(k==KeyEvent.KEYCODE_DPAD_LEFT){seek(-10000);pulse("« 10");return true;}
    if(k==KeyEvent.KEYCODE_DPAD_RIGHT){seek(10000);pulse("10 »");return true;}
@@ -530,5 +587,5 @@ public final class KikPlayerActivity extends Activity {
   else if(center)((Runnable)controls.get(focus).getTag()).run();
   paint();return true;
  }
- @Override public void onBackPressed(){if(menu!=null){closeMenu();return;}if(visible){show(false);return;}save();finish();}
+ @Override public void onBackPressed(){if(menu!=null){closeMenu();return;}if(visible){show(false);return;}if(askOn){answer(0);return;}save();finish();}
 }

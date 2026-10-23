@@ -137,7 +137,7 @@ public final class HomeActivity extends Activity {
    });}:null);
    if(site.isEmpty()){main.post(()->{if(valid(gen,profile)&&first.isEmpty()){heroTitle.setText("Що подивимось?");heroText.setText("Не вдалося завантажити новинки. Відкрийте каталог або спробуйте ще раз.");HeroActions.label(watch,"Спробувати ще",HeroActions.RETRY);watch.setOnClickListener(v->load());more.setVisibility(View.GONE);later.setVisibility(View.GONE);watch.requestFocus();}});return;}
    refreshedAt=SystemClock.elapsedRealtime();saveCache(site);
-   if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(site);rest.remove(0);translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
+   if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(Recommendations.withoutDisliked(preferences,site.subList(1,site.size())));translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
     // The first catalogue row is already usable. Append remaining rows without replacing focus.
     appendRows(rest);translateLater(rest,gen,profile);
    });}
@@ -145,7 +145,7 @@ public final class HomeActivity extends Activity {
   },"kik-home").start();
  }
  private List<Row> homeRows(List<Row> local,List<Row> catalogue,Recommendations.Snapshot preferences){
-  List<Row> out=new ArrayList<Row>(local);out.addAll(Recommendations.rows(this,preferences,catalogue));out.addAll(catalogue);return out;
+  List<Row> out=new ArrayList<Row>(local);out.addAll(Recommendations.rows(this,preferences,catalogue));out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
  }
  private static String recommendationKeys(Row row){StringBuilder keys=new StringBuilder();for(Item i:row.items)keys.append(norm(i.link)).append('|');return keys.toString();}
  private void updateRecommendations(Row row){
@@ -293,7 +293,7 @@ public final class HomeActivity extends Activity {
   Images.load(i.poster,img,dp(136));
   return box;
  }
- private void rate(Item i){final String profile=ProfileStore.current(this);int value=RatingStore.get(this,profile,i.link);Ui.dialog(this).setTitle(tr(i.title)).setSingleChoiceItems(new String[]{"Подобається","Не цікаво","Без оцінки"},value>0?0:value<0?1:2,(d,n)->{boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,n==0?1:n==1?-1:0);d.dismiss();if(saved)load();else Ui.toast(this,"Не вдалося зберегти оцінку");}).setNegativeButton("Назад",null).show();}
+ private void rate(Item i){final String profile=ProfileStore.current(this);int value=RatingStore.get(this,profile,i.link);Ui.dialog(this).setTitle(tr(i.title)).setSingleChoiceItems(new String[]{"Подобається","Не подобається","Без оцінки"},value>0?0:value<0?1:2,(d,n)->{boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,n==0?1:n==1?-1:0);d.dismiss();if(saved)load();else Ui.toast(this,"Не вдалося зберегти оцінку");}).setNegativeButton("Назад",null).show();}
  private void chooseTaste(){TasteActivity.open(this,false);}
  private void scrollRowIntoView(View row){
   int screen=getResources().getDisplayMetrics().heightPixels;
