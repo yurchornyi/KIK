@@ -28,6 +28,7 @@ public final class AppUpdater {
  private static volatile WeakReference<Activity> screen=new WeakReference<>(null);
  private static volatile WeakReference<Runnable> listener=new WeakReference<>(null);
  private static volatile String message="";
+ private static volatile boolean manualRun;
  private static Intent confirmation;
  private static String confirmationToken;
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("kik_updates",0);}
@@ -36,7 +37,10 @@ public final class AppUpdater {
  public static String version(Context c){try{return c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName;}catch(Exception e){return "";}}
  public static void listen(Runnable r){listener=new WeakReference<>(r);}
  public static void unlisten(Runnable r){if(listener.get()==r)listener.clear();}
- private static void state(Context c,String text){message=text;prefs(c).edit().putString("status",text).apply();MAIN.post(()->{Runnable r=listener.get();if(r!=null)r.run();});}
+ private static void state(Context c,String text){message=text;prefs(c).edit().putString("status",text).apply();
+  // After «Оновити» the person sees the download start and any failure; the progress itself stays in Settings.
+  boolean shown=manualRun&&(text.endsWith(" • 0%")||text.startsWith("Не вдалося")||text.startsWith("Установлено останню"));
+  MAIN.post(()->{Runnable r=listener.get();if(r!=null)r.run();Activity a=shown?active():null;if(a!=null)Ui.toast(a,text.endsWith(" • 0%")?text.substring(0,text.length()-5)+"…":text);});}
  public static void setEnabled(Context c,boolean on){prefs(c).edit().putBoolean("automatic",on).apply();schedule(c);state(c,on?"Автооновлення ввімкнено":"Автооновлення вимкнено");}
  public static void schedule(Context context){
   Context c=context.getApplicationContext();try{
@@ -89,6 +93,7 @@ public final class AppUpdater {
   final Context c=context.getApplicationContext();
   if(!manual&&!enabled(c)){if(finished!=null)finished.run();return;}
   if(!BUSY.compareAndSet(false,true)){if(finished!=null)finished.run();return;}
+  manualRun=manual;
   IO.execute(()->{try{
    cancelled(cancellation);cleanInstalled(c);
    Release ready=prepared(c);
@@ -106,7 +111,7 @@ public final class AppUpdater {
    cancelled(cancellation);offer(c,r,manual);
   }catch(OperationCanceledException e){state(c,"Перевірку відкладено до підключення Wi-Fi");
   }catch(Exception e){Log.w("KIK.Update","Update deferred: "+e.getClass().getSimpleName()+": "+e.getMessage());state(c,"Не вдалося оновити. Можна повторити перевірку.");}
-  finally{BUSY.set(false);if(finished!=null)finished.run();}});
+  finally{manualRun=false;BUSY.set(false);if(finished!=null)finished.run();}});
  }
  private static void offer(Context c,Release r,boolean manual)throws Exception{
   if(!manual&&!enabled(c))return;
@@ -209,9 +214,12 @@ public final class AppUpdater {
    if(!signer.equalsIgnoreCase(signer(c.getPackageManager().getPackageInfo(c.getPackageName(),signatureFlags()))))throw new SecurityException("Release signer");
   }
  }
- private static int signatureFlags(){return Build.VERSION.SDK_INT>=28?PackageManager.GET_SIGNING_CERTIFICATES:PackageManager.GET_SIGNATURES;}
+ /** Android 9 leaves signingInfo empty for a downloaded APK, so the legacy signatures are requested too as a fallback. */
+ @SuppressWarnings("deprecation")
+ private static int signatureFlags(){return Build.VERSION.SDK_INT>=28?PackageManager.GET_SIGNING_CERTIFICATES|PackageManager.GET_SIGNATURES:PackageManager.GET_SIGNATURES;}
+ @SuppressWarnings("deprecation")
  private static String signer(PackageInfo p)throws Exception{
-  android.content.pm.Signature[] signatures=Build.VERSION.SDK_INT>=28?p.signingInfo==null?null:p.signingInfo.getApkContentsSigners():p.signatures;
+  android.content.pm.Signature[] signatures=Build.VERSION.SDK_INT>=28&&p.signingInfo!=null?p.signingInfo.getApkContentsSigners():p.signatures;
   if(signatures==null||signatures.length!=1)throw new SecurityException("Expected one signing certificate");
   return hex(MessageDigest.getInstance("SHA-256").digest(signatures[0].toByteArray()));
  }
