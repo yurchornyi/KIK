@@ -44,6 +44,13 @@ public final class DescTranslate {
   return out==null?text:out;
  }
 
+ /** Bounded blocking translation (off the main thread): waits at most ms, else the cached text; the fetch still fills the cache. */
+ public static String tr(final String text,long ms){
+  java.util.concurrent.FutureTask<String> task=new java.util.concurrent.FutureTask<String>(()->tr(text));
+  new Thread(task,"kik-translate-now").start();
+  try{return task.get(ms,java.util.concurrent.TimeUnit.MILLISECONDS);}catch(Exception e){return cached(text);}
+ }
+
  private static String fetch(String text,SharedPreferences p,String k) {
   HttpURLConnection c=null;
   try {

@@ -67,8 +67,8 @@ public final class FilmActivity extends Activity {
    try{
     final Site.Film f=Site.film(link);
     List<String> words=new ArrayList<String>();words.add(f.title);words.addAll(f.genres);if(f.country!=null)words.addAll(Arrays.asList(f.country.split(",\\s*")));if(f.duration!=null)words.add(f.duration);
-    final Map<String,String> cached=TitleTranslate.cached(words);
-    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,DescTranslate.cached(f.description));});
+    final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);});
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
     // The page lists one voice's episodes; show every season the leading voices have.

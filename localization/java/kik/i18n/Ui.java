@@ -15,6 +15,8 @@ public final class Ui {
  public static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
  public static final android.view.animation.Interpolator EASE=new DecelerateInterpolator(1.6f);
  public static final Handler MAIN=new Handler(Looper.getMainLooper());
+ /** How long a screen waits for missing translations before showing text, so the Russian original does not flash first. */
+ public static final long TRANSLATE_WAIT=2500;
 
  public static int dp(Context c,float n){return Math.round(n*c.getResources().getDisplayMetrics().density);}
  public static void bg(Runnable r){new Thread(r,"kik-ui").start();}

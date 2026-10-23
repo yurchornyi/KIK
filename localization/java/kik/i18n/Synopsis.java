@@ -7,14 +7,16 @@ import org.json.JSONObject;
 /** The title page's three-line description: the full text when it fits, else KIK's short synopsis, cut only at a sentence. */
 final class Synopsis {
  private Synopsis(){}
- private static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences("kik_synopsis",0);}
- static String cached(Context c,String link){return prefs(c).getString(Progress.norm(link),null);}
- /** Asks the KIK server once per title; its answer is kept on the TV for good. */
+ private static final long TTL=30L*24*3600*1000;
+ private static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences("kik_synopsis_v2",0);}
+ /** Kept for a month, so a better server wording reaches the TV too. */
+ static String cached(Context c,String link){String k=Progress.norm(link);android.content.SharedPreferences p=prefs(c);return System.currentTimeMillis()-p.getLong(k+"@",0)<TTL?p.getString(k,null):null;}
+ /** Asks the KIK server; its answer is kept on the TV for a month. */
  static String fetch(Context c,String link){
   String key=Progress.norm(link);if(key.startsWith("uaserials/"))return null;HttpURLConnection h=null;
   try{h=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/synopsis?link="+URLEncoder.encode("https://hdrezka.sh/"+key,"UTF-8")).openConnection();h.setConnectTimeout(8000);h.setReadTimeout(25000);
    if(h.getResponseCode()!=200)return null;String s=new JSONObject(Site.read(h.getInputStream())).optString("summary","");if(s.isEmpty()||"null".equals(s))return null;
-   prefs(c).edit().putString(key,s).apply();return s;
+   prefs(c).edit().putString(key,s).putLong(key+"@",System.currentTimeMillis()).apply();return s;
   }catch(Exception e){android.util.Log.w("KIK","Synopsis",e);return null;}finally{if(h!=null)h.disconnect();}
  }
  static boolean fits(CharSequence text,TextPaint paint,int width,float spacing,int lines){return layout(text,paint,width,spacing).getLineCount()<=lines;}

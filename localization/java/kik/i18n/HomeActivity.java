@@ -126,20 +126,20 @@ public final class HomeActivity extends Activity {
    final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);
    final List<Row> local=localRows(profile);List<Row> cached=fromCache();
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
-   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");List<Row> all=homeRows(local,cached,preferences);cacheTranslations(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
+   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");List<Row> all=homeRows(local,cached,preferences);translateNow(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
    final List<Row> first=all;
    main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if(!first.isEmpty()||loadedOnce)show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
    long cacheAge=System.currentTimeMillis()-getSharedPreferences("kik_home",0).getLong("updated",0);
    if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<15*60_000||cacheAge>=0&&cacheAge<15*60_000)){recommendLater(preferences,cached,gen,profile);return;}
-   List<Row> site=siteRows(cached.isEmpty()?row->main.post(()->{
-    if(!valid(gen,profile))return;List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);cacheTranslations(initial);show(initial);translateLater(initial,gen,profile);
-   }):null);
+   List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
+    if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
+   });}:null);
    if(site.isEmpty()){main.post(()->{if(valid(gen,profile)&&first.isEmpty()){heroTitle.setText("Що подивимось?");heroText.setText("Не вдалося завантажити новинки. Відкрийте каталог або спробуйте ще раз.");HeroActions.label(watch,"Спробувати ще",HeroActions.RETRY);watch.setOnClickListener(v->load());more.setVisibility(View.GONE);later.setVisibility(View.GONE);watch.requestFocus();}});return;}
    refreshedAt=SystemClock.elapsedRealtime();saveCache(site);
-   if(cached.isEmpty())main.post(()->{if(!valid(gen,profile))return;
+   if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(site);rest.remove(0);translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
     // The first catalogue row is already usable. Append remaining rows without replacing focus.
-    List<Row> rest=new ArrayList<Row>(site);rest.remove(0);cacheTranslations(rest);appendRows(rest);translateLater(rest,gen,profile);
-   });
+    appendRows(rest);translateLater(rest,gen,profile);
+   });}
    recommendLater(preferences,site,gen,profile);
   },"kik-home").start();
  }
@@ -155,7 +155,8 @@ public final class HomeActivity extends Activity {
  }
  private boolean valid(int gen,String profile){return !isFinishing()&&!destroyed&&gen==loadGeneration&&profile.equals(ProfileStore.current(this));}
  private Set<String> words(List<Row> rows){Set<String> words=new LinkedHashSet<String>();for(Row r:rows)for(Item i:r.items){if(i.title!=null)words.add(i.title);if(i.genre!=null)words.add(i.genre);}return words;}
- private void cacheTranslations(List<Row> rows){mergeTranslations(TitleTranslate.cached(words(rows)));}
+ /** Off the main thread, before rows appear: Ukrainian labels from the first frame. */
+ private void translateNow(List<Row> rows){mergeTranslations(TitleTranslate.resolve(words(rows),Ui.TRANSLATE_WAIT));}
  private synchronized void mergeTranslations(Map<String,String> m){Map<String,String> n=new HashMap<String,String>(uk);n.putAll(m);uk=n;}
  private void translateLater(List<Row> rows,int gen,String profile){
   main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{Map<String,String> got=TitleTranslate.resolve(words(rows));main.post(()->{if(!valid(gen,profile))return;mergeTranslations(got);translateLabels(content);if(hero!=null){heroTitle.setText(tr(hero.title));heroMeta.setText(join(hero.year,tr(hero.genre),hero.rating==null?null:"★ "+hero.rating));}});},"kik-home-text").start();},800);
@@ -167,7 +168,7 @@ public final class HomeActivity extends Activity {
    Recommendations.refresh(this,preferences);if(!valid(gen,profile)||!foreground)return;
    Recommendations.refreshAi(this,preferences,catalogue);if(!valid(gen,profile)||!foreground)return;
    Recommendations.enrich(this,preferences,catalogue,()->valid(gen,profile)&&foreground);
-   if(!valid(gen,profile))return;final List<Row> updated=Recommendations.rows(this,preferences,catalogue);cacheTranslations(updated);
+   if(!valid(gen,profile))return;final List<Row> updated=Recommendations.rows(this,preferences,catalogue);translateNow(updated);
    main.post(()->{if(valid(gen,profile)){for(Row r:updated)updateRecommendations(r);translateLater(updated,gen,profile);}});
   },"kik-home-recommendations").start();},1800);
  }
@@ -221,7 +222,7 @@ public final class HomeActivity extends Activity {
   main.removeCallbacks(detailTask);
   if(i.description!=null)return;
   detailTask=()->new Thread(()->{
-   try{Site.Film f=Site.film(i.link);String d=f.description==null?"":DescTranslate.cached(f.description);
+   try{Site.Film f=Site.film(i.link);String d=f.description==null?"":DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);mergeTranslations(TitleTranslate.resolve(f.genres.isEmpty()?Collections.<String>emptySet():Collections.singleton(f.genres.get(0)),Ui.TRANSLATE_WAIT));
     final String[] g=new String[]{d,f.poster,f.rating,f.year,f.genres.isEmpty()?null:f.genres.get(0)};DETAILS.put(norm(i.link),g);
     main.post(()->{i.description=g[0];if(g[1]!=null)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];
      if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null)Images.crossfade(i.wide,heroImage);}});
