@@ -39,7 +39,7 @@ async function fixture(context,{guest=false,delay=0,failCatalogue=false,slowSeri
   else if(p==='/api/film'){const item=items.find(i=>i.link===url.searchParams.get('link'))||items[0];body={...item,description:'Це довгий опис історії. '.repeat(18),genres:['Драма','Пригоди','Наукова фантастика'],duration:'120 хв',rating:'8.2',series:item.link.includes('/series/'),voices:[{id:'1',name:'Українська — дуже довга назва студії озвучення',lang:'uk'}],episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}],related:[]};}
   else if(p==='/api/episodes')body={episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}]};
   else if(p==='/api/stream')body={qualities:[{label:'1080p',url:origin+'/missing.mp4'}]};
-  else if(p==='/api/artwork/batch')body={configured:true,results:Object.fromEntries(items.map(i=>[i.link.split('.sh/')[1],{poster:origin+'/fixture.svg',posterLarge:origin+'/fixture.svg',backdrop:origin+'/fixture.svg'}]))};
+  else if(p==='/api/artwork/batch')body={configured:true,results:Object.fromEntries(items.map(i=>[i.link.split('.sh/')[1],{poster:origin+'/fixture.svg',posterLarge:origin+'/fixture.svg',backdrop:origin+'/fixture.svg',studios:['hbo']}]))};
   else if(p==='/api/genres')body={items:[{slug:'drama',name:'Драми'},{slug:'comedy',name:'Комедії з дуже довгою назвою жанру'}]};
   else if(p==='/api/search-aliases')body={aliases:[]};
   else if(p==='/api/metadata')body={credits:[]};
@@ -82,6 +82,20 @@ try{
    for(const tab of ['catalogue','later','history','settings','admin']){
     const t=performance.now();await page.locator(`[data-tab=${tab}]`).click();await page.locator(tab==='admin'?'.admin-stats':tab==='settings'?'.settings-card':'.grid-page').first().waitFor();await inspect(page,tab,{engine,switchMs:Math.round(performance.now()-t)});
    }
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.studio-filter').click();await page.locator('.dropdown-panel').waitFor();await inspect(page,'studio-picker',{engine});
+   if(engine==='chromium'&&(width===390||width===1440))await page.screenshot({path:path.join(output,`${engine}-${width}-studio-picker.png`),animations:'disabled'});
+   await page.locator('.dropdown-option').filter({hasText:'HBO'}).click();await page.locator('.studio-chip').waitFor();
+   check(engine,'studio-route',new URL(page.url()).hash.includes('studio=hbo'),{width});
+   await page.getByRole('button',{name:/^Жанр каталогу:/}).click();await page.getByRole('option',{name:'Драми',exact:true}).click();await page.getByRole('button',{name:/^Порядок каталогу:/}).click();await page.getByRole('option',{name:'Нові надходження',exact:true}).click();
+   check(engine,'studio-combined-filters',new URL(page.url()).hash.includes('studio=hbo')&&new URL(page.url()).hash.includes('g=drama')&&new URL(page.url()).hash.includes('s=last'),{width});
+   await inspect(page,'studio-selected',{engine});
+   if(engine==='chromium'&&(width===390||width===1440)){await page.screenshot({path:path.join(output,`${engine}-${width}-studio-selected.png`),animations:'disabled'});await page.locator('.catalogue-toolbar').screenshot({path:path.join(output,`${engine}-${width}-studio-toolbar.png`),animations:'disabled'});}
+   await page.locator('.studio-filter').click();await page.keyboard.press('Escape');await page.locator('.dropdown-panel').waitFor({state:'detached'});check(engine,'studio-focus-restored',await page.locator('.studio-filter').evaluate(e=>e===document.activeElement),{width,focus:await page.evaluate(()=>document.activeElement?.outerHTML?.slice(0,200))});
+   await page.locator('.studio-chip').click();check(engine,'studio-reset',!new URL(page.url()).hash.includes('studio='),{width});
+   await page.getByRole('button',{name:/^Жанр каталогу:/}).click();await page.getByRole('option',{name:'Комедії з дуже довгою назвою жанру',exact:true}).click();
+   const fullGenre=await page.getByRole('button',{name:/^Жанр каталогу:/}).evaluate(e=>{const value=e.querySelector('.dropdown-value');return value.scrollHeight<=value.clientHeight+1&&getComputedStyle(value).whiteSpace==='nowrap'&&e.title.includes('Комедії з дуже довгою назвою жанру');});check(engine,'single-line-genre-caption',fullGenre,{width});await inspect(page,'long-genre',{engine});
+   if(engine==='chromium'&&width===390)await page.screenshot({path:path.join(output,'chromium-390-long-genre.png'),animations:'disabled'});
+
    for(const [label,open] of [
     ['profiles',()=>page.locator('#account').click()],
     ['search',()=>page.locator('#search-open').click()],
