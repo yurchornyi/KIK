@@ -178,8 +178,10 @@ dialog.player-modal[open]{display:flex;flex-direction:column}
 .player-modal .player-tools .dropdown-label{font-size:12px;color:#8b8b95}
 .player-modal .player-tools .dropdown-value{font-weight:600;color:#f1f1f3}
 .player-modal .player-tools .dropdown-arrow{opacity:.5}
-.player-modal .player-foot{margin:0;padding:4px 20px 14px;background:#0d0d0f}
-.player-modal .player-note{font-size:12px;color:#8b8b95}
+.player-modal .player-foot{margin:0;padding:0 20px 10px;background:#0d0d0f;min-height:0}
+/* No status line under the picture: the note stays for screen readers only; «Спробувати ще» still shows up when a stream fails. */
+.player-modal .player-note{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}
+.player-modal .player-foot:not(:has(.pill:not([hidden]))){padding-bottom:4px}
 @media(max-width:720px){
  dialog.player-modal{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:16px}
  .player-modal .player-head{padding:10px 54px 8px 14px}
