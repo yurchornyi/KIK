@@ -45,8 +45,8 @@ try {
   check((await req('/api/auth/login',{username:"' OR 1=1 --",password})).status === 401, 'SQL injection cannot authenticate');
 
   let invite = await req('/api/admin/access',{email:invitedEmail,action:'reissue'},privileged);
-  const originalInvite = invite.body.invitation.token;
-  check(invite.status === 200 && originalInvite.length === 64, 'admin creates a cryptographic invitation');
+  const originalInvite = invite.body.invitation.code;
+  check(invite.status === 200 && /^[A-HJ-NP-Z2-9]{8}$/.test(originalInvite), 'admin creates an 8-character invitation code');
   const stored = (await sql(`SELECT invite_hash,invite_expires_at FROM registration_access WHERE email='${invitedEmail}';`))[0].results[0];
   check(stored.invite_hash === await hash(originalInvite) && stored.invite_hash !== originalInvite, 'only the invitation hash is stored');
   check((await req('/api/auth/register',{email:invitedEmail,password})).status === 403, 'knowing an invited email cannot squat the account');
@@ -56,11 +56,11 @@ try {
   check((await req('/api/auth/register',{email:invitedEmail,password,invitation:originalInvite})).status === 403, 'expired invitation rejected');
   invite = await req('/api/admin/access',{email:invitedEmail,action:'reissue'},privileged);
   check((await req('/api/auth/register',{email:invitedEmail,password,invitation:originalInvite})).status === 403, 'reissuing an invitation revokes the old token');
-  check((await req('/api/auth/register',{email:invitedEmail,password:'123456',invitation:invite.body.invitation.token})).status === 400, 'new weak passwords rejected without changing existing passwords');
-  const registration = await req('/api/auth/register',{email:invitedEmail,password,invitation:invite.body.invitation.token,role:'admin'});
+  check((await req('/api/auth/register',{email:invitedEmail,password:'12345',invitation:invite.body.invitation.code})).status === 400, 'passwords under 6 characters rejected without changing existing passwords');
+  const registration = await req('/api/auth/register',{email:invitedEmail,password,invitation:invite.body.invitation.code,role:'admin'});
   invitedId = registration.body.user?.id;
   check(registration.status === 201 && registration.body.user.role === 'user', 'a valid invitation registers only an ordinary account');
-  check((await req('/api/auth/register',{email:invitedEmail,password,invitation:invite.body.invitation.token})).status === 403, 'invitation cannot be replayed');
+  check((await req('/api/auth/register',{email:invitedEmail,password,invitation:invite.body.invitation.code})).status === 403, 'invitation cannot be replayed');
   check(!JSON.stringify(registration.body).includes(digest) && !JSON.stringify(registration.body).includes(salt), 'password hashes and salts stay out of API responses');
 
   for (const [path,data] of [

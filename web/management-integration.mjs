@@ -13,7 +13,7 @@ let adminCookie,memberCookie,memberId;try{
  check((await req('/api/admin/users')).status===401,'anonymous admin denied');
  const invitation=await req('/api/admin/access',{email:guestEmail.toUpperCase(),action:'allow'},adminCookie);check(invitation.status===200,'allow email normalized');check((await req('/api/auth/register',{email:guestEmail,password})).status===403,'known allowed email is not enough to register');
  check((await req('/api/admin/access',{email:deniedEmail,action:'allow'},adminCookie,{Origin:'https://evil.test'})).status===403,'admin CSRF denied');
- const member=await req('/api/auth/register',{email:guestEmail,password,role:'admin',invitation:invitation.body.invitation.token});memberCookie=member.cookie;memberId=member.body.user.id;check(member.status===201&&member.body.user.role==='user','invited registration cannot grant its own role');
+ const member=await req('/api/auth/register',{email:guestEmail,password,role:'admin',invitation:invitation.body.invitation.code});memberCookie=member.cookie;memberId=member.body.user.id;check(member.status===201&&member.body.user.role==='user','invited registration cannot grant its own role');
  const p=member.body.profiles[0].id,ownerProfile=login.body.profiles[0].id;
  check((await req('/api/admin/users',undefined,memberCookie)).status===403,'ordinary account cannot list users');check((await req('/api/admin/access',{email:deniedEmail,action:'allow'},memberCookie)).status===403,'ordinary account cannot invite');check((await req('/api/admin/users/delete',{id:adminId,confirm:adminEmail},memberCookie)).status===403,'ordinary account cannot delete');
  check((await req('/api/admin/access',undefined,adminCookie)).body.emails.some(a=>a.email===guestEmail&&a.registered===1),'registered invite is shown');
