@@ -19,7 +19,7 @@ assert receiver is not None and receiver.get(ns+'exported')=='false'
 # KIK replaces the legacy main and player screens with its own; the activity list is explicit.
 activities=lambda m:{e.get(ns+'name') for e in m.findall('./application/activity')}
 assert activities(a)-activities(b)=={'rezkatv.web.app.MainActivity','rezkatv.web.app.PlayerActivity'},activities(a)-activities(b)
-assert activities(b)-activities(a)=={'kik.i18n.'+n for n in ('BasicSettingsActivity','BrowseActivity','FilmActivity','HomeActivity','KikPlayerActivity','OpenTitleActivity','ProfilesActivity','SyncActivity','TasteActivity')},activities(b)-activities(a)
+assert activities(b)-activities(a)=={'kik.i18n.'+n for n in ('BasicSettingsActivity','BrowseActivity','FilmActivity','HomeActivity','KikPlayerActivity','OpenTitleActivity','ProfilesActivity','SignInActivity','SyncActivity','TasteActivity')},activities(b)-activities(a)
 channels=b.find("./application/service[@"+ns+"name='kik.i18n.TvChannels$Job']")
 assert channels is not None and channels.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE'
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.BasicSettingsActivity']") is not None

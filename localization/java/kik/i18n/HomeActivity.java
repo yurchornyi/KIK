@@ -40,7 +40,7 @@ public final class HomeActivity extends Activity {
  private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);TvChannels.start(this);
+  super.onCreate(state);if(Account.gate(this))return;TvChannels.start(this);
   getWindow().setFlags(1024,1024);getWindow().getDecorView().setSystemUiVisibility(5894);
   getWindow().setBackgroundDrawable(null);
   root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
