@@ -21,7 +21,7 @@ java_dir=ROOT/'localization/java/kik/i18n';java_dir.mkdir(parents=True,exist_ok=
 release=json.loads((ROOT/'localization/release.json').read_text())
 APP=release['application_id']
 assert re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',release['repository'])
-(java_dir/'UpdateConfig.java').write_text('package kik.i18n;\npublic final class UpdateConfig {\n public static final String REPOSITORY='+json.dumps(release['repository'])+';\n public static final String MANIFEST_URL='+json.dumps(release['update_url'])+';\n public static final String WEB_ORIGIN='+json.dumps(release.get('web_url','https://kik.basic-175.workers.dev'))+';\n private UpdateConfig(){}\n}\n')
+(java_dir/'UpdateConfig.java').write_text('package kik.i18n;\npublic final class UpdateConfig {\n public static final String REPOSITORY='+json.dumps(release['repository'])+';\n public static final String MANIFEST_URL='+json.dumps(release['update_url'])+';\n public static final String WEB_ORIGIN='+json.dumps(release.get('web_url','https://kiktv.pages.dev'))+';\n private UpdateConfig(){}\n}\n')
 
 entries='\n'.join('    EXACT.put(%s, %s);'%(q(a),q(b)) for a,b in exact.items())
 pair=lambda d:'new String[][] {'+','.join('{%s,%s}'%(q(a),q(b)) for a,b in sorted(d.items(),key=lambda v:-len(v[0])))+'}'

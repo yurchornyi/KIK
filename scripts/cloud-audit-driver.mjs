@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';import {readFile,writeFile} from 'node:fs/promises';import {randomBytes} from 'node:crypto';import assert from 'node:assert/strict';
-const device=process.env.KIK_DEVICE||'192.168.1.127:5555',base='https://kik.basic-175.workers.dev',dir='/sdcard/Android/data/kik.app/files/design-audit/',username='qa_tv_'+Date.now().toString(36),password=randomBytes(24).toString('hex');let cookie,profile,checks=0;
+const device=process.env.KIK_DEVICE||'192.168.1.127:5555',base='https://kiktv.pages.dev',dir='/sdcard/Android/data/kik.app/files/design-audit/',username='qa_tv_'+Date.now().toString(36),password=randomBytes(24).toString('hex');let cookie,profile,checks=0;
 const adb=(...args)=>execFileSync('adb',['-s',device,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
 const pause=()=>new Promise(r=>setTimeout(r,1000));
 async function stage(expected,timeout=120000){const until=Date.now()+timeout;while(Date.now()<until){let value='';try{value=adb('shell','cat',dir+'cloud-stage').trim();}catch{}if(value==='failed')throw Error('Native cloud audit failed');if(value===expected)return;await pause();}throw Error('Timed out waiting for '+expected);}
