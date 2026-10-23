@@ -7,9 +7,11 @@ import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
-import {exchange,titleKey} from "./sync.mjs";
+import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
+import {searchAlternatives} from "./search-fix.mjs";
+import {similar} from "./similar.mjs";
 import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
 import {createStudioCatalogue} from './studio-catalogue.mjs';
@@ -58,7 +60,8 @@ async function api(request,env,ctx){
  // Ad clips inside sponsored voice tracks: players read them, the scanner PC fills them in.
  if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams)));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
- if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150);return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk1"),86400,async()=>({aliases:await aliases(query)}));}
+ // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
+ if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150);return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2"),86400,async()=>({aliases:await searchAlternatives(db,env,query,aliases)}));}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
@@ -125,6 +128,9 @@ async function api(request,env,ctx){
   return edgeCached(ctx,key,180,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
  }
  if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),180,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
+ // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
+ if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
+  const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:catalogue}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()));return r;}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env);}
  if(path==="/api/diagnostics/site"&&request.method==="POST")return json(await siteReport(db,user,await body(request,2048)));

@@ -156,14 +156,18 @@ public final class Site {
   for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null||!FreeSources.rezka(item.optString("link")))continue;Card c=new Card();c.link=item.optString("link");c.title=item.optString("title");c.poster=item.optString("poster",null);c.info=item.optString("sourceInfo",item.optString("info",null));c.type=item.optString("type",null);c.studio=Studios.id(item.optJSONArray("studios"));if(!CountryFilter.blocked(c.info))out.add(c);}
   RAW.set(result.optBoolean("hasMore",false)?1:0);return out;
  }
- public static List<Card> search(String query,int page)throws IOException{
+ public static List<Card> search(String query,int page)throws IOException{return search(query,page,true);}
+ /** fix=false for lookups by a known name (title pages, deep links): other names only when nothing was found, as before. */
+ public static List<Card> search(String query,int page,boolean fix)throws IOException{
   // Ukrainian names come from KIK's own service; ask it while the source search runs instead of after it.
   FutureTask<List<Card>> ua=null;if(page==1){ua=new FutureTask<List<Card>>(()->FreeSources.cards(query));Thread t=new Thread(ua,"kik-search-ua");t.setDaemon(true);t.start();}
   List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
   // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms, then other names.
   String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
-  if(page==1&&out.isEmpty())for(String alias:FreeSources.aliases(query)){try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8"))));}catch(IOException ignored){}if(!out.isEmpty())break;}
   out=new ArrayList<Card>(relevant(query,out));
+  // A typo, the wrong keyboard layout or a name in another language: KIK's service names the titles it most likely meant, and those go first.
+  if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8")))));}catch(IOException ignored){}if(!fixed.isEmpty())break;}
+   if(!fixed.isEmpty()){fixed.addAll(out);out=fixed;}}
   // One card per title: a UASerials twin of an HDRezka result replaces it in place with the Ukrainian name.
   if(page==1)try{LinkedHashMap<String,Card> unique=new LinkedHashMap<String,Card>();for(Card c:out)unique.putIfAbsent(Progress.norm(c.link),c);
    List<Card> extra;try{extra=ua.get(8,TimeUnit.SECONDS);}catch(Exception e){ua.cancel(true);extra=new ArrayList<Card>();}
@@ -184,6 +188,18 @@ public final class Site {
    score.put(c,s);}
   List<Card> out=new ArrayList<Card>(cards);Collections.sort(out,(a,b)->Integer.compare(score.get(b),score.get(a)));return out;
  }
+ /** Does one of the first results really answer the query, typos allowed? Mirrors web/public/search-match.js. */
+ static boolean matches(String query,List<Card> cards){int n=0;for(Card c:cards){if(n++>=12)break;if(c.title!=null)for(String name:c.title.split("\\s+/\\s+"))if(nameScore(query,name)>=0.6)return true;}return false;}
+ private static String loose(String s){return java.text.Normalizer.normalize(s==null?"":s,java.text.Normalizer.Form.NFKD).replaceAll("\\p{M}","").toLowerCase(Locale.ROOT).replaceAll("[ії]","и").replaceAll("[єэ]","е").replace("ґ","г").replace("ё","е").replace("ы","и").replaceAll("['’ʼ]","").replaceAll("[^\\p{L}\\p{N}]+"," ").trim();}
+ /** Edit distance with swaps of neighbours, stopped once it exceeds max. */
+ static int distance(String a,String b,int max){if(Math.abs(a.length()-b.length())>max)return max+1;int[] prev2=null,prev=new int[b.length()+1];for(int j=0;j<=b.length();j++)prev[j]=j;
+  for(int i=1;i<=a.length();i++){int[] row=new int[b.length()+1];row[0]=i;int best=i;for(int j=1;j<=b.length();j++){int d=Math.min(Math.min(prev[j]+1,row[j-1]+1),prev[j-1]+(a.charAt(i-1)==b.charAt(j-1)?0:1));if(prev2!=null&&i>1&&j>1&&a.charAt(i-1)==b.charAt(j-2)&&a.charAt(i-2)==b.charAt(j-1))d=Math.min(d,prev2[j-2]+1);row[j]=d;if(d<best)best=d;}
+   if(best>max)return max+1;prev2=prev;prev=row;}return prev[b.length()];}
+ private static int slack(String w){return w.length()<4?0:w.length()<7?1:2;}
+ private static boolean wordHit(String w,String[] words){int k=slack(w);for(String x:words)if(x.startsWith(w)||w.length()>3&&distance(w,x.substring(0,Math.min(x.length(),w.length()+1)),k)<=k||distance(w,x,k)<=k)return true;return false;}
+ static double nameScore(String query,String name){String q=loose(query),t=loose(name);if(q.isEmpty()||t.isEmpty())return 0;if(t.equals(q))return 1;if(t.startsWith(q))return .9;
+  List<String> words=new ArrayList<String>();for(String w:q.split(" "))if(w.length()>1)words.add(w);if(words.isEmpty())return 0;String[] title=t.split(" ");int found=0;for(String w:words)if(wordHit(w,title))found++;if(found==words.size())return .7;
+  String a=q.replace(" ",""),b=t.replace(" ","");if(a.length()>5&&distance(a,b.substring(0,Math.min(b.length(),a.length())),slack(a))<=slack(a))return .6;return .5*found/words.size();}
  public static List<Genre> genres(String category)throws IOException{
   String html=page(listPath(category,null,"last",1));List<Genre> out=new ArrayList<Genre>();Set<String> seen=new HashSet<String>();
   Matcher m=Pattern.compile("href=\"(?:https?://[^/]+)?/"+Pattern.quote(category)+"/([a-z0-9\\-]+)/\"[^>]*>([^<]+)</a>").matcher(html);
