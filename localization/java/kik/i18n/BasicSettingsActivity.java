@@ -69,7 +69,7 @@ public final class BasicSettingsActivity extends Activity {
   Button sources=button("Джерела даних");content.addView(sources,new LinearLayout.LayoutParams(dp(350),dp(46)));sources.setOnClickListener(v->FreeSources.credits(this));space(14);
   LinearLayout author=new LinearLayout(this);author.setOrientation(0);author.setGravity(Gravity.CENTER_VERTICAL);
   halfCircle=new HalfCircle(this);author.addView(halfCircle,new LinearLayout.LayoutParams(dp(18),dp(18)));
-  TextView name=text("Зроблено Чорним",15);name.setTextColor(0xffd8d6de);name.setLetterSpacing(0.06f);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-2,-2);np.setMargins(dp(10),0,0,0);author.addView(name,np);
+  TextView name=text("Створено Чорним",15);name.setTextColor(0xffd8d6de);name.setLetterSpacing(0.06f);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-2,-2);np.setMargins(dp(10),0,0,0);author.addView(name,np);
   content.addView(author);space(14);
   Button back=button("Готово");content.addView(back,new LinearLayout.LayoutParams(dp(160),dp(46)));back.setOnClickListener(v->finish());
   if(selectedButton!=null)selectedButton.requestFocus();
