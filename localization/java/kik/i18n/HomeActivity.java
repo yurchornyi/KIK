@@ -260,7 +260,7 @@ public final class HomeActivity extends Activity {
    if(e.finished()&&e.season==null)continue;
    Item i=new Item();i.link=e.link;i.title=e.title;i.poster=e.poster;i.resume=true;
    i.progress=e.dur>0?Math.min(1f,(float)e.pos/e.dur):0;
-   i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+"  •  ":"")+(e.finished()?"наступна серія":"продовжити з "+Ui.time(e.pos));
+   i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"наступна серія":"з "+Ui.time(e.pos));
    long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
    i.heroLine=join(e.season!=null&&!"0".equals(e.season)?"Сезон "+e.season+" · Серія "+e.episode:null,e.finished()?"далі наступна серія":left>0?"ще "+left+" хв":"з "+Ui.time(e.pos));
    String[] d=DETAILS.get(norm(e.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.year=d[3];i.genre=d[4];}
@@ -388,7 +388,7 @@ public final class HomeActivity extends Activity {
   box.addView(frame,new LinearLayout.LayoutParams(dp(150),dp(200)));
   TextView t=text(tr(i.title),14,0xffe6e6ea);t.setTag(new Label(i,false));t.setSingleLine(true);t.setEllipsize(TextUtils.TruncateAt.END);t.setPadding(dp(2),dp(8),dp(2),0);
   box.addView(t,new LinearLayout.LayoutParams(dp(150),-2));
-  TextView s=text(i.resume?i.sub:join(i.year,tr(i.genre)),12,GREY);s.setTag(new Label(i,true));s.setSingleLine(true);s.setEllipsize(TextUtils.TruncateAt.END);s.setPadding(dp(2),dp(2),dp(2),0);
+  TextView s=text(i.resume?i.sub:join(i.year,tr(i.genre)),12,i.resume?0xffd6d6dc:GREY);s.setTag(new Label(i,true));s.setSingleLine(true);s.setEllipsize(TextUtils.TruncateAt.END);s.setPadding(dp(2),dp(2),dp(2),0);
   box.addView(s,new LinearLayout.LayoutParams(dp(150),-2));
   frame.setContentDescription(tr(i.title));
   frame.setOnFocusChangeListener((v,f)->{
