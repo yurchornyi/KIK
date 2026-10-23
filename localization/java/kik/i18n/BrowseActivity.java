@@ -35,9 +35,9 @@ public final class BrowseActivity extends Activity {
   FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-  LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setGravity(Gravity.CENTER_VERTICAL);content.addView(head);
+  LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);content.addView(head);
   View logo=Brand.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
-  TextView title=Ui.bold(this,getIntent().getStringExtra(TITLE),30);head.addView(title);
+  TextView title=Ui.bold(this,getIntent().getStringExtra(TITLE),30);title.setIncludeFontPadding(false);title.setGravity(Gravity.CENTER_VERTICAL);head.addView(title);
   Ui.enter(head,0);
   Ui.space(content,14);
   if("search".equals(mode)){

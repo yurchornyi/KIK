@@ -98,7 +98,7 @@ public final class HomeActivity extends Activity {
  }
 
  private View topBar(){
-  LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
+  LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
   View gap=new View(this);bar.addView(gap,new LinearLayout.LayoutParams(dp(22),1));
   bar.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
@@ -331,7 +331,7 @@ public final class HomeActivity extends Activity {
  }
 
  private TextView menu(String label,View.OnClickListener l){
-  TextView t=text(label,14,0xffd0d0d4);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
+  TextView t=text(label,14,0xffd0d0d4);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
   t.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));t.setTextColor(Ui.buttonText(false));
   t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f)scroll.smoothScrollTo(0,0);});
   t.setOnClickListener(l);return t;
