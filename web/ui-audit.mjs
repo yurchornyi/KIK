@@ -1,3 +1,4 @@
+import {avatarSvg} from './public/avatars.js';
 import {createServer} from 'node:http';
 import {readFile, mkdir, writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
@@ -17,7 +18,8 @@ const user={id:'audit-user',email:'long-account-name-for-layout@example.test',ro
 const records=[{kind:'later',key:items[4].link.split('.sh/')[1],data:items[4],updated_at:Date.now()},{kind:'progress',key:items[2].link.split('.sh/')[1]+'|0:0',data:{...items[2],pos:1200000,dur:5400000},updated_at:Date.now()}];
 const server=createServer(async(req,res)=>{
  const pathname=new URL(req.url,'http://localhost').pathname;
- if(pathname==='/fixture.svg'||pathname.startsWith('/avatars/')){res.writeHead(200,{'content-type':'image/svg+xml'});res.end(image);return;}
+ if(pathname.startsWith('/avatars/')){res.writeHead(200,{'content-type':'image/svg+xml'});res.end(avatarSvg(path.basename(pathname,'.svg')));return;}
+ if(pathname==='/fixture.svg'){res.writeHead(200,{'content-type':'image/svg+xml'});res.end(image);return;}
  // HLS itself is covered by playback regression tests; UI fixtures exercise native video controls.
  if(pathname==='/hls.min.js'){res.writeHead(200,{'content-type':'application/javascript'});res.end('');return;}
  try{const file=path.resolve(root,'public','.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(path.join(root,'public')+path.sep))throw Error();const data=await readFile(file);res.writeHead(200,{'content-type':({'.html':'text/html','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png'})[path.extname(file)]||'application/octet-stream'});res.end(data);}catch{res.writeHead(404);res.end();}
@@ -25,16 +27,17 @@ const server=createServer(async(req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin=`http://127.0.0.1:${server.address().port}`;
 const report={mode:'local deterministic API fixtures; viewport emulation, not physical Apple devices',samples:[],failures:[]};
-async function fixture(context,{guest=false,delay=0,failCatalogue=false,slowSeries=0,filmDelay=0}={}){
+async function fixture(context,{guest=false,delay=0,failCatalogue=false,slowSeries=0,filmDelay=0,profileCount=1,profileName=profile.name}={}){
+ const profiles=Array.from({length:profileCount},(_,i)=>({...profile,id:i?`audit-profile-${i+1}`:profile.id,name:i?`Профіль ${i+1}`:profileName,avatar:i%2?'ninja':profile.avatar}));
  const lifecycle={seriesComplete:false};await context.route('**/api/**',async route=>{
   const url=new URL(route.request().url()),p=url.pathname;
   if(delay&&p==='/api/catalogue')await new Promise(r=>setTimeout(r,delay));
   if(slowSeries&&p==='/api/catalogue'&&url.searchParams.get('category')==='series')await new Promise(r=>setTimeout(r,slowSeries));
   if(filmDelay&&p==='/api/film')await new Promise(r=>setTimeout(r,filmDelay));
   let body={};
-  if(p==='/api/me')body={user:guest?null:user,profiles:guest?[]:[profile],server_time:Date.now()};
+  if(p==='/api/me')body={user:guest?null:user,profiles:guest?[]:profiles,server_time:Date.now()};
   else if(p==='/api/settings')body={settings:{quality:'1080p',audio:'uk',speed:1,autoplay:true}};
-  else if(p==='/api/sync')body={records,profile,server_time:Date.now()};
+  else if(p==='/api/sync')body={records,profile:profiles.find(p=>p.id===route.request().postDataJSON()?.profile_id)||profiles[0],server_time:Date.now()};
   else if(p==='/api/catalogue'){if(failCatalogue){await route.fulfill({status:503,json:{error:'Offline fixture'}});return;}body={items:url.searchParams.get('category')==='series'?items.filter((_,i)=>i%2):url.searchParams.get('category')==='films'?items.filter((_,i)=>!(i%2)):items};}
   else if(p==='/api/film'){const item=items.find(i=>i.link===url.searchParams.get('link'))||items[0];body={...item,description:'Це довгий опис історії. '.repeat(18),genres:['Драма','Пригоди','Наукова фантастика'],duration:'120 хв',rating:'8.2',series:item.link.includes('/series/'),voices:[{id:'1',name:'Українська — дуже довга назва студії озвучення',lang:'uk'}],episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}],related:[]};}
   else if(p==='/api/episodes')body={episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}]};
@@ -116,6 +119,18 @@ try{
    else if(state.failCatalogue){await page.getByRole('button',{name:'Спробувати ще',exact:true}).waitFor();await inspect(page,'offline',{engine});}
    else{await inspect(page,'loading',{engine});await page.locator('.shelf').first().waitFor();}
    await context.close();
+  }
+  for(const profileCount of [1,8])for(const width of [320,390,1440]){
+   const context=await browser.newContext({viewport:{width,height:width===1440?900:844},reducedMotion:'reduce'});await fixture(context,{profileCount,profileName:profileCount===1?'Yuriy':profile.name});const page=await context.newPage();await page.goto(origin);await page.locator('[data-tab=admin]').waitFor();await page.locator('#account').click();await page.locator('.profile-modal').waitFor();
+   await inspect(page,'profile-picker-'+profileCount,{engine,width});check(engine,'profile-picker-count',await page.locator('.profile-tile[aria-pressed]').count()===profileCount,{width,profileCount});
+   check(engine,'profile-picker-focus',await page.locator('.profile-tile[aria-pressed=true]').evaluate(e=>e===document.activeElement),{width,profileCount});
+   check(engine,'profile-limit',await page.locator('.profile-tile-add').count()===(profileCount<8?1:0),{width,profileCount});
+   if(engine==='chromium'&&profileCount===1&&(width===390||width===1440))await page.locator('#modal').screenshot({path:path.join(output,`chromium-${width}-profile-picker.png`),animations:'disabled'});
+   if(profileCount===8){await page.locator('.profile-tile').filter({hasText:'Профіль 2'}).click();await page.waitForFunction(()=>document.querySelector('#account')?.getAttribute('aria-label')==='Профіль: Профіль 2');check(engine,'profile-switch',await page.evaluate(()=>localStorage.getItem('kik-profile:audit-user'))==='audit-profile-2',{width});await page.locator('#account').click();}
+   else{await page.locator('.profile-tile-add').click();check(engine,'new-profile-clears-picker-layout',await page.locator('#modal').evaluate(d=>!d.classList.contains('profile-modal')&&!d.hasAttribute('aria-labelledby')),{width});await page.locator('#modal .close').click();await page.locator('#account').click();}
+   await page.locator('.profile-dialog-tools').getByRole('button',{name:'Прив’язати TV',exact:true}).click();check(engine,'pairing-clears-picker-layout',await page.locator('#modal').evaluate(d=>!d.classList.contains('profile-modal')),{width});await page.locator('#modal .close').click();await page.locator('#account').click();
+   await page.locator('.profile-dialog-tools').getByRole('button',{name:'Налаштування',exact:true}).click();await page.locator('.settings-card').first().waitFor();check(engine,'profile-settings-navigation',await page.locator('#modal').evaluate(d=>!d.open),{width});await page.locator('#account').click();
+   await page.locator('.profile-dialog-tools').getByRole('button',{name:'Вийти',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#account')?.getAttribute('aria-label')==='Увійти до KIK');check(engine,'profile-logout',await page.locator('#modal').evaluate(d=>!d.open),{width});await context.close();
   }
   // Behavior checks catch failures that cannot be found by bounding boxes alone.
   {
