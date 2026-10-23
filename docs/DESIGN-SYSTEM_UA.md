@@ -24,7 +24,7 @@
 
 ## Перевірка
 
-Збірка: `scripts/build.sh`; структурні й APK-перевірки: `python3 scripts/validate.py`. Регресії: `scripts/PolicyCheck.java`, `scripts/CatalogueCheck.java`, `scripts/PlayerCheck.java`.
+Збірка: `scripts/build.sh`; структурні й APK-перевірки: `python3 scripts/validate.py`. Регресії: `scripts/PolicyCheck.java`, `scripts/CatalogueCheck.java`, `scripts/PlayerCheck.java`, `scripts/ImageDecodeCheck.java`, `scripts/FocusScrollCheck.java`. Кадри й пошук на пристрої: `KIK_AUDIT_MODE=performance scripts/audit-device.sh`.
 
 Повний журнал перевірки на XGIMI, перелік перевірених станів, обмеження та знімки зберігаються в `outputs/design-audit/`. Тимчасовий APK інструментальних перевірок не входить до KIK і видаляється з проєктора після перевірки. Для тестів профілів і відтворення використовується окремий тимчасовий профіль; вихідний профіль відновлюється.
 

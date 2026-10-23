@@ -9,6 +9,9 @@ public final class PlayerCheck {
   Method num=KikPlayerActivity.class.getDeclaredMethod("num",String.class);num.setAccessible(true);require((Integer)num.invoke(null,"4k")==2160,"4K resolution");require((Integer)num.invoke(null,"2K")==1440,"2K resolution");require((Integer)num.invoke(null,"1080p Ultra")>(Integer)num.invoke(null,"1080p"),"Ultra ordering");
   Site.Film f=new Site.Film();for(int i=1;i<=3;i++){Site.Episode e=new Site.Episode();e.season=i==3?"2":"1";e.episode=i==3?"1":String.valueOf(i);f.episodes.add(e);}
   Method next=KikPlayerActivity.class.getDeclaredMethod("next",Site.Film.class,String.class,String.class);next.setAccessible(true);require(next.invoke(null,f,"1","1")==f.episodes.get(1),"Next episode");require(next.invoke(null,f,"1","2")==f.episodes.get(2),"Next season");require(next.invoke(null,f,"2","1")==null,"Last episode");
-  System.out.println("Player checks passed: 11");
+  Method keys=KikPlayerActivity.class.getDeclaredMethod("playerKey",int.class);keys.setAccessible(true);
+  for(int key:new int[]{4,19,20,21,22,23,62,66,85,89,90,126,127})require((Boolean)keys.invoke(null,key),"Player remote key must be handled");
+  for(int key:new int[]{3,24,25,26,164,187})require(!(Boolean)keys.invoke(null,key),"System key must keep its system behaviour");
+  System.out.println("Player checks passed: 30");
  }
 }

@@ -56,7 +56,7 @@ public final class BrowseActivity extends Activity {
     mic.setOnClickListener(v->listen());LinearLayout.LayoutParams ml=new LinearLayout.LayoutParams(dp(60),dp(60));ml.setMargins(0,dp(6),0,0);bar.addView(mic,ml);}
    final Runnable run=typed;
    query.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int b,int c){}public void onTextChanged(CharSequence s,int a,int b,int c){}
-    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setVisibility(View.GONE);showIdle(true);}}});
+    public void afterTextChanged(Editable s){Ui.MAIN.removeCallbacks(run);if(s.toString().trim().length()>=3)Ui.MAIN.postDelayed(run,1100);else{generation++;cards.clear();grid.removeAllViews();openRow=null;inRow=0;loading=false;end=true;page=0;status.setVisibility(View.GONE);showIdle(true);}}});
    query.setOnEditorActionListener((v,a,e)->{Ui.MAIN.removeCallbacks(run);remember(query.getText().toString());reload();InputMethodManager im=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);im.hideSoftInputFromWindow(v.getWindowToken(),0);return true;});
    Ui.space(content,10);
    idle=new LinearLayout(this);idle.setOrientation(1);idle.setClipChildren(false);idle.setClipToPadding(false);content.addView(idle);
@@ -89,11 +89,11 @@ public final class BrowseActivity extends Activity {
   if(!show||genres.getChildCount()>0)return;
   Ui.bg(()->{try{final List<Site.Genre> list=Site.genres(category);List<String> names=new ArrayList<String>();for(Site.Genre x:list)names.add(x.name);
     final Map<String,String> uk=TitleTranslate.resolve(names,Ui.TRANSLATE_WAIT);
-    Ui.MAIN.post(()->{TextView all=Ui.chip(this,"Усі");genres.addView(all,Ui.wrap(this,10));all.setOnClickListener(v->{genre=null;paintGenres();reload();});
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed())return;TextView all=Ui.chip(this,"Усі");genres.addView(all,Ui.wrap(this,10));all.setOnClickListener(v->{genre=null;paintGenres();reload();});
      for(final Site.Genre x:list){String n=uk.get(x.name);TextView c=Ui.chip(this,n==null?TitleTranslate.shown(x.name):n);c.setTag(x.slug);genres.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{genre=x.slug;paintGenres();reload();});}
      paintGenres();});
     Map<String,String> translated=TitleTranslate.resolve(names);Ui.MAIN.post(()->{if(isFinishing()||isDestroyed())return;for(int i=0;i<list.size()&&i+1<genres.getChildCount();i++){String t=translated.get(list.get(i).name);((TextView)genres.getChildAt(i+1)).setText(t!=null?t:list.get(i).name);}});
-   }catch(Exception e){Ui.MAIN.post(()->Ui.toast(this,"Не вдалося завантажити жанри"));}});
+   }catch(Exception e){Ui.MAIN.post(()->{if(!isFinishing()&&!isDestroyed())Ui.toast(this,"Не вдалося завантажити жанри");});}});
  }
  private void paintGenres(){for(int i=0;i<genres.getChildCount();i++){TextView c=(TextView)genres.getChildAt(i);Ui.select(c,genre==null?c.getTag()==null:genre.equals(c.getTag()));}}
 
@@ -124,7 +124,7 @@ public final class BrowseActivity extends Activity {
     for(final G g:items){View card=Ui.card(this,g.title,g.sub,g.poster,null,0,null,()->FilmActivity.open(this,g.link,g.title,g.poster));row.addView(card);}});
   });
  }
- private void reload(){if(idle!=null)showIdle(false);cards.clear();generation++;page=0;end=false;loading=false;grid.removeAllViews();openRow=null;inRow=0;status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);more();}
+ private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if(idle!=null)showIdle(false);cards.clear();generation++;page=0;end=false;loading=false;grid.removeAllViews();openRow=null;inRow=0;status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);more();}
  private void more(){
   if(loading||end)return;loading=true;final int gen=generation;final int next=page+1;
   final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};
@@ -171,7 +171,7 @@ public final class BrowseActivity extends Activity {
   return first;
  }
  @Override public void onBackPressed(){finish();overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}
- @Override protected void onDestroy(){generation++;super.onDestroy();}
+ @Override protected void onDestroy(){generation++;Ui.MAIN.removeCallbacks(typed);cards.clear();super.onDestroy();}
  /** Magnifier for the search field, drawn in the hint colour. */
  private static final class LensIcon extends android.graphics.drawable.Drawable {
   private final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);private final int size;
