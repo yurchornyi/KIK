@@ -42,7 +42,7 @@ let adminCookie,memberCookie,memberId;try{
  const personal=await req('/api/recommendations',{profile_id:p,items:candidates},memberCookie);check(personal.status===200&&personal.body.mode==='standard','empty taste safely uses regular recommendations');
  check((await req('/api/admin/profiles/recommendations',{profile_id:p,enabled:false},adminCookie)).body.enabled===false,'admin deactivates enhanced mode');
  const second=await req('/api/auth/login',{email:guestEmail,password});check((await req('/api/auth/logout-others',{},memberCookie)).status===200,'end other sessions');check((await req('/api/me',undefined,second.cookie)).body.user===null,'other session revoked');check((await req('/api/me',undefined,memberCookie)).body.user.id===memberId,'current session preserved');
- check((await req('/api/admin/users/delete',{id:adminId,confirm:adminEmail},adminCookie)).status===400,'admin cannot delete itself');
+ check((await req('/api/admin/users/delete',{id:adminId,confirm:adminEmail},adminCookie)).status===403,'admin cannot delete itself');
  check((await req('/api/admin/users/delete',{id:memberId,confirm:'wrong@example.invalid'},adminCookie)).status===400,'deletion needs exact email confirmation');
  check((await req('/api/sync',{profile_id:p,records:[{kind:'later',key:'films/fiction/981-matrica-1999.html',data:{link:'https://hdrezka.sh/films/fiction/981-matrica-1999.html',title:'QA History'},updated_at:Date.now()}]},memberCookie)).status===200,'deletion fixture includes saved records');
  const pair=await req('/api/pair/start',{});await req('/api/pair/claim',{code:pair.body.user_code,profile_id:p},memberCookie);
