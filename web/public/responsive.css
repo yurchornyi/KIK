@@ -33,9 +33,9 @@ main{min-width:0}
 .poster-title{color:#e7e7ec}
 .poster-info{color:#a3a3ae}
 .shelf:has(.shelf-line:empty){display:none}
-footer{width:calc(100% - 2 * var(--page-gutter));max-width:1748px;margin:32px auto 0;padding-bottom:max(28px,env(safe-area-inset-bottom));min-width:0}
-.foot-brand,.foot-links{min-width:0;gap:16px}
-.foot-links a,.foot-links .text-button{min-height:44px;display:inline-flex;align-items:center}
+footer{width:calc(100% - 2 * var(--page-gutter));max-width:1748px;margin:28px auto 0;padding-bottom:max(18px,env(safe-area-inset-bottom));min-width:0}
+.foot-brand,.foot-links{min-width:0;gap:6px 16px}
+.foot-links a,.foot-links .text-button{min-height:44px;display:inline-flex;align-items:center}@media (pointer:fine){.foot-links a,.foot-links .text-button{min-height:32px}}
 .text-button{min-height:44px}
 dialog{max-height:calc(100dvh - 32px);overscroll-behavior:contain;scrollbar-gutter:stable;padding-top:56px}
 dialog[open]{animation:dialog-in .16s ease-out}
@@ -117,8 +117,8 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
  .detail-poster{width:80px;margin-top:0}
  .detail-actions{gap:8px}
  .auth-kicker{padding-right:20px;letter-spacing:1.3px}
- footer{grid-template-columns:1fr;margin-top:24px}
- .foot-links{gap:8px 18px;justify-content:flex-start}
+ footer{grid-template-columns:1fr;margin-top:20px;gap:4px} .foot-brand>span+span{border-left:0;padding-left:0}
+ .foot-links{gap:0 18px;justify-content:flex-start}
 }
 @media(max-width:380px){
  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
