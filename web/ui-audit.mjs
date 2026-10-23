@@ -88,7 +88,7 @@ try{
     ['pair',()=>page.locator('#connect-tv').click()],
     ['countries',async()=>{await page.locator('[data-tab=settings]').click();await page.getByRole('button',{name:'Приховані країни',exact:true}).click();}],
     ['avatars',()=>page.getByRole('button',{name:'Змінити аватарку',exact:true}).click()],
-    ['taste',()=>page.getByRole('button',{name:'Налаштувати смак',exact:true}).click()],
+    ['taste',async()=>{await page.locator('[data-tab=settings]').click();await page.getByRole('button',{name:'Налаштувати смак',exact:true}).click();}],
    ]){await open();await page.locator('#modal[open]').waitFor();await inspect(page,label,{engine});await page.locator('#modal .close').click();}
    await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=films]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await inspect(page,'details',{engine});await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'player',{engine});await page.locator('#player-modal .close').click();
    await page.locator('#search-open').click();await page.locator('#modal input').fill('Історія');await page.locator('#modal form').evaluate(f=>f.requestSubmit());await page.waitForFunction(()=>document.querySelector('#main h1')?.textContent.startsWith('Результати'));await inspect(page,'search-results',{engine});
