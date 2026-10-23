@@ -21,7 +21,7 @@ public final class RatingPromptAudit extends Instrumentation {
  @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();original=ProfileStore.current(c);list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
  File clip=new File(c.getExternalFilesDir(null),"rate-test.mp4");check("synthetic 4-minute clip exists",clip.length()>10000);
  qa=ProfileStore.create(c,"QA Rating","Rate6789").id;c.getSharedPreferences("kik_profiles",0).edit().putString("current",qa).commit();ProfileStore.completeTasteSetup(c,qa);
- Site.Film f=new Site.Film();f.link="https://hdrezka.sh/films/drama/1-rating-audit.html";f.id="0";f.title="Перевірка оцінки";f.origin="https://127.0.0.1";Site.Voice v=new Site.Voice();v.id="0";v.name="Synthetic";set(KikPlayerActivity.class,"film",f);set(KikPlayerActivity.class,"voice",v);
+ Site.Film f=new Site.Film();f.link="https://hdrezka.sh/films/drama/1-rating-audit.html";f.id="0";f.title="Перевірка оцінки";f.origin="https://127.0.0.1";Site.Voice v=new Site.Voice();v.id="0";v.name="Synthetic";set(KikPlayerActivity.class,"openingFilm",f);set(KikPlayerActivity.class,"openingVoice",v);
  p=(KikPlayerActivity)startActivitySync(new Intent(c,KikPlayerActivity.class).putExtra("title",f.title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
  ui(()->{call("endIntro",new Class[]{});set(p,"generation",(Integer)get(p,"generation")+1);Site.Stream s=new Site.Stream();s.qualities.put("1080p",clip.toURI().toString());set(p,"stream",s);set(p,"quality","1080p");set(p,"resumeAt",0L);set(p,"playWhenReady",true);call("play",new Class[]{});return null;});
  check("clip plays",await(()->ui(()->p.playing()&&p.duration()>200_000),15000));

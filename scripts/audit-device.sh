@@ -43,6 +43,13 @@ if [ "${KIK_AUDIT_MODE:-full}" = recommendations ]; then
  python3 -c 'import json; assert json.load(open("outputs/design-audit/recommendations.json"))["passed"]'
  exit 0
 fi
+if [ "${KIK_AUDIT_MODE:-full}" = performance ]; then
+ adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.UiPerformanceAudit | tee outputs/design-audit/ui-performance-instrumentation.txt
+ adb -s "$DEVICE" pull /sdcard/Android/data/rezkatv.web.app.uk/files/design-audit/ui-performance.json outputs/design-audit/ui-performance.json
+ python3 -c 'import json; r=json.load(open("outputs/design-audit/ui-performance.json")); print({k:r[k] for k in ("frames","frame_p50_ms","frame_p95_ms","frames_over_32ms") if k in r}); assert r["passed"]'
+ adb -s "$DEVICE" shell am start -n rezkatv.web.app.uk/kik.i18n.HomeActivity
+ exit 0
+fi
 AUDIT_SCREEN_ARGS=(-e noScreenshots false)
 if [ "${KIK_AUDIT_NO_SCREENSHOTS:-0}" = 1 ]; then AUDIT_SCREEN_ARGS=(-e noScreenshots true); fi
 adb -s "$DEVICE" shell am instrument -w -r "${AUDIT_SCREEN_ARGS[@]}" kik.audit/kik.qa.AuditRunner | tee outputs/design-audit/instrumentation.txt

@@ -47,6 +47,12 @@ jobs:
         run: |
           javac -d /tmp/kik-checks localization/java/kik/i18n/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java
           java -cp /tmp/kik-checks RecoveryPolicyCheck
+      - name: TV image memory and focus scrolling
+        run: |
+          mkdir -p /tmp/kik-ui-checks
+          javac -d /tmp/kik-ui-checks localization/java/kik/i18n/ImageDecodePolicy.java scripts/ImageDecodeCheck.java localization/java/kik/i18n/FocusScrollPolicy.java scripts/FocusScrollCheck.java
+          java -cp /tmp/kik-ui-checks kik.i18n.ImageDecodeCheck
+          java -cp /tmp/kik-ui-checks kik.i18n.FocusScrollCheck
       - name: Android helpers compile with ExoPlayer
         run: |
           python3 scripts/localize.py --java-only
