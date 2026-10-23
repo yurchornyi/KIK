@@ -29,7 +29,7 @@ public final class OpenTitleActivity extends Activity {
  private volatile boolean gone;
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);Ui.screen(this);
+  super.onCreate(state);if(Account.gate(this))return;Ui.screen(this);
   Intent in=getIntent();
   String link=clean(in.getStringExtra(LINK));
   if(RecoveryPolicy.title(link)){

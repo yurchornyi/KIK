@@ -47,7 +47,7 @@ public final class ProfilesActivity extends Activity {
   space(30);
   LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(actions);
   if(!manage){
-   Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
+   Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{if(!Account.token(this).isEmpty()){SignInActivity.addProfile(this);return;}content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
    Button edit=button("Керувати профілями");actions.addView(edit,params(280));edit.setOnClickListener(v->{manage=true;render();});
   }else{
    Button done=button("Готово");actions.addView(done,params(200));done.setOnClickListener(v->{manage=false;render();});
@@ -76,6 +76,8 @@ public final class ProfilesActivity extends Activity {
   name.requestFocus();
  }
  private void unlock(final ProfileStore.Profile p){
+  // Profiles made at sign-in have no password of their own: the account password protects them.
+  if(ProfileStore.checkPassword(p,"")){edit(p);return;}
   final EditText pass=input("Пароль профілю",true);
   Ui.dialog(this).setTitle("Профіль «"+p.name+"»").setView(pass).setNegativeButton("Скасувати",null)
    .setPositiveButton("Далі",(d,w)->{if(ProfileStore.checkPassword(p,pass.getText().toString()))edit(p);else toast("Неправильний пароль");}).show();

@@ -47,6 +47,8 @@ public final class ProfileStore {
   p.salt=UUID.randomUUID().toString();p.hash=hash(p.salt,password);p.avatar=Avatars.valid(avatar)?avatar:Avatars.idAt(all.size());
   p.tasteSetup=false;all.add(p);if(!save(c,all))throw new IllegalStateException("Profile could not be saved");return p;
  }
+ /** Profiles made at sign-in open the home screen; taste setup stays one click away there. */
+ static synchronized boolean skipTasteSetup(Context c,String id){List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id)){p.tasteSetup=true;return save(c,all);}return false;}
  public static boolean needsTasteSetup(Context c,String id){for(Profile p:list(c))if(p.id.equals(id))return !p.tasteSetup;return false;}
  public static synchronized boolean completeTasteSetup(Context c,String id){if(!id.equals(current(c)))return false;List<Profile> all=list(c);for(Profile p:all)if(p.id.equals(id)){p.tasteSetup=true;return save(c,all);}return false;}
  public static boolean checkPassword(Profile p,String password){return p.hash!=null&&p.hash.equals(hash(p.salt,password));}
@@ -75,7 +77,7 @@ public final class ProfileStore {
  public static void choose(Activity a,String id){
   prefs(a).edit().putString("current",id).commit();
   picked=true;
-  if(id.equals(loaded)&&!list(a).isEmpty()&&!needsTasteSetup(a,id)){a.finish();return;}
+  if(id.equals(loaded)&&!list(a).isEmpty()&&!needsTasteSetup(a,id)&&!a.isTaskRoot()){a.finish();return;}
   try{
    // Obfuscated names from RezkaTV 1.2.0: i72 is the film/progress cache, gu7.r(Context) creates it.
    java.lang.reflect.Field h=Class.forName("i72").getDeclaredField("h");h.setAccessible(true);h.set(null,null);
