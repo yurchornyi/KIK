@@ -32,7 +32,7 @@ public final class HomeActivity extends Activity {
  private static final android.view.animation.Interpolator EASE=new android.view.animation.DecelerateInterpolator(1.6f);private boolean expanded,loadedOnce;
  private final Handler main=new Handler(Looper.getMainLooper());
  private volatile Map<String,String> uk=new HashMap<String,String>();
- private LinearLayout recommendedLine;private TextView recommendedHeading;private String recommendationKeys="";
+ private LinearLayout menuRow;private LinearLayout recommendedLine;private TextView recommendedHeading;private String recommendationKeys="";
  /** The heading and the line of every row on screen, by title, and the rows themselves: one row can be redrawn alone. */
  private final Map<String,View[]> rowViews=new HashMap<String,View[]>();private List<Row> shownRows=new ArrayList<Row>();
  private final Map<String,LinearLayout> recommendationLines=new HashMap<String,LinearLayout>();private final Map<String,String> recommendationSignatures=new HashMap<String,String>();private List<Item> tasteChoices=new ArrayList<Item>();
@@ -84,13 +84,14 @@ public final class HomeActivity extends Activity {
 
  private long cloudRevision=CloudSync.revision();
  private final Runnable cloudTick=new Runnable(){public void run(){if(destroyed||!foreground)return;CloudSync.now(HomeActivity.this);long next=CloudSync.revision();if(next!=cloudRevision){cloudRevision=next;load();}main.postDelayed(this,15000);}};
- @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
- @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
+ @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();main.postDelayed(this::resumeSlides,700);}}
+ @Override protected void onPause(){foreground=false;main.removeCallbacks(idleResume);AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
  @Override protected void onDestroy(){destroyed=true;loadGeneration++;main.removeCallbacksAndMessages(null);super.onDestroy();}
  private long backAt;private TextView backHint;
  /** Back twice leaves the app; the first press only shows a quiet hint (no dialog). */
  // The app opts into predictive back, so onBackPressed is not called on Android 13+: handle the key itself.
  @Override public boolean dispatchKeyEvent(KeyEvent e){
+  if(e.getAction()==KeyEvent.ACTION_DOWN)armIdle();
   if(e.getKeyCode()==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   return super.dispatchKeyEvent(e);
  }
@@ -162,7 +163,7 @@ public final class HomeActivity extends Activity {
  private View topBar(){
   LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
-  LinearLayout menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
+  menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
   HorizontalScrollView navigation=Ui.horizontal(this,menuRow);LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,-2,1);navLp.setMargins(dp(14),0,dp(10),0);bar.addView(navigation,navLp);
   menuRow.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
   menuRow.addView(menu("Каталог ▾",this::catalogueMenu));
@@ -472,6 +473,18 @@ public final class HomeActivity extends Activity {
  private void showSlide(int n){slide=n;setHero(slides.get(n));paintDots();scheduleSlide();}
  private void scheduleSlide(){main.removeCallbacks(nextSlide);if(slides.size()>1)main.postDelayed(nextSlide,9000);}
  private void stopSlides(){main.removeCallbacks(nextSlide);slides.clear();paintDots();}
+ /** The show stops while a card chooses the hero. Back on the hero's buttons or the menu, or back from a title, it goes on
+  *  from the title on screen (which keeps its turn even when it is not among the picks). */
+ private void resumeSlides(){resumeSlides(false);}
+ private void resumeSlides(boolean idle){
+  if(destroyed||!foreground||!slides.isEmpty()||candidates.isEmpty()||hero==null||!idle&&!heroArea(getCurrentFocus()))return;
+  arrange();int at=slides.indexOf(hero);if(at<0){slides.add(0,hero);if(slides.size()>10)slides.remove(slides.size()-1);at=0;}
+  slide=at;paintDots();scheduleSlide();
+ }
+ private boolean heroArea(View v){return v!=null&&(v==watch||v==later||v==more||v.getParent()==menuRow);}
+ /** A card keeps the hero only while the remote is busy: after 15 s without a key the show goes on from that title. */
+ private static final long IDLE_MS=15000;private final Runnable idleResume=()->resumeSlides(true);
+ private void armIdle(){main.removeCallbacks(idleResume);main.postDelayed(idleResume,IDLE_MS);}
  /** Small pills under the buttons. The slide on screen is a wider track that fills up in white over the 9 s it stays,
  *  like Netflix; the fill only scales (a render property), so the weak GPU never redraws the hero for it. */
  private void paintDots(){dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
@@ -513,12 +526,12 @@ public final class HomeActivity extends Activity {
  private TextView menu(String label,View.OnClickListener l){
   TextView t=text(label,14,0xffd0d0d4);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
   t.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));t.setTextColor(Ui.buttonText(false));
-  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f)scroll.smoothScrollTo(0,0);});
+  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f){scroll.smoothScrollTo(0,0);resumeSlides();}});
   t.setOnClickListener(l);return t;
  }
  private Button action(String label,int icon,boolean primary){
   Button b=HeroActions.button(this,label,icon,primary);
-  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f)scroll.smoothScrollTo(0,0);});
+  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f){scroll.smoothScrollTo(0,0);resumeSlides();}});
   return b;
  }
  private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
