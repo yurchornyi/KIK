@@ -175,7 +175,7 @@ public final class Site {
  public static List<Genre> genres(String category)throws IOException{
   String html=page(listPath(category,null,"last",1));List<Genre> out=new ArrayList<Genre>();Set<String> seen=new HashSet<String>();
   Matcher m=Pattern.compile("href=\"(?:https?://[^/]+)?/"+Pattern.quote(category)+"/([a-z0-9\\-]+)/\"[^>]*>([^<]+)</a>").matcher(html);
-  while(m.find()){if(!seen.add(m.group(1)))continue;Genre g=new Genre();g.slug=m.group(1);g.name=unescape(m.group(2)).trim();out.add(g);}
+  while(m.find()){if("page".equals(m.group(1))||!seen.add(m.group(1)))continue;Genre g=new Genre();g.slug=m.group(1);g.name=unescape(m.group(2)).trim();out.add(g);}
   return out;
  }
 
