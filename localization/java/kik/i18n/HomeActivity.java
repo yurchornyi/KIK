@@ -40,7 +40,7 @@ public final class HomeActivity extends Activity {
  private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);
+  super.onCreate(state);TvChannels.start(this);
   getWindow().setFlags(1024,1024);getWindow().getDecorView().setSystemUiVisibility(5894);
   getWindow().setBackgroundDrawable(null);
   root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
@@ -165,6 +165,7 @@ public final class HomeActivity extends Activity {
  private void recommendLater(Recommendations.Snapshot preferences,List<Row> catalogue,int gen,String profile){
   main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{
    Recommendations.refresh(this,preferences);if(!valid(gen,profile)||!foreground)return;
+   Recommendations.refreshAi(this,preferences,catalogue);if(!valid(gen,profile)||!foreground)return;
    Recommendations.enrich(this,preferences,catalogue,()->valid(gen,profile)&&foreground);
    if(!valid(gen,profile))return;final List<Row> updated=Recommendations.rows(this,preferences,catalogue);cacheTranslations(updated);
    main.post(()->{if(valid(gen,profile)){for(Row r:updated)updateRecommendations(r);translateLater(updated,gen,profile);}});
@@ -197,7 +198,7 @@ public final class HomeActivity extends Activity {
   }
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty())first.accept(out[0]);
   for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);try{Row ua=new Row("Українською • UASerials");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Перегляд на сайті джерела";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
  }
  private void saveCache(List<Row> rows){
   JSONArray a=new JSONArray();

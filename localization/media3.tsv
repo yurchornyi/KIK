@@ -1,0 +1,17 @@
+# Player dependencies, fetched by scripts/media3.sh and shrunk into the helper dex under kik.m3 by R8.
+# file	url	sha256
+media3-exoplayer.aar	https://dl.google.com/android/maven2/androidx/media3/media3-exoplayer/1.5.1/media3-exoplayer-1.5.1.aar	11bb9687acd2c0bdd0a99a32006c8ac632ac138ffd996ae7293f375514721b51
+media3-common.aar	https://dl.google.com/android/maven2/androidx/media3/media3-common/1.5.1/media3-common-1.5.1.aar	ee69fc48b9ea9c5e1381cbf89bcab96e254fd7bd1f31891642bb4e1c1f6c6fd7
+media3-datasource.aar	https://dl.google.com/android/maven2/androidx/media3/media3-datasource/1.5.1/media3-datasource-1.5.1.aar	b86cfb137a94bf471d6b2802415edd4fe66038dab6986682133786ca7dd43de2
+media3-decoder.aar	https://dl.google.com/android/maven2/androidx/media3/media3-decoder/1.5.1/media3-decoder-1.5.1.aar	6cd78cad4c1ef8aa16876fcd923eefc3894b538960798698a891cc7f419b8b34
+media3-extractor.aar	https://dl.google.com/android/maven2/androidx/media3/media3-extractor/1.5.1/media3-extractor-1.5.1.aar	f2a146209e040409ed2cea3daa74932011c3b4ac451427f1738569821b21d084
+media3-container.aar	https://dl.google.com/android/maven2/androidx/media3/media3-container/1.5.1/media3-container-1.5.1.aar	b163c43acbb47244b3ffedc5f216f349cfc8ca9585d3b73b7f32b7228fd63dff
+media3-database.aar	https://dl.google.com/android/maven2/androidx/media3/media3-database/1.5.1/media3-database-1.5.1.aar	13bf4ccce6bc9e8ef8e04a62e90fa6c1589b89bee8633f0db9f61ae2c23f6ef6
+media3-exoplayer-hls.aar	https://dl.google.com/android/maven2/androidx/media3/media3-exoplayer-hls/1.5.1/media3-exoplayer-hls-1.5.1.aar	8c3ebcc8f7b285aade63cdd61721256db6f392e97d09c6c613196f8885c8bc0d
+core.aar	https://dl.google.com/android/maven2/androidx/core/core/1.8.0/core-1.8.0.aar	48c64a15ec3eb11bfb33339e5ceb70ec7f821bd2dfa2eb8675ebd5353317e792
+exif.aar	https://dl.google.com/android/maven2/androidx/exifinterface/exifinterface/1.3.6/exifinterface-1.3.6.aar	1804105e9e05fdd8f760413bad5de498c381aa329f4f9d94c851bc891ac654c6
+annexp.aar	https://dl.google.com/android/maven2/androidx/annotation/annotation-experimental/1.4.1/annotation-experimental-1.4.1.aar	6bd4c7c7476f8260cd3bdbb81183583e93fc9f790c27dea7dc314181cbf87aa0
+collection.jar	https://dl.google.com/android/maven2/androidx/collection/collection/1.2.0/collection-1.2.0.jar	16d77e8c443fa55fe9a6074d00445d520ca5c9f913cefdbf4828356255214e42
+annotation.jar	https://dl.google.com/android/maven2/androidx/annotation/annotation-jvm/1.8.0/annotation-jvm-1.8.0.jar	9aab326d9492800991854360ac248f493ce7f7c3183519309b78ace9e240f6f6
+guava.jar	https://repo1.maven.org/maven2/com/google/guava/guava/33.3.1-android/guava-33.3.1-android.jar	2c3e41d1b380f2044d257947a3aa82dabf3ae4b978622745254aa18b6cf89ab0
+failureaccess.jar	https://repo1.maven.org/maven2/com/google/guava/failureaccess/1.0.2/failureaccess-1.0.2.jar	8a8f81cf9b359e3f6dfa691a1e776985c061ef2f223c9b2c80753e1b458e8064

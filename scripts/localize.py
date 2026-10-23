@@ -74,6 +74,8 @@ public final class LocaleBridge {
  }
 }
 ''')
+# CI compiles the helpers without the private decoded APK.
+if '--java-only' in __import__('sys').argv: raise SystemExit
 dst=ROOT/'localized'
 if dst.exists(): shutil.rmtree(dst)
 shutil.copytree(ROOT/'decoded',dst)

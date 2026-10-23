@@ -88,6 +88,17 @@ public final class ProfileStore {
   a.startActivity(new Intent(a,needsTasteSetup(a,id)?TasteActivity.class:HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
  }
 
+ /**
+  * Switches to a profile for an outside request (a home-screen channel). Only a profile without a password: a
+  * locked one keeps the current profile. Returns whether that profile is now current.
+  */
+ public static boolean use(Context c,String id){
+  if(id==null||id.equals(current(c)))return id!=null;Profile p=null;for(Profile x:list(c))if(x.id.equals(id))p=x;
+  if(p==null||!checkPassword(p,""))return false;
+  prefs(c).edit().putString("current",id).commit();picked=true;
+  try{java.lang.reflect.Field h=Class.forName("i72").getDeclaredField("h");h.setAccessible(true);h.set(null,null);Class.forName("gu7").getMethod("r",Context.class).invoke(null,c.getApplicationContext());}catch(Exception e){Log.w("KIK","Profile switch",e);}
+  return true;
+ }
  /** "Who is watching" once per app start, when there is a choice to make. */
  public static boolean picked;
  public static void askOnce(Activity home){

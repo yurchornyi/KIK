@@ -16,7 +16,12 @@ job=b.find("./application/service[@"+ns+"name='kik.i18n.UpdateJob']")
 assert job is not None and job.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE'
 receiver=b.find("./application/receiver[@"+ns+"name='kik.i18n.UpdateReceiver']")
 assert receiver is not None and receiver.get(ns+'exported')=='false'
-assert len(a.findall('./application/activity'))+8==len(b.findall('./application/activity'))
+# KIK replaces the legacy main and player screens with its own; the activity list is explicit.
+activities=lambda m:{e.get(ns+'name') for e in m.findall('./application/activity')}
+assert activities(a)-activities(b)=={'rezkatv.web.app.MainActivity','rezkatv.web.app.PlayerActivity'},activities(a)-activities(b)
+assert activities(b)-activities(a)=={'kik.i18n.'+n for n in ('BasicSettingsActivity','BrowseActivity','FilmActivity','HomeActivity','KikPlayerActivity','OpenTitleActivity','ProfilesActivity','SyncActivity','TasteActivity')},activities(b)-activities(a)
+channels=b.find("./application/service[@"+ns+"name='kik.i18n.TvChannels$Job']")
+assert channels is not None and channels.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE'
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.BasicSettingsActivity']") is not None
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.ProfilesActivity']") is not None
 taste=b.find("./application/activity[@"+ns+"name='kik.i18n.TasteActivity']")
@@ -39,7 +44,7 @@ def urls(path):
    if s.startswith(('http://','https://')):out.add(s)
  return out
 # Added endpoints are translation, KIK services and the existing source's canonical sync base.
-assert urls(root/'localized')-urls(root/'decoded')<={'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=uk','https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ru&tl=uk','https://hdrezka.website','https://hdrezka.website/','https://hdrezka.sh/','https://uaserials.com/',release['update_url'],release['web_url']}
+assert urls(root/'localized')-urls(root/'decoded')<={'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=uk','https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=ru&tl=uk','https://hdrezka.website','https://hdrezka.website/','https://hdrezka.sh/','https://uaserials.com/',release['update_url'],release['web_url'],release['web_url']+'/api/artwork/batch'}
 assert urls(root/'decoded')<=urls(root/'localized')
 repository=(root/'localized/smali/rezkatv/web/app/data/repository/AppUpdateRepository.smali').read_text()
 for m in re.finditer(r'\.method public final checkForUpdates-gIAlu-s[^\n]*\n(.*?)\.end method',repository,re.S):
