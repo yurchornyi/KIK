@@ -39,7 +39,9 @@ public final class CatalogueCheck {
   List<Site.Card> visible=Site.cards(page);
   if(visible.size()!=1||!"Interstellar".equals(visible.get(0).title)||Site.lastRaw()!=2)throw new AssertionError("Default filter hides Russian titles but keeps paging info");
   if(!CountryFilter.blocked("СССР, Казахстан")||CountryFilter.blocked("Украина, США")||CountryFilter.blocked("Россия",new HashSet<String>()))throw new AssertionError("Country matching");
-  System.out.println("Catalogue checks passed: 15");
+  require(Site.nameScore("шерлак","Шерлок")>=.6&&Site.nameScore("відьмак","Ведьмак")>=.6&&Site.nameScore("интерстелар","Интерстеллар")>=.6&&Site.nameScore("пиратыкарибского моря","Пираты Карибского моря: На краю Света")>=.6,"Typos, Ukrainian letters and joined words still match");
+  require(Site.nameScore("брейкінг бед","Бедуин")<.6&&Site.nameScore("кот","Кит")<.6&&Site.distance("шерлко","шерлок",3)==1,"Unrelated titles that share a word do not count as a match");
+  System.out.println("Catalogue checks passed: 17");
  }
  private static void require(boolean ok,String message){if(!ok)throw new AssertionError(message);}
 }

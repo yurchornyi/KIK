@@ -55,7 +55,7 @@ public final class OpenTitleActivity extends Activity {
    if(!title.isEmpty())queries.add(title);
    if(!original.isEmpty()&&!same(original,title))queries.add(original);
    for(String q:queries){
-    try{found=best(Site.search(q,1),title,original,year);}catch(Exception ignored){}
+    try{found=best(Site.search(q,1,false),title,original,year);}catch(Exception ignored){}
     if(found!=null)break;
    }
    final Site.Card hit=found;

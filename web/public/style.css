@@ -123,3 +123,10 @@ dialog.search-modal{width:min(980px,94vw)}
 .search-tile .poster-title{font-size:12.5px}
 .search-tile .poster-info{font-size:11px}
 @media(max-width:720px){.search-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.search-block{margin-top:18px}}
+
+.search-fixed{color:var(--muted);font-size:14px;margin:-6px 0 18px}
+.detail-similar{position:relative;padding:4px 40px 32px}
+.detail-similar h3{font-size:18px;letter-spacing:-.4px;margin:0 0 14px}
+.similar-line{display:grid;grid-auto-flow:column;grid-auto-columns:calc((100% - 60px)/6);gap:12px;overflow-x:auto;padding:4px 2px 12px;margin:0 -2px;scroll-snap-type:x mandatory;scrollbar-width:thin;scrollbar-color:#36363d transparent}
+.similar-line .poster{scroll-snap-align:start}
+@media (max-width:700px){.detail-similar{padding:0 18px 24px}.similar-line{grid-auto-columns:30%}}

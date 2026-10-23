@@ -7,9 +7,11 @@ import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
-import {exchange,titleKey} from "./sync.mjs";
+import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
+import {searchAlternatives} from "./search-fix.mjs";
+import {similar} from "./similar.mjs";
 import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
 import {synopsis} from "./synopsis.mjs";
@@ -44,7 +46,8 @@ async function api(request,env,ctx){
  // Ad clips inside sponsored voice tracks: players read them, the scanner PC fills them in.
  if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams)));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
- if(path==="/api/search-aliases")return json({aliases:await aliases(url.searchParams.get("query"))});
+ // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
+ if(path==="/api/search-aliases")return json({aliases:await searchAlternatives(db,env,url.searchParams.get("query")||"",aliases)});
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
@@ -106,6 +109,9 @@ async function api(request,env,ctx){
  if(path==="/api/catalogue"){
   const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk4"),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:await localizedCards(db,data)});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
+ // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
+ if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
+  const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:catalogue}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()));return r;}
  if(path==="/api/film"){const link=url.searchParams.get("link"),f=new URL(link).hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return json(await localizedFilm(db,f));}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env);}

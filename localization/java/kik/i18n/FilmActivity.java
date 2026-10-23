@@ -14,7 +14,7 @@ public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
  private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo;private Button watch,later;private ImageView backdrop;
- private LinearLayout body,voices,seasons,episodes;private HorizontalScrollView voicesBox;private View epHeader;
+ private LinearLayout body,voices,seasons,episodes,similar;private View similarHeader;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
 
@@ -26,7 +26,7 @@ public final class FilmActivity extends Activity {
  /** A series' run from its card, or else from the source's search card for the same title; null if unknown. */
  private static String run(Site.Film f,String hint){
   if(hint!=null&&hint.matches("\\d{4}\\s*-.*"))return hint;if(!f.series||f.year!=null&&f.year.contains("-"))return null;
-  try{for(Site.Card c:Site.search(f.original!=null&&!f.original.isEmpty()?f.original:f.title,1))if(Progress.norm(c.link).equals(Progress.norm(f.link))){String y=c.year();return y!=null&&y.contains("-")?y:null;}}catch(Exception ignored){}
+  try{for(Site.Card c:Site.search(f.original!=null&&!f.original.isEmpty()?f.original:f.title,1,false))if(Progress.norm(c.link).equals(Progress.norm(f.link))){String y=c.year();return y!=null&&y.contains("-")?y:null;}}catch(Exception ignored){}
   return null;
  }
 
@@ -57,6 +57,8 @@ public final class FilmActivity extends Activity {
   epHeader=Ui.bold(this,"Серії",20);epHeader.setPadding(0,dp(20),0,dp(8));epHeader.setVisibility(View.GONE);body.addView(epHeader);
   HorizontalScrollView sb=new HorizontalScrollView(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
   HorizontalScrollView eb=new HorizontalScrollView(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
+  similarHeader=Ui.bold(this,"Вам може сподобатися",20);similarHeader.setPadding(0,dp(24),0,dp(4));similarHeader.setVisibility(View.GONE);body.addView(similarHeader);
+  similar=new LinearLayout(this);similar.setOrientation(0);HorizontalScrollView sim=Ui.horizontal(this,similar);sim.setPadding(0,dp(2),dp(8),dp(6));body.addView(sim);
   watch.setOnClickListener(v->play(null,null));
   later.setOnClickListener(v->{boolean on=Progress.toggleLater(this,link,name.getText().toString(),poster,film==null?null:film.year,film==null||film.genres.isEmpty()?null:tr(film.genres.get(0)));paintLater(on);Ui.toast(this,on?"Додано до «Переглянути пізніше»":"Прибрано зі списку");});
   voiceChip.setOnClickListener(v->{boolean show=voicesBox.getVisibility()!=View.VISIBLE;voicesBox.setVisibility(show?View.VISIBLE:View.GONE);if(show&&voices.getChildCount()>0)voices.getChildAt(0).requestFocus();});
@@ -86,12 +88,23 @@ public final class FilmActivity extends Activity {
     // The page lists one voice's episodes; show every season the leading voices have.
     if(f.series&&f.sourceUrl==null){final List<Site.Episode> all=Site.allEpisodes(f,4);Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f||all.size()<=f.episodes.size())return;
      f.episodes=new ArrayList<Site.Episode>(all);f.seasons.clear();for(Site.Episode x:all)if(!f.seasons.contains(x.season))f.seasons.add(x.season);if(season==null||!f.seasons.contains(season))season=f.seasons.isEmpty()?null:f.seasons.get(0);showEpisodes();});}
+    Ui.bg(()->loadSimilar(f,generation));
     Map<String,String> got=TitleTranslate.resolve(words);
     final String d=DescTranslate.tr(f.description);
     String span=run(f,null);if(span!=null)f.year=span;
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
    }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText("Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
   });
+ }
+ /** «Вам може сподобатися»: titles like this one KIK can play (from KIK's service), else the page's own «see also». */
+ private void loadSimilar(final Site.Film f,final int generation){
+  List<Site.Card> list=FreeSources.similar(f.link);final boolean named=!list.isEmpty();if(!named)list=f.related;
+  final List<Site.Card> items=new ArrayList<Site.Card>();for(Site.Card c:list)if(!Progress.norm(c.link).equals(Progress.norm(f.link))&&items.size()<12)items.add(c);if(items.isEmpty())return;
+  // The service already sends Ukrainian names; the page's own list still needs translating.
+  List<String> words=new ArrayList<String>();for(Site.Card c:items){if(!named)words.add(c.title);if(c.genre()!=null)words.add(c.genre());}final Map<String,String> got=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
+  Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(got);similar.removeAllViews();
+   for(final Site.Card c:items){final String title=named?c.title:tr(c.title),year=c.year();similar.addView(Ui.card(this,title,Ui.join(year,tr(c.genre())),c.poster,null,0,null,()->open(this,c.link,title,c.poster,year)));}
+   similarHeader.setVisibility(View.VISIBLE);});
  }
  private String tr(String s){if(s==null)return null;String t=uk.get(s);if(t!=null)return t;t=Ua.t(s);return t.equals(s)?TitleTranslate.shown(s):t;}
  private void show(Site.Film f,String description){
