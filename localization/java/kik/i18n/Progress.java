@@ -61,11 +61,23 @@ public final class Progress {
  static synchronized void cloudApply(Context c,String p,JSONObject progress,JSONArray later)throws IOException{atomicWrite(file(c,"progress",p),progress.toString());atomicWrite(file(c,"later",p),later.toString());}
  // ---------- watch later (same file format as the home screen used) ----------
  /** Voice the viewer chose explicitly for one title in this profile; wins over automatic ordering. */
- public static synchronized String voice(Context c,String link){try{return new JSONObject(Site.read(new android.util.AtomicFile(file(c,"voices")).openRead())).optString(norm(link),null);}catch(Exception e){return null;}}
+ public static synchronized String voice(Context c,String link){JSONObject chosen=choices(c,link);if(chosen!=null&&!chosen.optString("voice").isEmpty())return chosen.optString("voice");try{return new JSONObject(Site.read(new android.util.AtomicFile(file(c,"voices")).openRead())).optString(norm(link),null);}catch(Exception e){return null;}}
  public static synchronized void chooseVoice(Context c,String link,String voice){
   if(link==null||voice==null)return;JSONObject o;try{o=new JSONObject(Site.read(new android.util.AtomicFile(file(c,"voices")).openRead()));}catch(Exception e){o=new JSONObject();}
   try{o.remove(norm(link));o.put(norm(link),voice);while(o.length()>500)o.remove(o.keys().next());atomicWrite(file(c,"voices"),o.toString());}catch(Exception e){android.util.Log.w("KIK","Save voice",e);}
+  choose(c,link,voice,"voice",voice);
  }
+ /** Voice, quality and speed the viewer picked for one title in this profile (null if none): the player opens with them
+  *  next time; synced as the «voice» record, the same as on the web. */
+ public static synchronized JSONObject choices(Context c,String link){return cloudChoices(c,ProfileStore.current(c)).optJSONObject(norm(link));}
+ /** Remembers one pick for the title; the voice playing now is kept with it, as the synced record needs one. */
+ public static synchronized void choose(Context c,String link,String voice,String key,Object value){
+  if(link==null||norm(link).isEmpty())return;String p=ProfileStore.current(c);JSONObject all=cloudChoices(c,p);
+  try{JSONObject o=all.optJSONObject(norm(link));if(o==null)o=new JSONObject();all.remove(norm(link));o.put("link",link).put(key,value).put("ts",System.currentTimeMillis());if(o.optString("voice").isEmpty()&&voice!=null)o.put("voice",voice);all.put(norm(link),o);
+   while(all.length()>500)all.remove(all.keys().next());atomicWrite(file(c,"choices",p),all.toString());}catch(Exception e){android.util.Log.w("KIK","Save choices",e);}
+ }
+ static synchronized JSONObject cloudChoices(Context c,String p){try{return new JSONObject(Site.read(new android.util.AtomicFile(file(c,"choices",p)).openRead()));}catch(Exception e){return new JSONObject();}}
+ static synchronized void cloudApplyChoices(Context c,String p,JSONObject all)throws IOException{atomicWrite(file(c,"choices",p),all.toString());}
  private static File laterFile(Context c){return new File(c.getFilesDir(),"kik_later_"+ProfileStore.current(c)+".json");}
  public static synchronized JSONArray later(Context c){return later(c,ProfileStore.current(c));}
  public static synchronized JSONArray later(Context c,String profile){try{return new JSONArray(Site.read(new android.util.AtomicFile(file(c,"later",profile)).openRead()));}catch(Exception e){return new JSONArray();}}

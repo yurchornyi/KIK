@@ -83,6 +83,7 @@ public final class KikPlayerActivity extends Activity {
  @Override public void onCreate(Bundle state){
   super.onCreate(state);film=openingFilm;voice=openingVoice;profileId=ProfileStore.current(this);Ui.screen(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
   if(film==null||voice==null){finish();return;}
+  {org.json.JSONObject chosen=Progress.choices(this,film.link);if(chosen!=null)speed=(float)chosen.optDouble("speed",1);}
   season=getIntent().getStringExtra("season");episode=getIntent().getStringExtra("episode");title=getIntent().getStringExtra("title");poster=getIntent().getStringExtra("poster");
   root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);setContentView(root);
   screen=new FrameLayout(this);root.addView(screen,new FrameLayout.LayoutParams(-1,-1));
@@ -259,7 +260,7 @@ public final class KikPlayerActivity extends Activity {
   if(player.getPlayerError()!=null){player.seekTo(resumeAt);player.setPlayWhenReady(wanted());player.prepare();}else play();
  }
  private String pickQuality(Site.Stream s){
-  String want=getSharedPreferences("settings",0).getString("default_quality","1080p");int target=num(want);String best=null;int bestN=-1;
+  org.json.JSONObject chosen=Progress.choices(this,film.link);String want=chosen!=null&&!chosen.optString("quality").isEmpty()?chosen.optString("quality"):getSharedPreferences("settings",0).getString("default_quality","1080p");int target=num(want);String best=null;int bestN=-1;
   for(String q:s.qualities.keySet()){if(q.equals(want))return q;int n=num(q);if(n<=target+1&&n>bestN){best=q;bestN=n;}}
   if(best==null)for(String q:s.qualities.keySet())best=q;return best;
  }
@@ -426,10 +427,10 @@ public final class KikPlayerActivity extends Activity {
  }
  private void openQualities(){
   if(stream==null||!prepared)return;List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  for(final String q:stream.qualities.keySet()){if(q.equals(quality))sel=l.size();l.add(q);a.add(()->{if(q.equals(quality))return;resumeAt=prepared?pos():resumeAt;prepared=false;quality=q;manualQuality=true;rebuffers.clear();paintSub();loading.setText("Підготовка відео");waiting(true);play();});}
+  for(final String q:stream.qualities.keySet()){if(q.equals(quality))sel=l.size();l.add(q);a.add(()->{if(q.equals(quality))return;resumeAt=prepared?pos():resumeAt;prepared=false;quality=q;manualQuality=true;Progress.choose(this,film.link,voice.id,"quality",q);rebuffers.clear();paintSub();loading.setText("Підготовка відео");waiting(true);play();});}
   openMenu("quality",l,a,sel);
  }
- private void openSpeeds(){List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=1;for(int i=0;i<SPEEDS.length;i++){final float s=SPEEDS[i];if(s==speed)sel=i;l.add((s==(int)s?String.valueOf((int)s):String.valueOf(s))+"x");a.add(()->{speed=s;applySpeed();});}openMenu("speed",l,a,sel);}
+ private void openSpeeds(){List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=1;for(int i=0;i<SPEEDS.length;i++){final float s=SPEEDS[i];if(s==speed)sel=i;l.add((s==(int)s?String.valueOf((int)s):String.valueOf(s))+"x");a.add(()->{speed=s;applySpeed();Progress.choose(this,film.link,voice.id,"speed",(double)s);});}openMenu("speed",l,a,sel);}
  private void openSubtitles(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();l.add("Вимкнено");a.add(()->{subGeneration++;subIndex=-1;cues.clear();subtitle.setText("");});
   if(stream!=null)for(int i=0;i<stream.subtitleList.size();i++){final int index=i;final String[] s=stream.subtitleList.get(i);l.add(Ua.t(s[0]));a.add(()->loadSubtitles(s[1],index));}

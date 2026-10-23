@@ -66,6 +66,7 @@ public final class ProfileStore {
   new android.util.AtomicFile(new File(c.getFilesDir(),"kik_progress_"+id+".json")).delete();
   new android.util.AtomicFile(new File(c.getFilesDir(),"kik_later_"+id+".json")).delete();
   new android.util.AtomicFile(new File(c.getFilesDir(),"kik_voices_"+id+".json")).delete();
+  new android.util.AtomicFile(new File(c.getFilesDir(),"kik_choices_"+id+".json")).delete();
   Recommendations.delete(c,id);
   c.getSharedPreferences("kik_search_"+id,0).edit().clear().commit();if(android.os.Build.VERSION.SDK_INT>=24)c.deleteSharedPreferences("kik_search_"+id);
   RatingStore.delete(c,id);
