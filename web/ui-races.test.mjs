@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';import vm from 'node:vm';
 import * as recovery from './public/playback-recovery.js';import * as ads from './public/ad-skip.js';import * as rating from './public/rate-prompt.js';import * as watching from './public/watching.js';
-import * as identity from './public/catalogue-identity.js';import * as avatars from './public/avatars.js';import * as preferences from './public/preferences.js';import * as queue from './public/sync-queue.js';
+import * as identity from './public/catalogue-identity.js';import * as avatars from './public/avatars.js';import * as preferences from './public/preferences.js';import * as queue from './public/sync-queue.js';import * as catalogueView from './public/catalogue-view.js';
 
 // The real browser controller (public/app.js) on a tiny DOM stand-in: no network, no production data.
 class Node {
@@ -13,7 +13,7 @@ class Node {
  showModal(){this.open=true;}close(){if(!this.open)return;this.open=false;for(const fn of this.listeners.close||[])fn();}
 }
 const source=(await readFile(new URL('./public/app.js',import.meta.url),'utf8')).replace(/^import .*;$/gm,'').replace(/^init\(\);$/m,'');
-const modules={...recovery,...ads,...rating,...watching,...identity,...avatars,...preferences,...queue,titleGroups:watching.byTitle};
+const modules={...recovery,...ads,...rating,...watching,...identity,...avatars,...preferences,...queue,...catalogueView,titleGroups:watching.byTitle};
 function controller(){
  const nodes=new Map(),body=new Node(),document={body,activeElement:body,documentElement:new Node(),head:new Node(),querySelector:s=>{if(!nodes.has(s))nodes.set(s,new Node());return nodes.get(s);},querySelectorAll:()=>[],createElement:t=>new Node(t),createTextNode:t=>new Node('#text',t),addEventListener(){},removeEventListener(){}};
  const memory=new Map(),storage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>{memory.set(k,v);return true;},removeItem:k=>memory.delete(k),keys:()=>[...memory.keys()]};
