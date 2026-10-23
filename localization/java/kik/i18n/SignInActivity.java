@@ -39,22 +39,25 @@ public final class SignInActivity extends Activity {
 
  // ---------- steps ----------
  private void show(int target){
-  step=target;content.removeAllViews();
+  step=target;error=null;
+  // A step without a text field must not keep the previous step's keyboard over its tiles.
+  ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(content.getWindowToken(),0);
+  content.removeAllViews();
   content.addView(Brand.logo(this,96,44));space(26);
   if(step==LOADING){head("Вхід у KIK","Завантаження облікового запису…");return;}
   if(step==EMAIL){
    head("Увійдіть у KIK","Введіть пошту, яку адміністратор додав до KIK.");
-   final EditText field=input("Пошта",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,EditorInfo.IME_ACTION_NEXT);field.setText(email);field.setSelection(field.length());errorLine();
+   final EditText field=input("Пошта",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,EditorInfo.IME_ACTION_NEXT);field.setText(email);field.setSelection(field.length());
    final Button next=primary("Далі");next.setOnClickListener(v->checkEmail(field,next));submit(field,next);field.requestFocus();
   }else if(step==PASSWORD){
    head("Введіть пароль",email);
-   final EditText field=input("Пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);errorLine();
+   final EditText field=input("Пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
    LinearLayout row=actions();final Button login=button(row,"Увійти",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
    login.setOnClickListener(v->login(field,login));submit(field,login);field.requestFocus();
   }else if(step==CREATE){
    head("Створіть пароль","Для "+email+" ще немає пароля. Щонайменше 6 символів.");
-   final EditText field=input("Новий пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_NEXT);space(10);
-   final EditText again=input("Повторіть пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);errorLine();
+   final EditText field=input("Новий пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_NEXT);
+   final EditText again=input("Повторіть пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
    LinearLayout row=actions();final Button create=button(row,"Створити пароль",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
    create.setOnClickListener(v->register(field,again,create));field.setOnEditorActionListener((v,a,e)->{again.requestFocus();return true;});submit(again,create);field.requestFocus();
   }else if(step==PICK){
@@ -63,12 +66,12 @@ public final class SignInActivity extends Activity {
    HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(12),dp(12),dp(12),dp(12));hs.addView(row);content.addView(hs,new LinearLayout.LayoutParams(-2,-2));
    View first=null;
    for(int i=0;i<remote.length();i++){final JSONObject p=remote.optJSONObject(i);if(p==null)continue;View tile=tile(row,p.optString("avatar"),p.optString("name"),150);tile.setOnClickListener(v->pick(p));if(first==null)first=tile;}
-   errorLine();
+   
    LinearLayout actions=actions();button(actions,"+ Новий профіль",false).setOnClickListener(v->show(NAME));
    if(first!=null)first.requestFocus();
   }else if(step==NAME){
    head(adding?"Новий профіль":"Створіть профіль","Як звати того, хто дивиться? У кожного профілю своя історія та «Мій список».");
-   final EditText field=input("Ім’я",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,EditorInfo.IME_ACTION_NEXT);field.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});field.setText(name);field.setSelection(field.length());errorLine();
+   final EditText field=input("Ім’я",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,EditorInfo.IME_ACTION_NEXT);field.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});field.setText(name);field.setSelection(field.length());
    LinearLayout row=actions();final Button next=button(row,"Далі",true);if(adding)button(row,"Скасувати",false).setOnClickListener(v->finish());
    next.setOnClickListener(v->{String n=field.getText().toString().trim();if(n.isEmpty()){error("Введіть ім’я профілю");return;}for(ProfileStore.Profile p:ProfileStore.list(this))if(p.name.equalsIgnoreCase(n)&&!CloudSync.remoteId(this,p.id).isEmpty()){error("Профіль з таким ім’ям уже є");return;}for(int i=0;i<remote.length();i++)if(n.equalsIgnoreCase(remote.optJSONObject(i).optString("name"))){error("Профіль з таким ім’ям уже є");return;}name=n;show(AVATAR);});
    submit(field,next);field.requestFocus();
@@ -79,7 +82,7 @@ public final class SignInActivity extends Activity {
     if(i%6==0){row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);row.setClipChildren(false);row.setClipToPadding(false);content.addView(row,new LinearLayout.LayoutParams(-2,-2));}
     final String id=Avatars.idAt(i);View tile=tile(row,id,Avatars.label(id),88);tile.setOnClickListener(v->createProfile(id));if(first==null)first=tile;
    }
-   errorLine();
+   
    LinearLayout actions=actions();button(actions,"Пропустити",false).setOnClickListener(v->createProfile(Avatars.idAt(new Random().nextInt(Avatars.count()))));
    if(first!=null)first.requestFocus();
   }
@@ -160,15 +163,16 @@ public final class SignInActivity extends Activity {
  // ---------- views ----------
  private void head(String title,String sub){
   TextView t=text(title,34);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(8);
-  TextView s=text(sub,17);s.setTextColor(0xffb5b1be);content.addView(s,new LinearLayout.LayoutParams(dp(640),-2));space(26);
+  TextView s=text(sub,17);s.setTextColor(0xffb5b1be);content.addView(s,new LinearLayout.LayoutParams(dp(640),-2));
+  // Errors sit above the fields: the on-screen keyboard covers the lower half of the screen.
+  space(10);error=text("",16);error.setTextColor(0xffff7a7f);error.setMinHeight(dp(24));content.addView(error,new LinearLayout.LayoutParams(dp(640),-2));space(10);
  }
  private EditText input(String hint,int type,int action){
   EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(0xff8a8592);e.setTextColor(Color.WHITE);e.setTextSize(19);e.setSingleLine(true);e.setPadding(dp(16),0,dp(16),0);e.setBackground(fieldBackground());
-  e.setInputType(type);e.setImeOptions(action|EditorInfo.IME_FLAG_NO_EXTRACT_UI);content.addView(e,new LinearLayout.LayoutParams(dp(480),dp(58)));return e;
+  e.setInputType(type);e.setTypeface(Typeface.DEFAULT);e.setImeOptions(action|EditorInfo.IME_FLAG_NO_EXTRACT_UI);content.addView(e,new LinearLayout.LayoutParams(dp(480),dp(58)));space(16);return e;
  }
  /** The keyboard's Enter submits the step, so a remote never has to leave the field. */
  private void submit(EditText field,Button button){field.setOnEditorActionListener((v,a,e)->{if(button.isEnabled())button.performClick();return true;});}
- private void errorLine(){space(10);error=text("",16);error.setTextColor(0xffff7a7f);error.setMinHeight(dp(24));content.addView(error,new LinearLayout.LayoutParams(dp(640),-2));space(10);}
  private void error(String message){if(error!=null)error.setText(message);}
  private void busy(Button b,String label){if(b.isEnabled())b.setTag(b.getText());b.setEnabled(false);b.setText(label);error("");}
  private Button primary(String label){LinearLayout row=actions();return button(row,label,true);}
