@@ -14,6 +14,8 @@ public final class CloudSync {
  public static long revision(){return REVISION.get();}
  public static String status(Context c,String p){return linked(c,p)?status:"Не підключено";}
  public static String profileName(Context c,String p){return prefs(c).getString("name_"+p,"");}
+ /** Whether the administrator turned on ad skipping for this linked profile (as of its last sync). */
+ static boolean adSkip(Context c,String p){return linked(c,p)&&prefs(c).getBoolean("adskip_"+p,false);}
  public static void playing(String p,boolean on){if(on)playingProfile=p;else if(Objects.equals(playingProfile,p))playingProfile=null;}
  public static void changed(Context context){Context c=context.getApplicationContext();synchronized(SCHEDULE_LOCK){if(pending!=null)pending.cancel(false);pending=IO.schedule(()->syncAll(c),1500,TimeUnit.MILLISECONDS);}}
  public static void now(Context context){Context c=context.getApplicationContext();IO.execute(()->syncAll(c));}
@@ -27,7 +29,7 @@ public final class CloudSync {
   Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,""),remote=prefs(c).getString("remote_"+profile,"");if(token.isEmpty()||remote.isEmpty())return null;
   try{return request("/api/recommendations",new JSONObject().put("profile_id",remote).put("items",items),token);}catch(Exception e){Log.w("KIK","Cloud recommendations",e);return null;}
  }
- public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");final boolean keep=shared(c,profile,token);prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";if(!keep)IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
+ public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");final boolean keep=shared(c,profile,token);prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).remove("adskip_"+profile).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";if(!keep)IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
  public static JSONObject request(String path,JSONObject data,String token)throws Exception{
   if(!path.startsWith("/api/")||path.contains(".."))throw new IOException("Cloud path");
   HttpURLConnection connection=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+path).openConnection();connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setInstanceFollowRedirects(false);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=UTF-8");if(token!=null&&!token.isEmpty())connection.setRequestProperty("Authorization","Bearer "+token);
@@ -69,6 +71,7 @@ public final class CloudSync {
   JSONArray dirty=new JSONArray();synchronized(CloudSync.class){JSONObject root=read(stateFile(c,p));collect(c,p,root);JSONObject records=root.getJSONObject("records");Iterator<String> it=records.keys();while(it.hasNext()){JSONObject r=records.getJSONObject(it.next());if(r.optBoolean("dirty"))dirty.put(r);}write(stateFile(c,p),root.toString());}
   JSONObject response=null;for(int at=0;at<Math.max(1,dirty.length());at+=400){JSONArray batch=new JSONArray();for(int i=at;i<Math.min(at+400,dirty.length());i++)batch.put(dirty.get(i));response=request("/api/sync",new JSONObject().put("profile_id",remote).put("source_schema",2).put("records",batch),token);}
   if(!token.equals(prefs(c).getString("token_"+p,"")))return;
+  JSONObject account=response.optJSONObject("profile");if(account!=null)prefs(c).edit().putBoolean("adskip_"+p,account.optInt("ad_skip")==1).apply();
   synchronized(CloudSync.class){if(!token.equals(prefs(c).getString("token_"+p,"")))return;JSONObject root=read(stateFile(c,p));collect(c,p,root);JSONObject records=root.getJSONObject("records"),fingerprints=root.getJSONObject("fingerprints");JSONArray incoming=response.getJSONArray("records");
    for(int i=0;i<incoming.length();i++){JSONObject r=incoming.getJSONObject(i);String id=r.getString("kind")+"\n"+r.getString("key");JSONObject old=records.optJSONObject(id);long ts=r.getLong("updated_at");if(old==null||ts>old.optLong("updated_at")||ts==old.optLong("updated_at")&&canonical(r.opt("data")).compareTo(canonical(old.opt("data")))>=0){r.put("dirty",false);records.put(id,r);}}
    if(!Objects.equals(playingProfile,p)){apply(c,p,records);JSONObject fresh=new JSONObject().put("records",records).put("fingerprints",new JSONObject());refreshFingerprints(c,p,fresh);root.put("fingerprints",fresh.getJSONObject("fingerprints"));}
