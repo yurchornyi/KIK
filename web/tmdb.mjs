@@ -1,4 +1,5 @@
 import {titleKey} from './sync.mjs';
+import {studiosFor} from './public/studios.js';
 
 const API='https://api.themoviedb.org/3',CDN='https://image.tmdb.org/t/p';
 const DAY=86400000,MAX_ENTRIES=400;
@@ -79,8 +80,9 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
    if(identity.year){params.delete(identity.kind==='tv'?'first_air_date_year':'year');const nearby=await request(`/search/${identity.kind}?${params}`,token,signal);match=matchTitle(identity,nearby.results);if(match)break;}
   }
   if(!match)return null;
-  const images=await request(`/${identity.kind}/${match.id}/images?include_image_language=uk,en,null`,token,signal);
-  return selectImages(images,match.id,identity.kind);
+  const details=await request(`/${identity.kind}/${match.id}?append_to_response=images&include_image_language=uk,en,null`,token,signal);
+  const artwork=selectImages(details.images||details,match.id,identity.kind),studios=studiosFor(details);
+  return artwork?{...artwork,studios}:studios.length?{source:'tmdb',id:match.id,kind:identity.kind,page:`https://www.themoviedb.org/${identity.kind}/${match.id}`,studios}:null;
  }
  async function lookup(input,{token,cache,origin='https://kik-artwork.invalid'}={}){
   const identity=artworkIdentity(input);
@@ -88,7 +90,7 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
   token=token.trim();
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity)+'\n'+token));
   const digest=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
-  const key=new Request(new URL('/__artwork-cache/v2/'+digest,origin));
+  const key=new Request(new URL('/__artwork-cache/v3/'+digest,origin));
   const hit=memory.get(digest);if(hit&&hit.until>now())return hit.value;
   if(pending.has(digest))return pending.get(digest);
   if(pending.size>=12)return {configured:true,artwork:null,retryAfter:10};
