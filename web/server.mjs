@@ -1,5 +1,5 @@
 import {resolvePlayback} from './playback-sources.mjs';
-import {localizedCards,localizedFilm,localizedRecords} from './localization.mjs';
+import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './localization.mjs';
 import {recommendations} from './recommendations.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
@@ -8,7 +8,7 @@ import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsernam
 import {exchange,titleKey} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
-import {catalogue,film,episodes,stream} from "./catalogue.mjs";
+import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
 import {synopsis} from "./synopsis.mjs";
 import {adBreaks,adScanner} from "./ad-breaks.mjs";
@@ -82,6 +82,10 @@ async function api(request,env,ctx){
   const b=await body(request,8192);if(typeof b.device_code!=="string"||!/^[a-f0-9]{64}$/.test(b.device_code))fail("Некоректний код");const device=await hash(b.device_code),pair=await db.prepare("SELECT * FROM pairs WHERE device_hash=? AND expires_at>?").bind(device,Date.now()).first();if(!pair||pair.consumed)fail("Код прострочений",410);if(!pair.user_id)return json({pending:true});
   const changed=await db.prepare("UPDATE pairs SET consumed=1 WHERE device_hash=? AND consumed=0 RETURNING user_id,profile_id").bind(device).first();if(!changed)fail("Код уже використано",410);
   const token=await session(db,changed.user_id);return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
+ }
+ if(path==="/api/genres"){
+  const category=url.searchParams.get("category")||"films",key=new Request(url.origin+path+"?category="+encodeURIComponent(category)+"&__presentation=uk1"),cached=await caches.default.match(key);if(cached)return cached;
+  const r=json({items:await localizedGenres(db,await catalogueGenres(category))});r.headers.set("Cache-Control","public, max-age=3600");ctx.waitUntil(caches.default.put(key,r.clone()));return r;
  }
  if(path==="/api/catalogue"){
   const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk4"),cached=await caches.default.match(key);if(cached)return cached;const params=Object.fromEntries(url.searchParams);if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");const data=await (params.source==="uaserials"?uaSearch(params):catalogue(params));const r=json({items:await localizedCards(db,data)});r.headers.set("Cache-Control","public, max-age=180");ctx.waitUntil(caches.default.put(key,r.clone()));return r;

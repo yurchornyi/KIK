@@ -40,6 +40,7 @@ async function fixture(context,{guest=false,delay=0,failCatalogue=false,slowSeri
   else if(p==='/api/episodes')body={episodes:[{season:'1',episode:'1',title:'Серія 1: дуже довга назва першої серії'}]};
   else if(p==='/api/stream')body={qualities:[{label:'1080p',url:origin+'/missing.mp4'}]};
   else if(p==='/api/artwork/batch')body={configured:true,results:Object.fromEntries(items.map(i=>[i.link.split('.sh/')[1],{poster:origin+'/fixture.svg',posterLarge:origin+'/fixture.svg',backdrop:origin+'/fixture.svg'}]))};
+  else if(p==='/api/genres')body={items:[{slug:'drama',name:'Драми'},{slug:'comedy',name:'Комедії з дуже довгою назвою жанру'}]};
   else if(p==='/api/search-aliases')body={aliases:[]};
   else if(p==='/api/metadata')body={credits:[]};
   else if(p==='/api/admin/overview')body={accounts:12,profiles:34,invitations:56,events:[{action:'allow',target:user.email,created_at:Date.now()}]};
@@ -78,7 +79,7 @@ try{
    const started=performance.now();await page.goto(origin);await page.locator('.shelf').first().waitFor();await page.locator('[data-tab=admin]').waitFor();
    await inspect(page,'home',{engine,readyMs:Math.round(performance.now()-started)});
    if((width===390||width===820||width===1440)&&engine==='chromium')await page.screenshot({path:path.join(output,`${engine}-${width}-home.png`),animations:'disabled'});
-   for(const tab of ['films','series','later','history','settings','admin']){
+   for(const tab of ['catalogue','later','history','settings','admin']){
     const t=performance.now();await page.locator(`[data-tab=${tab}]`).click();await page.locator(tab==='admin'?'.admin-stats':tab==='settings'?'.settings-card':'.grid-page').first().waitFor();await inspect(page,tab,{engine,switchMs:Math.round(performance.now()-t)});
    }
    for(const [label,open] of [
@@ -89,9 +90,9 @@ try{
     ['avatars',()=>page.getByRole('button',{name:'Змінити аватарку',exact:true}).click()],
     ['taste',()=>page.getByRole('button',{name:'Налаштувати смак',exact:true}).click()],
    ]){await open();await page.locator('#modal[open]').waitFor();await inspect(page,label,{engine});await page.locator('#modal .close').click();}
-   await page.locator('[data-tab=films]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await inspect(page,'details',{engine});await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'player',{engine});await page.locator('#player-modal .close').click();
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=films]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await inspect(page,'details',{engine});await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'player',{engine});await page.locator('#player-modal .close').click();
    await page.locator('#search-open').click();await page.locator('#modal input').fill('Історія');await page.locator('#modal form').evaluate(f=>f.requestSubmit());await page.waitForFunction(()=>document.querySelector('#main h1')?.textContent.startsWith('Результати'));await inspect(page,'search-results',{engine});
-   await page.locator('[data-tab=series]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'series-player',{engine});await page.locator('#player-modal .close').click();await page.goto(origin+'/sources.html');await inspect(page,'sources',{engine});
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=series]').click();await page.locator('.grid .poster').first().click();await page.locator('.detail-actions').waitFor();await page.getByRole('button',{name:/^▶ /}).first().click();await page.locator('#player-modal video').waitFor();await inspect(page,'series-player',{engine});await page.locator('#player-modal .close').click();await page.goto(origin+'/sources.html');await inspect(page,'sources',{engine});
    if(errors.length)report.failures.push({engine,width,height,label:'runtime',errors});
    await context.close();
   }
@@ -106,12 +107,12 @@ try{
   {
    const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});const lifecycle=await fixture(context,{slowSeries:3000,filmDelay:400});const page=await context.newPage();let hlsDownloads=0;page.on('request',r=>{if(r.url().endsWith('/hls.min.js'))hlsDownloads++;});
    const started=performance.now();await page.goto(origin);await page.locator('.shelf').first().waitFor();const firstShelfMs=Math.round(performance.now()-started);check(engine,'first catalogue usable while another category is slow',!lifecycle.seriesComplete,{firstShelfMs});
-   await page.locator('[data-tab=series]').click();await page.locator('.grid .poster').first().waitFor();
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.catalogue-categories [data-category=series]').click();await page.locator('.grid .poster').first().waitFor();
    await page.locator('[data-tab=home]').click();await page.locator('.shelf-line .poster').first().focus();await page.evaluate(()=>window.auditFocused=document.activeElement);
    const synced=page.waitForResponse(r=>r.url().endsWith('/api/sync'));await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await synced;await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
    check(engine,'background sync preserves focused card',await page.evaluate(()=>window.auditFocused.isConnected&&document.activeElement===window.auditFocused));
    check(engine,'catalogue navigation never downloads HLS',hlsDownloads===0,{hlsDownloads});
-   await page.locator('[data-tab=films]').click();await page.locator('.grid .poster').first().click();await page.locator('#modal .close').click();await page.locator('#account').click();await page.waitForTimeout(500);check(engine,'late film response preserves profile dialog',(await page.locator('#modal h2').textContent())==='Хто дивиться?');await page.keyboard.press('Escape');
+   await page.locator('[data-tab=catalogue]').click();await page.locator('.grid .poster').first().click();await page.locator('#modal .close').click();await page.locator('#account').click();await page.waitForTimeout(500);check(engine,'late film response preserves profile dialog',(await page.locator('#modal h2').textContent())==='Хто дивиться?');await page.keyboard.press('Escape');
    check(engine,'Escape closes dialog',await page.locator('#modal').evaluate(d=>!d.open));
    await page.locator('#search-open').click();await page.locator('#modal input').fill('Історія');await page.locator('#modal form').evaluate(f=>f.requestSubmit());await page.waitForFunction(()=>document.querySelector('#main h1')?.textContent.startsWith('Результати'));
    check(engine,'search has a restorable URL',new URL(page.url()).hash.startsWith('#search?q='));
