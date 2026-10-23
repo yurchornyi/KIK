@@ -21,7 +21,8 @@ final class Recommendations {
   Snapshot s=new Snapshot(profile,RatingStore.exposures(c,profile));long now=System.currentTimeMillis();int count=0;Set<String> rated=new HashSet<String>();
   for(RatingStore.Rating r:RatingStore.list(c,profile)){
    String key=RecommendationRanker.key(r.link);rated.add(key);s.excluded.add(r.link);s.titles.put(key,r.title);if(r.value<0)s.disliked.add(key);
-   if(count++<50)s.signals.add(new RecommendationRanker.Signal(r.link,r.genre,r.value>0?RecommendationRanker.LIKED:RecommendationRanker.DISLIKED));
+   // «Не цікавить» (-2) only hides the title: it says nothing about the taste.
+   if(r.value>=-1&&count++<50)s.signals.add(new RecommendationRanker.Signal(r.link,r.genre,r.value>0?RecommendationRanker.LIKED:RecommendationRanker.DISLIKED));
   }count=0;
   for(Progress.Entry e:Progress.recent(c,profile)){
    long engagement=e.observed?e.watchedMs:e.pos;boolean meaningful=RecommendationRanker.meaningful(engagement,e.dur);if(meaningful)s.excluded.add(e.link);

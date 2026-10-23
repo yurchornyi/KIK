@@ -379,26 +379,37 @@ public final class HomeActivity extends Activity {
   Images.load(i.poster,img,dp(168));
   return box;
  }
- /** Long press on a card: like, dislike (the chosen one is red; pressing it again clears it) and, for a started title, remove it from history. */
+ /** Long press on a card: like, dislike, «not interested» (hides the title without judging the taste; the chosen one is red and
+  *  pressing it again clears it) and, for a started title, remove it from history. A compact dark panel over the dimmed home, which fades and grows in on its own (no system dialog animation). */
  private void rate(Item i){
   final String profile=ProfileStore.current(this);final int value=RatingStore.get(this,profile,i.link);
-  LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(28),dp(24),dp(28),dp(20));box.setClipChildren(false);box.setClipToPadding(false);
-  TextView title=text(tr(i.title),22,Color.WHITE);title.setTypeface(Typeface.DEFAULT_BOLD);title.setMaxLines(2);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(0,0,0,dp(14));box.addView(title);
-  final android.app.AlertDialog d=Ui.dialog(this).setView(box).create();
+  final LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(8),dp(12),dp(8),dp(8));box.setBackground(Ui.menuPanel(this));
+  TextView title=text(tr(i.title),14,GREY);title.setTypeface(Typeface.DEFAULT_BOLD);title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.END);title.setPadding(dp(14),0,dp(14),dp(8));box.addView(title);
+  final PopupWindow popup=new PopupWindow(box,dp(280),ViewGroup.LayoutParams.WRAP_CONTENT,true);
+  popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));popup.setOutsideTouchable(true);popup.setElevation(dp(14));popup.setAnimationStyle(0);
   TextView first=null;
-  for(final int want:new int[]{1,-1}){
-   TextView c=action(box,want>0?"Подобається":"Не подобається",new FilmActivity.ThumbIcon(dp(22),want<0));Ui.select(c,value==want);
-   c.setOnClickListener(v->{int next=value==want?0:want;boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,next);d.dismiss();if(saved){Ui.toast(this,RatingStore.said(next));load();}else Ui.toast(this,"Не вдалося зберегти оцінку");});
+  for(final int want:new int[]{1,-1,-2}){
+   TextView c=action(box,want>0?"Подобається":want<-1?"Не цікавить":"Не подобається",want<-1?new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.hide()):new FilmActivity.ThumbIcon(dp(20),want<0),value==want);
+   c.setOnClickListener(v->{int next=value==want?0:want;boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,next);popup.dismiss();if(saved){Ui.toast(this,RatingStore.said(next));load();}else Ui.toast(this,"Не вдалося зберегти оцінку");});
    if(first==null||value==want)first=c;
   }
-  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(22),FilmActivity.ThumbIcon.trash()));c.setOnClickListener(v->{Progress.remove(this,i.link);d.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
-  if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",13,GREY);hint.setPadding(dp(4),dp(8),0,0);box.addView(hint);}
-  final TextView focus=first;d.show();box.post(focus::requestFocus);
+  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.trash()),false);c.setOnClickListener(v->{Progress.remove(this,i.link);popup.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
+  if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",12,GREY);hint.setPadding(dp(14),dp(6),dp(14),dp(4));box.addView(hint);}
+  final TextView focus=first;
+  popup.showAtLocation(root,Gravity.CENTER,0,0);
+  // The window manager dims the home behind the panel (no translucent layer of our own for the weak GPU to redraw).
+  for(ViewParent p=box.getParent();p instanceof View;p=p.getParent()){View v=(View)p;if(!(v.getLayoutParams() instanceof WindowManager.LayoutParams))continue;WindowManager.LayoutParams lp=(WindowManager.LayoutParams)v.getLayoutParams();lp.flags|=WindowManager.LayoutParams.FLAG_DIM_BEHIND;lp.dimAmount=0.62f;try{getWindowManager().updateViewLayout(v,lp);}catch(RuntimeException e){Log.w("KIK","Menu dim: "+e);}break;}
+  if(Ui.animations()){box.setAlpha(0f);box.setScaleX(0.94f);box.setScaleY(0.94f);box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(EASE).start();}
+  box.post(focus::requestFocus);
  }
- private TextView action(LinearLayout box,String label,FilmActivity.ThumbIcon icon){
-  TextView c=Ui.chip(this,label);c.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);c.setPadding(dp(20),0,dp(20),0);c.setCompoundDrawablePadding(dp(14));
-  icon.setBounds(0,0,dp(22),dp(22));c.setCompoundDrawables(icon,null,null,null);
-  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(52));lp.setMargins(0,0,0,dp(10));box.addView(c,lp);return c;
+ /** A menu row: icon and label on a transparent line, white with black text when focused; the chosen rating keeps a red icon. */
+ private TextView action(LinearLayout box,String label,FilmActivity.ThumbIcon icon,boolean chosen){
+  TextView c=new TextView(this);c.setText(label);c.setTextSize(15);c.setSingleLine(true);c.setEllipsize(TextUtils.TruncateAt.END);c.setIncludeFontPadding(false);c.setFocusable(true);c.setClickable(true);
+  c.setTypeface(chosen?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);c.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);c.setPadding(dp(14),0,dp(14),0);c.setCompoundDrawablePadding(dp(12));
+  c.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.BLACK,chosen?Color.WHITE:0xffe6e6ea}));
+  c.setBackground(Ui.states(Ui.shape(0,dp(10),0,0),Ui.shape(Color.WHITE,dp(10),0,0)));
+  icon.setBounds(0,0,dp(20),dp(20));if(chosen)icon.setColorFilter(new PorterDuffColorFilter(RED,PorterDuff.Mode.SRC_IN));c.setCompoundDrawables(icon,null,null,null);
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.setMargins(0,0,0,dp(2));box.addView(c,lp);return c;
  }
  private void scrollRowIntoView(View row){
   int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
