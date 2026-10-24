@@ -60,7 +60,7 @@ public final class KikPlayerActivity extends Activity {
  private ConnectivityManager.NetworkCallback network;
  private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
  private final Handler h=new Handler(Looper.getMainLooper());
- private final Runnable hide=()->{if(prepared&&!seeking&&playWhenReady&&menu==null)show(false);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active)save();h.postDelayed(this,5000);}},retry=()->{if(!destroyed&&failed)retryNow();};
+ private final Runnable hide=()->{if(!visible)return;if(prepared&&!seeking&&playWhenReady)show(false);else if(playWhenReady&&!failed)h.postDelayed(this.hide,1000);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active)save();h.postDelayed(this,5000);}},retry=()->{if(!destroyed&&failed)retryNow();};
  private int dp(float n){return Ui.dp(this,n);}
 
  public static void open(Context c,Site.Film f,Site.Voice v,String season,String episode,String title,String poster){
@@ -421,10 +421,12 @@ public final class KikPlayerActivity extends Activity {
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
   for(final Site.Voice v:film.voices){if(v.premium)continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
-   String lang=PlaybackPolicy.lang(v.name);l.add(("other".equals(lang)?"":lang.toUpperCase(Locale.ROOT).replace("UK","UA")+" · ")+Ua.t(v.name));
+   String lang=PlaybackPolicy.lang(v.name);l.add("other".equals(lang)?Ua.t(v.name):lang.toUpperCase(Locale.ROOT).replace("UK","UA")+" · "+voiceName(v.name));
    a.add(()->{if(voice!=null&&v.id.equals(voice.id))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
  }
+ /** The studio name in Ukrainian; the language in brackets goes, as the UA/RU mark already says it. */
+ private static String voiceName(String name){String s=Ua.t(name).replaceAll("\\s*\\((українська|російська)\\)\\s*$","").trim();return s.isEmpty()?Ua.t(name):s;}
  private void openQualities(){
   if(stream==null||!prepared)return;List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
   for(final String q:stream.qualities.keySet()){if(q.equals(quality))sel=l.size();l.add(q);a.add(()->{if(q.equals(quality))return;resumeAt=prepared?pos():resumeAt;prepared=false;quality=q;manualQuality=true;Progress.choose(this,film.link,voice.id,"quality",q);rebuffers.clear();paintSub();loading.setText("Підготовка відео");waiting(true);play();});}

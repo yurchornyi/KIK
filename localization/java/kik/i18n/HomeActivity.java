@@ -130,10 +130,12 @@ public final class HomeActivity extends Activity {
  static boolean genreKnown(String ru){if(ru!=null)for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return true;return false;}
  static String genreName(String ru){if(ru==null)return null;for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return g[1];return TitleTranslate.shown(ru);}
  /** Netflix-style genre rows: the first ten everyday genres, the ones this profile watches most on top; six rows at most. */
+ /** The first five letters match both «Комедія» and «Комедии»; a shorter name («Шоу») is matched whole. */
+ private static String stem(String name){String s=name.toLowerCase(Locale.ROOT);return s.substring(0,Math.min(5,s.length()));}
  private List<Row> genreRows(Recommendations.Snapshot taste){
   List<Site.Genre> all=filmGenres();if(all.isEmpty())return new ArrayList<Row>();
   final Map<String,Double> weight=new HashMap<String,Double>();
-  if(taste!=null)for(RecommendationRanker.Signal s:taste.signals)if(s.genre!=null)for(String[] g:GENRE_NAMES){String key=s.genre.toLowerCase(Locale.ROOT);if(key.contains(g[0].toLowerCase(Locale.ROOT).substring(0,5))||key.contains(g[1].toLowerCase(Locale.ROOT).substring(0,5)))weight.merge(g[0],s.weight,Double::sum);}
+  if(taste!=null)for(RecommendationRanker.Signal s:taste.signals)if(s.genre!=null)for(String[] g:GENRE_NAMES){String key=s.genre.toLowerCase(Locale.ROOT);if(key.contains(stem(g[0]))||key.contains(stem(g[1])))weight.merge(g[0],s.weight,Double::sum);}
   List<Site.Genre> picked=new ArrayList<Site.Genre>();
   for(int n=0;n<10;n++)for(Site.Genre g:all)if(GENRE_NAMES[n][0].equalsIgnoreCase(g.name.trim()))picked.add(g);
   Collections.sort(picked,(a,b)->Double.compare(weight.getOrDefault(b.name.trim(),0d),weight.getOrDefault(a.name.trim(),0d)));

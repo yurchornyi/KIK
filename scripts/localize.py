@@ -48,6 +48,8 @@ public final class Ua {
     for(String[] p:PREFIX) if(s.startsWith(p[0])) return tail(p[1]+s.substring(p[0].length()));
     String result=tail(s);
     result=result.replace("(\u0423\u043a\u0440\u0430\u0438\u043d\u0441\u043a\u0438\u0439)","(\u0443\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430)").replace("(\u0420\u0443\u0441\u0441\u043a\u0438\u0439)","(\u0440\u043e\u0441\u0456\u0439\u0441\u044c\u043a\u0430)").replace("(+\u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b)","(+\u0441\u0443\u0431\u0442\u0438\u0442\u0440\u0438)");
+    // Studio names: their language and kind words.
+    result=result.replace("Украинский ","Український ").replace("Русский ","Російський ").replace("Многоголосый","Багатоголосий").replace("многоголосый","багатоголосий").replace("Двухголосый","Двоголосий").replace("двухголосый","двоголосий").replace("Одноголосый","Одноголосий").replace("одноголосый","одноголосий").replace("Профессиональный","Професійний").replace("профессиональный","професійний").replace("Любительский","Аматорський").replace("любительский","аматорський").replace("Авторский","Авторський").replace("авторский","авторський");
     result=result.replaceAll("^(\\\\d{4}) \u0433\u043e\u0434\\\\b","$1 \u0440\u0456\u043a");
     // Poster genre/country chips may carry a flag before the label.
     int space=result.indexOf(' ');
