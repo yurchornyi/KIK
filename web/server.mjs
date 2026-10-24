@@ -2,7 +2,7 @@ import {readJson as body} from './request-body.mjs';
 import {protectPlayback,serveMedia} from './media-access.mjs';
 import {resolvePlayback} from './playback-sources.mjs';
 import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './localization.mjs';
-import {recommendations} from './recommendations.mjs';
+import {recommendations} from './recommendations.mjs';import {aiReady} from './sentra-ai.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport} from './management.mjs';
@@ -103,7 +103,7 @@ async function api(request,env,ctx){
   const token=await session(db,user.id,user.password_hash);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
  }
  const user=viewer===undefined?await identity(request,db):viewer;
- if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>env.AI&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
+ if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>aiReady(env)&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
  if(path==="/api/auth/logout"&&request.method==="POST"){
   const token=requestToken(request);if(token){const digest=await hash(token);await db.batch([db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(digest),db.prepare("DELETE FROM pairs WHERE approved_session_hash=?").bind(digest)]);}return json({ok:true},200,{"Set-Cookie":cookie("",true)});
  }
