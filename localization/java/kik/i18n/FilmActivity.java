@@ -245,11 +245,11 @@ public final class FilmActivity extends Activity {
  private void paintTaste(){if(tasteChip==null||dislikeChip==null)return;int value=RatingStore.get(this,profile,link);Ui.select(tasteChip,value>0);Ui.select(dislikeChip,value==-1);}
  private void rate(int desired){
   int value=RatingStore.get(this,profile,link)==desired?0:desired;
-  boolean saved=RatingStore.set(this,profile,link,name.getText().toString(),poster,film==null?null:TextUtils.join(", ",film.genres),value);paintTaste();Ui.toast(this,saved?RatingStore.said(value):"Не вдалося зберегти оцінку");
+  boolean saved=RatingStore.set(this,profile,link,name.getText().toString(),poster,film==null?null:TextUtils.join(", ",film.genres),value);paintTaste();if(saved&&value!=0)((ThumbIcon)(value>0?tasteChip:dislikeChip).getCompoundDrawables()[0]).nod();Ui.toast(this,saved?RatingStore.said(value):"Не вдалося зберегти оцінку");
  }
  /** Monochrome, state-aware icons match the shared focused and selected button palette. */
  static final class ThumbIcon extends Drawable {
-  private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path hand=new Path();private final int size;private final boolean down;
+  private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path hand=new Path();private final int size;private final boolean down;private float pop=1,tilt;
   ThumbIcon(int size,Path shape){this.size=size;this.down=false;paint.setColor(Color.WHITE);hand.set(shape);}
   /** A filled bin with three cut-out slots, on the same 24-unit grid as the thumb. */
   static Path trash(){Path p=new Path();p.setFillType(Path.FillType.EVEN_ODD);p.addRect(9,2.5f,15,4.5f,Path.Direction.CW);p.addRect(3.5f,4.5f,20.5f,7,Path.Direction.CW);p.moveTo(5.5f,8);p.lineTo(18.5f,8);p.lineTo(17.4f,21.5f);p.lineTo(6.6f,21.5f);p.close();for(float x:new float[]{8.6f,11.4f,14.2f})p.addRect(x,10.5f,x+1.2f,19,Path.Direction.CW);return p;}
@@ -258,7 +258,9 @@ public final class FilmActivity extends Activity {
   /** A ring with a diagonal bar («not interested»), on the same grid. */
   static Path hide(){Path p=new Path();p.addCircle(12,12,9,Path.Direction.CW);p.addCircle(12,12,6.8f,Path.Direction.CCW);p.moveTo(6.2f,7.8f);p.lineTo(7.8f,6.2f);p.lineTo(17.8f,16.2f);p.lineTo(16.2f,17.8f);p.close();return p;}
   ThumbIcon(int size,boolean down){this.size=size;this.down=down;paint.setColor(Color.WHITE);hand.addRect(2,10,6,21,Path.Direction.CW);hand.moveTo(8,10);hand.lineTo(13,4);hand.quadTo(14,2,15,3);hand.quadTo(16,4,15.5f,6);hand.lineTo(15,9);hand.lineTo(20,9);hand.quadTo(22,9,21.5f,11.5f);hand.lineTo(19.2f,19.5f);hand.quadTo(19,21,17.5f,21);hand.lineTo(9,21);hand.quadTo(8,21,8,20);hand.close();}
-  @Override public void draw(Canvas canvas){Rect r=getBounds();canvas.save();canvas.translate(r.left,r.top);canvas.scale(r.width()/24f,r.height()/24f);if(down)canvas.rotate(180,12,12);canvas.drawPath(hand,paint);canvas.restore();}
+  /** A short nod once the rating is set: the thumb grows a little, leans and settles. Only the icon moves, so the chip's focus scale is untouched. */
+  void nod(){if(!Ui.animations())return;android.animation.ValueAnimator a=android.animation.ValueAnimator.ofFloat(0,1);a.setDuration(320);a.addUpdateListener(v->{float t=(float)v.getAnimatedValue(),wave=(float)Math.sin(Math.PI*t);pop=1+0.2f*wave;tilt=-10*wave;invalidateSelf();});a.start();}
+  @Override public void draw(Canvas canvas){Rect r=getBounds();canvas.save();canvas.translate(r.left,r.top);canvas.scale(r.width()/24f,r.height()/24f);canvas.scale(pop,pop,12,12);canvas.rotate(tilt,12,12);if(down)canvas.rotate(180,12,12);canvas.drawPath(hand,paint);canvas.restore();}
   @Override public boolean isStateful(){return true;}
   @Override protected boolean onStateChange(int[] states){int color=Ui.buttonText(false).getColorForState(states,Color.WHITE);if(paint.getColor()==color)return false;paint.setColor(color);invalidateSelf();return true;}
   @Override public int getIntrinsicWidth(){return size;}@Override public int getIntrinsicHeight(){return size;}

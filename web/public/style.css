@@ -84,6 +84,8 @@ dialog:focus{outline:none}
 .round-action{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#ffffff13;border:1px solid #ffffff1c;font-size:18px;line-height:1;transition:background .15s,transform .15s}
 .round-action:hover{background:#ffffff24;transform:translateY(-1px)}
 .round-action.rated{background:#f1f1f3;color:#131316;border-color:transparent}
+.round-action.nod{animation:nod .32s ease}
+@keyframes nod{50%{transform:scale(1.15) rotate(-10deg)}}
 .detail-overview{margin:0;color:#c0c0c8;font-size:14.5px;line-height:1.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;overflow:hidden}
 .detail-overview.open{display:block;-webkit-line-clamp:unset}
 .detail-more{min-height:32px;padding:4px 0;color:#fff;font-weight:600}
