@@ -12,6 +12,7 @@ public final class PlayerLocalAudit extends Instrumentation {
  boolean await(BooleanSupplier f,int ms){long end=SystemClock.elapsedRealtime()+ms;while(SystemClock.elapsedRealtime()<end){try{if(f.getAsBoolean())return true;}catch(Throwable ignored){}SystemClock.sleep(100);}return false;}
  /** Proof for the eye: the controls on the projector, saved next to the clips. */
  void shot(String name){SystemClock.sleep(700);File f=new File(c.getExternalFilesDir(null),name+".png");try(FileOutputStream out=new FileOutputStream(f)){getUiAutomation().takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}catch(Exception e){android.util.Log.w("KIK","Player audit shot",e);}f.setReadable(true,false);}
+ void shell(String cmd){try(ParcelFileDescriptor out=getUiAutomation().executeShellCommand(cmd);InputStream in=new ParcelFileDescriptor.AutoCloseInputStream(out)){byte[] b=new byte[512];while(in.read(b)>0){}}catch(Exception e){throw new RuntimeException(cmd,e);}}
  void check(String n,boolean b){Bundle out=new Bundle();out.putString("stream",(b?"PASS ":"FAIL ")+n+"\n");sendStatus(0,out);if(!b)throw new AssertionError(n);checks++;}
  @Override public void onCreate(Bundle b){super.onCreate(b);start();}
  @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();original=ProfileStore.current(c);list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
@@ -39,6 +40,9 @@ public final class PlayerLocalAudit extends Instrumentation {
  ui(()->{set(p,"sleepAt",SystemClock.elapsedRealtime()+1200L);return null;});long beforeSleep=pos();
  check("sleep timer pauses playback",await(()->!ui(()->video().playing())&&!ui(()->(Boolean)get(p,"playWhenReady")),8000));SystemClock.sleep(800);
  check("sleep timer clears itself",ui(()->(Long)get(p,"sleepAt")==0L&&!((TextView)get(p,"sub")).getText().toString().contains("Таймер")));check("sleep timer keeps the place",Math.abs(pos()-beforeSleep)<3500&&!ui(()->video().playing()));
- ui(()->{call("toggle",new Class[]{});return null;});start=pos();SystemClock.sleep(2500);check("playback resumes after the sleep timer",ui(()->video().playing())&&pos()>start+1500);passed=true;
+ ui(()->{call("toggle",new Class[]{});return null;});start=pos();SystemClock.sleep(2500);check("playback resumes after the sleep timer",ui(()->video().playing())&&pos()>start+1500);
+ // Headphones: the system's media button path, as a Bluetooth headset sends it, pauses and resumes this player.
+ shell("cmd media_session dispatch play-pause");check("headphone button pauses",await(()->!ui(()->video().playing())&&!ui(()->(Boolean)get(p,"playWhenReady")),5000));long held=pos();SystemClock.sleep(1500);check("pause holds the place",Math.abs(pos()-held)<300);
+ shell("cmd media_session dispatch play-pause");final long resumed=pos();check("headphone button plays again",await(()->ui(()->video().playing())&&pos()>resumed+800,6000));passed=true;
  }catch(Throwable e){error=e.toString();}finally{try{if(p!=null)ui(()->{p.finish();return null;});c.getSharedPreferences("kik_profiles",0).edit().putString("current",original).commit();if(qa!=null)ProfileStore.delete(c,qa);c.getSharedPreferences("kik_profiles",0).edit().putString("list",list).putString("current",original).commit();}catch(Exception e){passed=false;error=e.toString();}Bundle b=new Bundle();b.putString("stream","Local player passed="+passed+" checks="+checks+" "+error);finish(passed?-1:0,b);}}
 }
