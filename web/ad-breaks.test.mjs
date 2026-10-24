@@ -98,3 +98,19 @@ test('AI hints are stored apart from breaks and the frame check is behind the se
  d.budget=AD_FRAMES_DAILY;await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:[frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),e=>e.status===429);assert.equal(used,2);
  await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:['https://evil.example/x.jpg']}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),e=>e.status===400);
 });
+test('the frame check asks Sentra first, all frames in one request, and Workers AI only when Sentra answers unusably',async()=>{
+ const d=db(),env={AD_SCANNER_TOKEN:'s'.repeat(40),SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},original=globalThis.fetch,sent=[];
+ const req=body=>new Request('https://kik.example/api/ad-breaks/classify',{method:'POST',headers:{Authorization:'Bearer '+env.AD_SCANNER_TOKEN},body:JSON.stringify(body)}),read=async r=>r.json();
+ const frame='data:image/jpeg;base64,/9j/AAAA';let used=0,answer='{"frames":[{"ad":0.8,"overlay":0},{"ad":0.1,"overlay":0.6}]}';
+ const ai={run:async()=>{used++;return {answers:{ad:{type:'noul',noul:0.5},overlay:{type:'noul',noul:0.5}}};}};
+ globalThis.fetch=async(url,init)=>{sent.push({url:String(url),headers:init.headers,body:JSON.parse(init.body)});return Response.json({choices:[{message:{content:answer}}]});};
+ try{
+  d.budget=0;assert.deepEqual(await adScanner(req({frames:[frame,frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),{ad:[0.8,0.1],overlay:[0,0.6]});
+  assert.equal(used,0);assert.equal(sent.length,1);assert.equal(sent[0].headers['x-sentra-skill'],'kik-ad-frames');assert.equal(sent[0].body.model,'role:vision');
+  assert.equal(sent[0].body.messages[0].content.filter(p=>p.type==='image_url').length,2);
+  answer='{"frames":[{"ad":0.8,"overlay":0}]}';
+  assert.deepEqual(await adScanner(req({frames:[frame,frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),{ad:[0.5,0.5],overlay:[0.5,0.5]});assert.equal(used,2);
+  answer='{"frames":[{"ad":1,"overlay":0}]}';
+  assert.deepEqual(await adScanner(req({frames:[frame]}),d,env,'/api/ad-breaks/classify',read),{ad:[1],overlay:[0]});
+ }finally{globalThis.fetch=original;}
+});
