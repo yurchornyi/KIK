@@ -84,14 +84,13 @@ public final class HomeActivity extends Activity {
 
  private long cloudRevision=CloudSync.revision();
  private final Runnable cloudTick=new Runnable(){public void run(){if(destroyed||!foreground)return;CloudSync.now(HomeActivity.this);long next=CloudSync.revision();if(next!=cloudRevision){cloudRevision=next;load();}main.postDelayed(this,15000);}};
- @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();main.postDelayed(this::resumeSlides,700);}}
- @Override protected void onPause(){foreground=false;main.removeCallbacks(idleResume);AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
+ @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
+ @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
  @Override protected void onDestroy(){destroyed=true;loadGeneration++;main.removeCallbacksAndMessages(null);super.onDestroy();}
  private long backAt;private TextView backHint;
  /** Back twice leaves the app; the first press only shows a quiet hint (no dialog). */
  // The app opts into predictive back, so onBackPressed is not called on Android 13+: handle the key itself.
  @Override public boolean dispatchKeyEvent(KeyEvent e){
-  if(e.getAction()==KeyEvent.ACTION_DOWN)armIdle();
   if(e.getKeyCode()==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   return super.dispatchKeyEvent(e);
  }
@@ -397,7 +396,7 @@ public final class HomeActivity extends Activity {
   frame.setOnFocusChangeListener((v,f)->{
    Ui.focus(v,f,1.05f);ring.animate().alpha(f?1f:0f).setDuration(140).start();
    t.setTextColor(f?Color.WHITE:0xffe6e6ea);
-   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->{stopSlides();setHero(i);};main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->{View line=(View)box.getParent();if(line==null||destroyed)return;int left=line.getLeft()+box.getLeft(),target=Math.max(0,left-dp(40));if(target!=hs.getScrollX())hs.smoothScrollTo(target,0);});}}
+   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->feature(i);main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->{View line=(View)box.getParent();if(line==null||destroyed)return;int left=line.getLeft()+box.getLeft(),target=Math.max(0,left-dp(40));if(target!=hs.getScrollX())hs.smoothScrollTo(target,0);});}}
   });
   frame.setOnClickListener(v->open(i));
   frame.setOnLongClickListener(v->{rate(i);return true;});
@@ -445,21 +444,19 @@ public final class HomeActivity extends Activity {
 
  // ---------- featured slideshow ----------
  /** As on the website, the hero features recommendations, never a title already in «Продовжити перегляд»; it turns to the
-  *  next one (up to 10) every 9 s until a card takes the focus (then the hero follows the focus as before). */
+  *  next one (up to 10) every 9 s, wherever the focus is. A focused card takes a turn of the show: see feature(). */
  private final List<Item> slides=new ArrayList<Item>();private int slide;private LinearLayout dots;
- private final Runnable nextSlide=()->{if(destroyed||slides.size()<2)return;if(foreground&&!expanded)showSlide((slide+1)%slides.size());else scheduleSlide();};
+ private final Runnable nextSlide=()->{if(destroyed||slides.isEmpty())return;if(foreground&&!expanded)showSlide((slide+1)%slides.size());else{scheduleSlide();paintDots();}};
  private List<Item> candidates=new ArrayList<Item>();private String slideKeys="";
  private void startSlides(List<Row> rows){
   Set<String> started=new HashSet<String>();for(Row r:rows)for(Item i:r.items)if(i.resume)started.add(norm(i.link));
   List<Item> found=new ArrayList<Item>();Set<String> seen=new HashSet<String>();
   for(int pass=0;pass<2&&found.isEmpty();pass++)for(Row r:rows){if(pass==0&&!r.personalized)continue;for(Item i:r.items){if(found.size()>=24)break;if(!i.resume&&!started.contains(norm(i.link))&&seen.add(norm(i.link)))found.add(i);}}
   if(found.isEmpty())found.add(rows.get(0).items.get(0));
-  // A card chose the hero (the slideshow stopped) and the remote went up to its buttons: keep that title.
-  if(slides.isEmpty()&&!slideKeys.isEmpty()&&hero!=null&&(watch.hasFocus()||later.hasFocus()||more.hasFocus()))return;
   // Home redraws every few seconds while it syncs: the same picks keep the slide on screen and its timer.
   StringBuilder keys=new StringBuilder();for(Item i:found)keys.append(norm(i.link)).append(',');
   if(keys.toString().equals(slideKeys)&&!slides.isEmpty())return;
-  slideKeys=keys.toString();candidates=found;arrange();showSlide(0);wideArt(found);
+  slideKeys=keys.toString();candidates=found;arrange();keepTurn();wideArt(found);
  }
  /** Up to 10 slides. Once three or more picks have a wide picture, only those are shown, so the hero is always filled
  *  like the website's; until then (or without enough), the rest follow with their posters. */
@@ -470,29 +467,37 @@ public final class HomeActivity extends Activity {
   if(links.isEmpty())return;
   Ui.bg(()->{final Map<String,String> art=TvChannels.backdrops(this,links,titles);main.post(()->{if(destroyed)return;boolean any=false;
    for(Item x:want){String w=art.get(norm(x.link));if(w==null)continue;x.wide=w;x.wideArt=true;any=true;if(hero==x)Images.crossfade(w,heroImage);}
-   if(!any||slides.isEmpty()||want!=candidates)return;Item now=hero;arrange();int at=slides.indexOf(now);if(at<0)showSlide(0);else{slide=at;paintDots();}});});
+   if(!any||slides.isEmpty()||want!=candidates)return;arrange();keepTurn();});});
  }
- private void showSlide(int n){slide=n;setHero(slides.get(n));paintDots();scheduleSlide();}
- private void scheduleSlide(){main.removeCallbacks(nextSlide);if(slides.size()>1)main.postDelayed(nextSlide,9000);}
- private void stopSlides(){main.removeCallbacks(nextSlide);slides.clear();paintDots();}
- /** The show stops while a card chooses the hero. Back on the hero's buttons or the menu, or back from a title, it goes on
-  *  from the title on screen (which keeps its turn even when it is not among the picks). */
- private void resumeSlides(){resumeSlides(false);}
- private void resumeSlides(boolean idle){
-  if(destroyed||!foreground||!slides.isEmpty()||candidates.isEmpty()||hero==null||!idle&&!heroArea(getCurrentFocus()))return;
-  arrange();int at=slides.indexOf(hero);if(at<0){slides.add(0,hero);if(slides.size()>10)slides.remove(slides.size()-1);at=0;}
-  slide=at;paintDots();scheduleSlide();
+ private void showSlide(int n){borrowed=false;slide=n;setHero(slides.get(n));scheduleSlide();paintDots();}
+ /** One turn ends, the next begins; a borrowed turn ends too, even with a single slide. */
+ private void scheduleSlide(){main.removeCallbacks(nextSlide);slideAt=0;if(slides.size()>1||borrowed&&!slides.isEmpty()){slideAt=android.os.SystemClock.uptimeMillis();main.postDelayed(nextSlide,SLIDE_MS);}}
+ private static final long SLIDE_MS=9000;private long slideAt;
+ /** A title on the hero that is not a slide of its own: it holds the current pill for one turn. */
+ private boolean borrowed;
+ /**
+  * A focused card features its title, Netflix-style, while the show goes on: a title among the slides makes the show jump
+  * to its pill; any other borrows the current pill, which fills again for it. Then the show continues with the next pill.
+  */
+ private void feature(Item i){
+  if(i==null||i==hero)return;
+  int at=-1;for(int k=0;k<slides.size();k++)if(norm(slides.get(k).link).equals(norm(i.link)))at=k;
+  if(at>=0){showSlide(at);return;}
+  borrowed=true;setHero(i);scheduleSlide();paintDots();
  }
- private boolean heroArea(View v){return v!=null&&(v==watch||v==later||v==more||v.getParent()==menuRow);}
- /** A card keeps the hero only while the remote is busy: after 15 s without a key the show goes on from that title. */
- private static final long IDLE_MS=15000;private final Runnable idleResume=()->resumeSlides(true);
- private void armIdle(){main.removeCallbacks(idleResume);main.postDelayed(idleResume,IDLE_MS);}
+ /** The picks changed under the hero: the title on screen keeps its pill (or its borrowed turn) and its timer. */
+ private void keepTurn(){
+  if(slides.isEmpty())return;int at=slides.indexOf(hero);
+  if(at>=0){borrowed=false;slide=at;paintDots();if(slideAt==0)scheduleSlide();return;}
+  if(borrowed&&hero!=null){slide=Math.min(slide,slides.size()-1);paintDots();if(slideAt==0)scheduleSlide();return;}
+  showSlide(0);
+ }
  /** Small pills under the buttons. The slide on screen is a wider track that fills up in white over the 9 s it stays,
  *  like Netflix; the fill only scales (a render property), so the weak GPU never redraws the hero for it. */
  private void paintDots(){dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
   if(!on){View d=new View(this);d.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));dots.addView(d,lp);continue;}
-  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));fill.setPivotX(0);fill.setScaleX(0);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
-  fill.animate().scaleX(1f).setDuration(9000).setInterpolator(new android.view.animation.LinearInterpolator()).start();}}
+  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));long spent=slideAt==0?0:Math.min(SLIDE_MS,android.os.SystemClock.uptimeMillis()-slideAt);fill.setPivotX(0);fill.setScaleX(spent/(float)SLIDE_MS);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
+  fill.animate().scaleX(1f).setDuration(SLIDE_MS-spent).setInterpolator(new android.view.animation.LinearInterpolator()).start();}}
 
  private void setHero(Item i){
   if(i==hero)return;hero=i;expanded=false;heroText.setLines(2);
@@ -502,7 +507,7 @@ public final class HomeActivity extends Activity {
   HeroActions.label(watch,i.resume?"Продовжити":"Дивитися",HeroActions.PLAY);
   paintLater();
   heroText.setText(i.description==null?"":i.description);details(i);
-  Images.crossfade(i.wide!=null?i.wide:i.poster,heroImage);
+  Images.crossfade(i.wide!=null?i.wide:i.poster,heroImage);if(!i.wideArt&&!candidates.contains(i))wideArt(java.util.Collections.singletonList(i));
   for(View v:new View[]{heroTitle,heroMeta,heroResume,heroText}){v.animate().cancel();v.setAlpha(0.35f);v.animate().alpha(1f).setDuration(240).setInterpolator(EASE).withLayer().start();}
  }
 
@@ -528,12 +533,12 @@ public final class HomeActivity extends Activity {
  private TextView menu(String label,View.OnClickListener l){
   TextView t=text(label,14,0xffd0d0d4);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
   t.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));t.setTextColor(Ui.buttonText(false));
-  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f){scroll.smoothScrollTo(0,0);resumeSlides();}});
+  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f)scroll.smoothScrollTo(0,0);});
   t.setOnClickListener(l);return t;
  }
  private Button action(String label,int icon,boolean primary){
   Button b=HeroActions.button(this,label,icon,primary);
-  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f){scroll.smoothScrollTo(0,0);resumeSlides();}});
+  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f)scroll.smoothScrollTo(0,0);});
   return b;
  }
  private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
@@ -586,14 +591,24 @@ public final class HomeActivity extends Activity {
   /** Keep every edge of portrait and landscape artwork; bake fades into one opaque bitmap. */
   static Bitmap backdrop(Bitmap src,int heroW,int heroH){
    Bitmap out=Bitmap.createBitmap(heroW,heroH,Bitmap.Config.RGB_565);Canvas c=new Canvas(out);c.drawColor(BG);
+   Paint g=new Paint(),smooth=new Paint(Paint.FILTER_BITMAP_FLAG);
+   if(src.getWidth()<src.getHeight()*1.1f){
+    // A poster (no wide picture anywhere): it still fills the hero like a slide, never sits in a frame. Blurred to the
+    // edges (a 16 px copy stretched back up), with the sharp poster cropped wide on the right where the backdrop would be.
+    int bw=16,bh=Math.max(1,Math.round(16f*src.getHeight()/src.getWidth()));Bitmap blur=Bitmap.createScaledBitmap(src,bw,bh,true);
+    float top=(heroW*bh/(float)bw-heroH)/2;c.drawBitmap(blur,null,new RectF(0,-Math.max(0,top),heroW,heroH+Math.max(0,top)),smooth);blur.recycle();c.drawColor(0x730d0d0f);
+    RectF right=new RectF(heroW*0.4f,0,heroW,heroH);float k=Math.max(right.width()/src.getWidth(),heroH/(float)src.getHeight()),sw=right.width()/k,sh=heroH/k,sx=(src.getWidth()-sw)/2,sy=(src.getHeight()-sh)*0.35f;
+    c.drawBitmap(src,new Rect(Math.round(sx),Math.round(sy),Math.round(sx+sw),Math.round(sy+sh)),right,smooth);
+    g.setShader(new LinearGradient(right.left,0,right.left+right.width()*0.3f,0,new int[]{0xff0d0d0f,0x000d0d0f},null,Shader.TileMode.CLAMP));c.drawRect(right,g);
+   }else{
    BackdropLayout art=BackdropLayout.fit(src.getWidth(),src.getHeight(),heroW,heroH);
    RectF bounds=new RectF(art.left,art.top,art.left+art.width,art.top+art.height);
-   c.drawBitmap(src,null,bounds,new Paint(Paint.FILTER_BITMAP_FLAG));
-   Paint g=new Paint();
-   // Blend the image's own edges, including narrow posters, into the surrounding graphite.
+   c.drawBitmap(src,null,bounds,smooth);
+   // Blend the image's own edges into the surrounding graphite.
    g.setShader(new LinearGradient(bounds.left,0,bounds.left+art.width*0.18f,0,new int[]{BG,0x000d0d0f},null,Shader.TileMode.CLAMP));c.drawRect(bounds,g);
    g.setShader(new LinearGradient(bounds.right-art.width*0.06f,0,bounds.right,0,new int[]{0x000d0d0f,BG},null,Shader.TileMode.CLAMP));c.drawRect(bounds,g);
    g.setShader(new LinearGradient(0,bounds.top,0,bounds.top+art.height*0.06f,new int[]{BG,0x000d0d0f},null,Shader.TileMode.CLAMP));c.drawRect(bounds,g);
+   }
    g.setShader(new LinearGradient(0,0,heroW,0,new int[]{0xff0d0d0f,0xf20d0d0f,0x7a0d0d0f,0x200d0d0f},new float[]{0f,0.28f,0.63f,1f},Shader.TileMode.CLAMP));c.drawRect(0,0,heroW,heroH,g);
    g.setShader(new LinearGradient(0,heroH*0.45f,0,heroH,new int[]{0x000d0d0f,0xff0d0d0f},null,Shader.TileMode.CLAMP));c.drawRect(0,0,heroW,heroH,g);
    g.setShader(new LinearGradient(0,0,0,heroH*0.3f,new int[]{0x990d0d0f,0x000d0d0f},null,Shader.TileMode.CLAMP));c.drawRect(0,0,heroW,heroH,g);
@@ -628,7 +643,7 @@ public final class HomeActivity extends Activity {
    if(viewHeight<=0){view.post(()->crossfade(url,view));return;}
    final int width=Math.max(1,viewWidth/2),height=Math.max(1,viewHeight/2);
    final String u=url.startsWith("//")?"https:"+url:url.startsWith("/")?"https://"+Site.host()+url:url;
-   final String key=u+"@hero-fit-v2:"+width+"x"+height;if(key.equals(view.getTag()))return;view.setTag(key);
+   final String key=u+"@hero-fit-v3:"+width+"x"+height;if(key.equals(view.getTag()))return;view.setTag(key);
    Bitmap hit=MEM.get(key);if(hit!=null){swap(view,hit);return;}
    fetch(u,key,width,height,view,true);
   }
