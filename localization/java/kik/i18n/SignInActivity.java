@@ -168,12 +168,14 @@ public final class SignInActivity extends Activity {
  private void signedIn(JSONObject result)throws Exception{
   String token=result.getString("token");if(!token.matches("[a-f0-9]{64}"))throw new java.io.IOException("Token");
   Account.save(this,email,token);remote=result.optJSONArray("profiles");if(remote==null)remote=new JSONArray();
-  show(remote.length()==0?NAME:PICK);
+  profiles();
  }
+ /** One profile on the account: no «Хто дивиться?», it is simply used. None: create one. Several: the viewer picks. */
+ private void profiles(){JSONObject only=remote.length()==1?remote.optJSONObject(0):null;if(only!=null){pick(only);return;}show(remote.length()==0?NAME:PICK);}
  /** Reopened after sign-in but before a profile was chosen: continue from the account's profiles. */
  private void resume(){
   show(LOADING);final String token=Account.token(this);
-  io.execute(()->{try{JSONObject me=request("/api/me",token);main.post(()->{if(destroyed)return;if(me.isNull("user")){Account.signOut(this);show(EMAIL);return;}remote=me.optJSONArray("profiles");if(remote==null)remote=new JSONArray();show(remote.length()==0?NAME:PICK);});}
+  io.execute(()->{try{JSONObject me=request("/api/me",token);main.post(()->{if(destroyed)return;if(me.isNull("user")){Account.signOut(this);show(EMAIL);return;}remote=me.optJSONArray("profiles");if(remote==null)remote=new JSONArray();profiles();});}
    catch(Exception e){main.post(()->{if(destroyed)return;show(EMAIL);error(e instanceof CloudSync.Failure?e.getMessage():"Немає зв’язку з KIK. Перевірте інтернет і спробуйте ще раз.");});}});
  }
  private void pick(JSONObject chosen){

@@ -177,11 +177,16 @@ public final class HomeActivity extends Activity {
   TextView settings=menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class)));menuRow.addView(settings);settingsItem=settings;paintSettingsBadge();
 
   String name=ProfileStore.nameOf(this,ProfileStore.current(this));lastProfileName=name;lastProfileAvatar=ProfileStore.avatarOf(this,ProfileStore.current(this));
-  ImageView avatar=Avatars.view(this,lastProfileAvatar,36);
+  ImageView avatar=Avatars.view(this,lastProfileAvatar,42);
   avatar.setOnClickListener(v->startActivity(new Intent(this,ProfilesActivity.class)));
   // The remote reaches «Хто дивиться?» from the menu: right of «Налаштування» is the avatar, not the posters below.
   avatar.setFocusable(true);avatar.setId(View.generateViewId());avatar.setForeground(states(shape(0,dp(10),0,0),shape(0,dp(10),dp(3),Color.WHITE)));avatar.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.1f));settings.setId(View.generateViewId());settings.setNextFocusRightId(avatar.getId());avatar.setNextFocusLeftId(settings.getId());avatar.setNextFocusRightId(avatar.getId());
-  bar.addView(avatar,new LinearLayout.LayoutParams(dp(36),dp(36)));
+  // As on Netflix: the profile picture, a little larger and clear on the projector, with a small ▾ that turns on focus.
+  LinearLayout me=new LinearLayout(this);me.setOrientation(0);me.setGravity(Gravity.CENTER_VERTICAL);me.setClipChildren(false);
+  me.addView(avatar,new LinearLayout.LayoutParams(dp(42),dp(42)));
+  final TextView caret=text("▾",16,Color.WHITE);caret.setIncludeFontPadding(false);LinearLayout.LayoutParams cl=new LinearLayout.LayoutParams(-2,-2);cl.leftMargin=dp(6);me.addView(caret,cl);
+  avatar.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.1f);caret.animate().rotation(f?180:0).setDuration(200).start();});
+  bar.addView(me,new LinearLayout.LayoutParams(-2,-2));
   avatar.setContentDescription("Профіль: "+(name==null?"вибрати":name));
   return bar;
  }
