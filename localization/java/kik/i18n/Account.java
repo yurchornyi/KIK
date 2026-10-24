@@ -22,16 +22,18 @@ public final class Account {
  }
 
  /** The local profile bound to this account profile, if any. */
- static String localFor(Context c,String remote){for(ProfileStore.Profile p:ProfileStore.list(c))if(remote.equals(CloudSync.remoteId(c,p.id)))return p.id;return null;}
+ static String localFor(Context c,String remote){for(ProfileStore.Profile p:ProfileStore.list(c))if(remote.equals(CloudSync.remoteId(c,p.id)))return p.id;
+  for(ProfileStore.Profile p:ProfileStore.list(c))if(!CloudSync.linked(c,p.id)&&remote.equals(CloudSync.pastRemoteId(c,p.id)))return p.id;return null;}
 
  /**
   * Binds an account profile to a local one: an already bound profile, else the current local profile when it belongs
-  * to no account (the history watched before sign-in moves into the account), else a new local profile.
+  * to no account and never did (the history watched before sign-in moves into the account), else a new local profile.
+  * A profile another account used before stays out of this one, so one viewer's history never lands in someone else's.
   */
  static String adopt(Context c,JSONObject remote,boolean takeCurrent)throws Exception{
   String id=remote.getString("id"),name=remote.optString("name","Профіль"),avatar=remote.optString("avatar");
   String local=localFor(c,id);
-  if(local==null&&takeCurrent){String current=ProfileStore.current(c);if(ProfileStore.nameOf(c,current)!=null&&!CloudSync.linked(c,current)){local=current;ProfileStore.rename(c,local,name);if(Avatars.valid(avatar))ProfileStore.setAvatar(c,local,avatar);}}
+  if(local==null&&takeCurrent){String current=ProfileStore.current(c);if(ProfileStore.nameOf(c,current)!=null&&!CloudSync.linked(c,current)&&CloudSync.pastRemoteId(c,current).isEmpty()){local=current;ProfileStore.rename(c,local,name);if(Avatars.valid(avatar))ProfileStore.setAvatar(c,local,avatar);}}
   if(local==null){local=ProfileStore.create(c,name,"",avatar).id;ProfileStore.skipTasteSetup(c,local);}
   if(!CloudSync.linked(c,local))CloudSync.bind(c,local,token(c),remote);
   return local;
@@ -43,5 +45,8 @@ public final class Account {
   for(ProfileStore.Profile p:ProfileStore.list(c))if(CloudSync.linked(c,p.id))CloudSync.disconnect(c,p.id);
   if(!token.isEmpty())Ui.bg(()->{try{CloudSync.request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});
  }
+ /** The server no longer accepts this TV's sign-in (access revoked, password reset, signed out elsewhere): sign out and ask again. */
+ static void revoked(Context context){Context c=context.getApplicationContext();new android.os.Handler(android.os.Looper.getMainLooper()).post(()->{if(!signedIn(c))return;signOut(c);
+  c.startActivity(new Intent(c,SignInActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));});}
  private Account(){}
 }

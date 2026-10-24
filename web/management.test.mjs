@@ -52,3 +52,21 @@ test('the TV reports how it reaches the catalogue; the admin list shows the late
  await siteReport(db,member,{status:'doh',host:'rezka.ag'});assert.equal((await call(db,'/api/admin/users')).users.find(u=>u.id==='u0001').site.status,'doh');await siteReport(db,member,{status:'ok',host:'rezka.ag'});row=(await call(db,'/api/admin/users')).users.find(u=>u.id==='u0001');assert.equal(row.site.status,'ok');assert.equal(row.site.detail,null);
  assert.equal((await call(db,'/api/admin/users')).users.find(u=>u.id===owner.id).site,null);
  db.raw.exec("DELETE FROM users WHERE id='u0001'");assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM site_reports').get().n,0);});
+
+import {session,identity} from './auth.mjs';import {adBreaks} from './ad-breaks.mjs';
+const bearer=token=>new Request('https://kik.test/api/me',{headers:{Authorization:'Bearer '+token}});
+test('revoking access or resetting the password ends sign-ins at once and refuses one that raced the check',async()=>{const db=memoryD1();seed(db,2);
+ for(const email of ['member1@example.invalid','member2@example.invalid'])await call(db,'/api/admin/access',{email,action:'allow'});
+ const live=await session(db,'u0001','h');assert.equal((await identity(bearer(live),db)).id,'u0001');
+ // A sign-in whose password check ran before the revocation, but whose session is written after it, gets nothing.
+ await call(db,'/api/admin/access',{email:'member1@example.invalid',action:'revoke'});
+ assert.equal(await identity(bearer(live),db),null);await assert.rejects(session(db,'u0001','h'),e=>e.status===403);
+ // A session left behind (written outside the batch) is still refused, because identity rechecks the list.
+ db.raw.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,9e15)').run(await hash('f'.repeat(64)),'u0001');assert.equal(await identity(bearer('f'.repeat(64)),db),null);
+ await call(db,'/api/admin/users/reset-password',{id:'u0002'});await assert.rejects(session(db,'u0002','h'),e=>e.status===403,'the checked password no longer exists');
+ db.raw.exec("UPDATE users SET password_hash='new' WHERE id='u0002'");await assert.rejects(session(db,'u0002','h'),e=>e.status===403,'a password set after the check is not the one checked');
+ assert.ok(await session(db,'u0002','new'));assert.ok(await session(db,owner.id),'the admin needs no list entry');});
+test('only a signed-in player queues an episode, and given-up episodes do not fill the queue',async()=>{const db=memoryD1(),link='https://hdrezka.sh/series/thriller/92903-mrachnye-2026.html';
+ assert.deepEqual(await adBreaks(db,{link,voice:'35',season:'1',episode:'1'},Date.now(),{queue:false}),{breaks:[]});assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue').get().n,0);
+ const add=db.raw.prepare("INSERT INTO ad_scan_queue(title_key,voice,season,episode,requested_at,attempts) VALUES('series/x/1-x.html','35','1',?,1,3)");for(let i=0;i<300;i++)add.run(String(i));
+ assert.deepEqual(await adBreaks(db,{link,voice:'35',season:'1',episode:'2'}),{breaks:[],pending:true});assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue WHERE attempts<3').get().n,1);});

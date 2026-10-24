@@ -32,8 +32,9 @@ export async function admin(request,db,user,readBody,options={}){requireAdmin(us
   }
   // Revoking access also ends every sign-in of that account, TVs included; the account and its history stay.
   const target=await db.prepare('SELECT id,role FROM users WHERE email=?').bind(email).first();if(target?.role==='admin')fail('Доступ адміністратора відкликати не можна',403);
-  if(!(await db.prepare('DELETE FROM registration_access WHERE email=?').bind(email).run()).meta.changes)fail('Цієї адреси вже немає у списку',404);
-  await db.batch([...target?[db.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id),db.prepare('DELETE FROM pairs WHERE user_id=?').bind(target.id)]:[],await event(db,user,'revoke',email)]);return {ok:true};
+  if(!await db.prepare('SELECT email FROM registration_access WHERE email=?').bind(email).first())fail('Цієї адреси вже немає у списку',404);
+  // One batch: no sign-in can be created between losing access and losing sessions.
+  await db.batch([db.prepare('DELETE FROM registration_access WHERE email=?').bind(email),...target?[db.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id),db.prepare('DELETE FROM pairs WHERE user_id=?').bind(target.id)]:[],await event(db,user,'revoke',email)]);return {ok:true};
  }
  // A forgotten password: the account keeps its profiles and history, signs out everywhere, and sets a new password at next sign-in.
  if(path==='/api/admin/users/reset-password'&&request.method==='POST'){const b=await readBody(request,8192);if(typeof b.id!=='string'||!b.id)fail('Виберіть акаунт');if(b.id===user.id)fail('Свій пароль змініть у налаштуваннях',403);const target=await db.prepare('SELECT id,email,role FROM users WHERE id=?').bind(b.id).first();if(!target)fail('Акаунт не знайдено',404);if(target.role==='admin')fail('Акаунт адміністратора захищений',403);

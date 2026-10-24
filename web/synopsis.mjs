@@ -12,9 +12,10 @@ export function cleanSynopsis(raw){
  return s;
 }
 /** A short synopsis of one catalogue title, written once and cached; null when there is no model, budget or usable answer. */
-export async function synopsis(db,env,link,load=film,localize=localizedFilm){
+export async function synopsis(db,env,link,load=film,localize=localizedFilm,{generate=true}={}){
  const key=titleKey(link);if(!key||key.startsWith('uaserials/'))throw Object.assign(Error('Некоректне посилання'),{status:400});
  const cached=await db.prepare('SELECT summary FROM synopsis_cache WHERE title_key=?').bind(key).first();if(cached)return {summary:cached.summary,cached:true};
+ if(!generate)return {summary:null,status:'sign-in'};
  if(pending.has(key))return pending.get(key);
  const task=(async()=>{
   if(!env.AI)return {summary:null,status:'unavailable'};

@@ -112,8 +112,10 @@ INSERT INTO records(profile_id,kind,item_key,data,updated_at) SELECT '${profileI
   await sql(`UPDATE sessions SET created_at=${Date.now()-181*86400000},expires_at=${Date.now()+86400000} WHERE user_id='${memberId}';`);
   check((await req('/api/me',undefined,owner)).body.user?.id===memberId, 'a sign-in in use never expires by age');
   check((await req('/api/sync',{profile_id:profileId,records:[]},owner)).status===200, 'an old sign-in keeps syncing');
+  check((await req('/api/synopsis?link='+encodeURIComponent('https://hdrezka.sh/films/drama/1-qa.html'))).body.status==='sign-in', 'without a sign-in no AI synopsis is generated');
+  check((await req('/api/ad-breaks?link='+encodeURIComponent('https://hdrezka.sh/series/drama/1-qa.html')+'&voice=35&season=1&episode=1')).body.pending===undefined, 'without a sign-in nothing joins the ad scan queue');
   await sql(`UPDATE sessions SET expires_at=${Date.now()-1000} WHERE user_id='${memberId}';`);
-  check((await req('/api/me',undefined,owner)).body.user===null, 'a sign-in unused for 400 days ends');
+  check((await req('/api/me',undefined,owner)).body.user===null, 'a sign-in unused for 90 days ends');
   const headers=(await req('/api/health')).headers;
   check(headers.get('Strict-Transport-Security')==='max-age=31536000' && headers.get('X-Frame-Options')==='DENY', 'HTTPS and framing policies present');
   check(headers.get('Content-Security-Policy').includes("media-src 'self' blob:"), 'browser media must pass through the authenticated endpoint');

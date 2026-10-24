@@ -22,14 +22,19 @@ public final class CloudSync {
  public static void bind(Context c,String profile,String token,JSONObject remote)throws Exception{
   if(ProfileStore.nameOf(c,profile)==null||!token.matches("[a-f0-9]{64}")||remote.optString("id").isEmpty())throw new IOException("Invalid cloud binding");
   if(!remote.getString("id").equals(prefs(c).getString("remote_"+profile,"")))stateFile(c,profile).delete();
-  if(!prefs(c).edit().putString("token_"+profile,token).putString("remote_"+profile,remote.getString("id")).putString("name_"+profile,remote.getString("name")).remove("offset_"+profile).commit())throw new IOException("Cloud preferences");status="Підключено • синхронізація…";now(c);
+  if(!prefs(c).edit().putString("token_"+profile,token).putString("remote_"+profile,remote.getString("id")).putString("name_"+profile,remote.getString("name")).remove("offset_"+profile).remove("past_remote_"+profile).commit())throw new IOException("Cloud preferences");status="Підключено • синхронізація…";now(c);
  }
  /** Asks the account for its ranking of these candidates; the server applies AI only where the administrator enabled it. */
  static JSONObject recommend(Context context,String profile,JSONArray items){
   Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,""),remote=prefs(c).getString("remote_"+profile,"");if(token.isEmpty()||remote.isEmpty())return null;
   try{return request("/api/recommendations",new JSONObject().put("profile_id",remote).put("items",items),token);}catch(Exception e){Log.w("KIK","Cloud recommendations",e);return null;}
  }
- public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");final boolean keep=shared(c,profile,token);prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).remove("adskip_"+profile).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";if(!keep)IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
+ public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");final boolean keep=shared(c,profile,token);// The account profile it was is remembered: only that account takes this local profile and its history back.
+  String remote=remoteId(c,profile);prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).remove("adskip_"+profile).putString("past_remote_"+profile,remote.isEmpty()?prefs(c).getString("past_remote_"+profile,""):remote).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";if(!keep)IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
+ /** Signs a request to KIK's own public API with this TV's sign-in, so the server may spend its AI and scan budget on it. */
+ static void authorize(HttpURLConnection connection){Context c=UiRuntime.app;if(c==null)return;String token=Account.token(c);
+  if(token.isEmpty())for(ProfileStore.Profile p:ProfileStore.list(c)){token=prefs(c).getString("token_"+p.id,"");if(!token.isEmpty())break;}
+  if(token.matches("[a-f0-9]{64}"))connection.setRequestProperty("Authorization","Bearer "+token);}
  public static JSONObject request(String path,JSONObject data,String token)throws Exception{
   if(!path.startsWith("/api/")||path.contains(".."))throw new IOException("Cloud path");
   HttpURLConnection connection=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+path).openConnection();connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setInstanceFollowRedirects(false);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=UTF-8");if(token!=null&&!token.isEmpty())connection.setRequestProperty("Authorization","Bearer "+token);
@@ -43,7 +48,9 @@ public final class CloudSync {
  /** Whether another profile or the TV's account still signs in with this session. */
  private static boolean shared(Context c,String profile,String token){if(token.isEmpty())return false;if(token.equals(Account.token(c)))return true;for(ProfileStore.Profile p:ProfileStore.list(c))if(!p.id.equals(profile)&&token.equals(prefs(c).getString("token_"+p.id,"")))return true;return false;}
  static String remoteId(Context c,String profile){return prefs(c).getString("remote_"+profile,"");}
- private static void syncAll(Context c){if(!BUSY.compareAndSet(false,true))return;try{for(ProfileStore.Profile p:ProfileStore.list(c))if(linked(c,p.id))try{sync(c,p.id);}catch(SecurityException e){status="Потрібне повторне підключення профілю";}catch(Exception e){status="Без мережі • зміни збережено на TV";}}finally{BUSY.set(false);}}
+ /** The account profile this signed-out local profile belonged to; empty if it never belonged to one. */
+ static String pastRemoteId(Context c,String profile){return prefs(c).getString("past_remote_"+profile,"");}
+ private static void syncAll(Context c){if(!BUSY.compareAndSet(false,true))return;boolean revoked=false;try{for(ProfileStore.Profile p:ProfileStore.list(c))if(linked(c,p.id))try{sync(c,p.id);}catch(SecurityException e){status="Потрібне повторне підключення профілю";revoked=true;}catch(Exception e){status="Без мережі • зміни збережено на TV";}}finally{BUSY.set(false);}if(revoked)Account.revoked(c);}
  private static AtomicFile stateFile(Context c,String p){return new AtomicFile(new File(c.getFilesDir(),"kik_cloud_state_"+p+".json"));}
  private static JSONObject read(AtomicFile file){try{return new JSONObject(Site.read(file.openRead()));}catch(Exception e){return new JSONObject();}}
  private static void write(AtomicFile file,String text)throws IOException{FileOutputStream out=null;try{out=file.startWrite();out.write(text.getBytes("UTF-8"));file.finishWrite(out);}catch(IOException e){if(out!=null)file.failWrite(out);throw e;}}

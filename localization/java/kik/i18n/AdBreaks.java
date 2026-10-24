@@ -16,7 +16,7 @@ final class AdBreaks {
   String kept=p.getString(id,null);double[][] known=parse(kept);
   if(known!=null&&known[0]!=null&&known[1]==null||kept!=null&&System.currentTimeMillis()-p.getLong(id+"@",0)<RETRY)return known;
   HttpURLConnection h=null;
-  try{h=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/ad-breaks?link="+URLEncoder.encode("https://hdrezka.sh/"+key,"UTF-8")+"&voice="+URLEncoder.encode(voice,"UTF-8")+"&season="+URLEncoder.encode(s,"UTF-8")+"&episode="+URLEncoder.encode(e,"UTF-8")).openConnection();h.setConnectTimeout(8000);h.setReadTimeout(15000);
+  try{h=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/ad-breaks?link="+URLEncoder.encode("https://hdrezka.sh/"+key,"UTF-8")+"&voice="+URLEncoder.encode(voice,"UTF-8")+"&season="+URLEncoder.encode(s,"UTF-8")+"&episode="+URLEncoder.encode(e,"UTF-8")).openConnection();CloudSync.authorize(h);h.setConnectTimeout(8000);h.setReadTimeout(15000);
    if(h.getResponseCode()!=200)return known;String body=Site.read(h.getInputStream());double[][] got=parse(body);
    p.edit().putString(id,body).putLong(id+"@",System.currentTimeMillis()).apply();return got;
   }catch(Exception x){android.util.Log.w("KIK","Ad breaks",x);return known;}finally{if(h!=null)h.disconnect();}
