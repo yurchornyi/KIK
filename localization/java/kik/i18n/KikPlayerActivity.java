@@ -381,7 +381,7 @@ public final class KikPlayerActivity extends Activity {
   settings=new LinearLayout(this);settings.setOrientation(0);settings.setGravity(Gravity.CENTER_VERTICAL);settings.setClipChildren(false);settings.setClipToPadding(false);
   side.addView(settings,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
   options=new LinearLayout(this);options.setOrientation(0);options.setGravity(Gravity.CENTER_VERTICAL);options.setClipChildren(false);options.setClipToPadding(false);
-  optionsBox=new HorizontalScrollView(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setClipChildren(false);optionsBox.setClipToPadding(false);optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
+  optionsBox=new HorizontalScrollView(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setHorizontalFadingEdgeEnabled(true);optionsBox.setFadingEdgeLength(dp(40));optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
   side.addView(optionsBox,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
   buttons.addView(side,new LinearLayout.LayoutParams(-2,-2));
   if(voiceNames().size()>1)addControl("Озвучка",()->openVoices());
@@ -426,43 +426,51 @@ public final class KikPlayerActivity extends Activity {
  }
  private void openMenu(String kind,List<String> labels,List<Runnable> actions,int selected){
   if(labels.isEmpty()){Ui.toast(this,"Немає доступних варіантів");return;}
+  Log.d("KIK.Player","Menu "+kind+" from control "+focus+" of "+controls.size());
   menu=kind;optLabels=labels;optActions=actions;optSelected=optFocus=Math.min(labels.size()-1,Math.max(0,selected));options.removeAllViews();
   for(int i=0;i<labels.size();i++){final int at=i;TextView t=Ui.bold(this,labels.get(i),14);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(dp(16),0,dp(16),0);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(38));lp.setMargins(i==0?0:dp(8),0,0,0);options.addView(t,lp);t.setOnClickListener(v->{Runnable r=optActions.get(at);closeMenu();r.run();show(true);});}
   // The choices take the place of the buttons, in the same row and at the same height: the controls never grow a second row.
   swapRow(true);show(true);
  }
  private void closeMenu(){boolean open=menu!=null;menu=null;if(open)swapRow(false);paint();}
- private int rowSwap;private float menuFrom=-1;private long swapUntil;
+ private int rowSwap;private float menuFrom=-1;private long swapUntil;private final List<android.animation.Animator> fades=new ArrayList<android.animation.Animator>();
  private static float centreX(View v){int[] at=new int[2];v.getLocationOnScreen(at);return at[0]+v.getWidth()/2f;}
  /**
   * A menu opens in place of the settings buttons: they fade, and the choices grow out of the pressed button and spread to
   * their places, one after another. Closing gathers them back into that spot and the buttons return. Small views only.
   */
+ /** Material "emphasized" curves: a soft start and a long gentle landing; the way back speeds up as it leaves. */
+ private static final android.view.animation.Interpolator GLIDE=new android.view.animation.PathInterpolator(.2f,0f,0f,1f),LEAVE=new android.view.animation.PathInterpolator(.3f,0f,.8f,.15f);
  private void swapRow(final boolean toMenu){
-  final int gen=++rowSwap;settings.animate().cancel();for(int i=0;i<options.getChildCount();i++)options.getChildAt(i).animate().cancel();
+  final int gen=++rowSwap;settings.animate().cancel();for(int i=0;i<options.getChildCount();i++)options.getChildAt(i).animate().cancel();for(android.animation.Animator a:fades)a.cancel();fades.clear();
   final boolean animate=Ui.animations()&&visible;
   if(toMenu){
    View from=focus>=0&&focus<controls.size()?controls.get(focus):null;menuFrom=from!=null&&from.getWidth()>0?centreX(from):-1;
    optionsBox.scrollTo(0,0);optionsBox.setVisibility(View.VISIBLE);
    if(!animate){settings.setVisibility(View.INVISIBLE);for(int i=0;i<options.getChildCount();i++)reset(options.getChildAt(i));return;}
-   for(int i=0;i<options.getChildCount();i++)options.getChildAt(i).setAlpha(0);
-   final long flight=60+options.getChildCount()*25L+240;swapUntil=SystemClock.elapsedRealtime()+flight;h.postDelayed(()->{if(gen==rowSwap&&menu!=null)paint();},flight+20);
-   settings.animate().alpha(0).scaleX(.92f).scaleY(.92f).setDuration(110).setInterpolator(Ui.EASE).withEndAction(()->{if(gen==rowSwap)settings.setVisibility(View.INVISIBLE);}).start();
+   final int n=options.getChildCount();for(int i=0;i<n;i++)options.getChildAt(i).setAlpha(0);
+   // The buttons step back towards the pressed one while the choices unfold out of it.
+   if(menuFrom>=0){int[] at=new int[2];settings.getLocationOnScreen(at);settings.setPivotX(menuFrom-at[0]);}settings.setPivotY(settings.getHeight()/2f);
+   settings.animate().alpha(0).scaleX(.94f).scaleY(.94f).setStartDelay(0).setDuration(180).setInterpolator(GLIDE).withEndAction(()->{if(gen==rowSwap)settings.setVisibility(View.INVISIBLE);}).start();
+   final long flight=n*40L+420;swapUntil=SystemClock.elapsedRealtime()+flight;h.postDelayed(()->{if(gen==rowSwap&&menu!=null)paint();},flight+20);
    optionsBox.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener(){@Override public boolean onPreDraw(){
     optionsBox.getViewTreeObserver().removeOnPreDrawListener(this);if(gen!=rowSwap)return true;
-    for(int i=0;i<options.getChildCount();i++){View c=options.getChildAt(i);float dx=menuFrom<0?dp(24):menuFrom-centreX(c);
-     c.setTranslationX(dx);c.setScaleX(.5f);c.setScaleY(.5f);c.setAlpha(0);
-     c.animate().translationX(0).scaleX(1).scaleY(1).alpha(1).setStartDelay(60+i*25).setDuration(240).setInterpolator(Ui.EASE).start();}
+    // Nearest to the button first: the choices fan out from it like a deck.
+    for(int i=0;i<n;i++){View c=options.getChildAt(i);float dx=menuFrom<0?dp(28):menuFrom-centreX(c);int order=menuFrom<0?i:n-1-i;
+     c.setTranslationX(dx);c.setScaleX(.82f);c.setScaleY(.82f);c.setAlpha(0);
+     c.animate().translationX(0).scaleX(1).scaleY(1).setStartDelay(40+order*40L).setDuration(420).setInterpolator(GLIDE).start();
+     // Opacity arrives sooner than the movement settles, so a choice is readable while it still glides.
+     android.animation.ObjectAnimator a=android.animation.ObjectAnimator.ofFloat(c,View.ALPHA,0f,1f);a.setStartDelay(40+order*40L);a.setDuration(220);a.setInterpolator(GLIDE);fades.add(a);a.start();}
     return true;}});
    return;
   }
   int n=options.getChildCount();
   if(!animate||menuFrom<0||n==0){optionsBox.setVisibility(View.GONE);settings.setVisibility(View.VISIBLE);settings.setAlpha(1);settings.setScaleX(1);settings.setScaleY(1);return;}
-  swapUntil=SystemClock.elapsedRealtime()+170;
+  swapUntil=SystemClock.elapsedRealtime()+320;
   for(int i=0;i<n;i++){final View c=options.getChildAt(i);c.animate().cancel();
-   c.animate().translationX(menuFrom-centreX(c)+c.getTranslationX()).scaleX(.5f).scaleY(.5f).alpha(0).setStartDelay(0).setDuration(160).setInterpolator(new android.view.animation.AccelerateInterpolator(1.4f)).start();}
+   c.animate().translationX(menuFrom-centreX(c)+c.getTranslationX()).scaleX(.82f).scaleY(.82f).alpha(0).setStartDelay(i*18L).setDuration(220).setInterpolator(LEAVE).start();}
   h.postDelayed(()->{if(gen!=rowSwap)return;optionsBox.setVisibility(View.GONE);for(int k=0;k<options.getChildCount();k++)reset(options.getChildAt(k));
-   settings.setVisibility(View.VISIBLE);settings.setAlpha(0);settings.setScaleX(.92f);settings.setScaleY(.92f);settings.animate().alpha(1).scaleX(1).scaleY(1).setDuration(150).setInterpolator(Ui.EASE).start();},170);
+   settings.setVisibility(View.VISIBLE);settings.setAlpha(0);settings.setScaleX(.94f);settings.setScaleY(.94f);settings.animate().alpha(1).scaleX(1).scaleY(1).setStartDelay(0).setDuration(320).setInterpolator(GLIDE).start();},140+n*18L);
  }
  private static void reset(View v){v.setTranslationX(0);v.setScaleX(1);v.setScaleY(1);v.setAlpha(1);}
  /** Every free studio, best first (Ukrainian, then Russian, then the rest), named with its language. */
