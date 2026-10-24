@@ -18,3 +18,7 @@ export class RecoveryPlan {
  progress(now){if(!this.stableSince)this.stableSince=now;if(now-this.stableSince>=30000)this.reset();}
  interrupted(){this.stableSince=0;}
 }
+/** The site's running time («2 ч. 22 мин.», «45 хв.», «128 min») in ms; 0 when unknown. */
+export function runtimeMs(text){const s=String(text||'').toLowerCase();const h=Number(s.match(/(\d+)\s*(?:ч|год|h)/)?.[1]||0),m=Number(s.match(/(\d+)\s*(?:мин|хв|min)/)?.[1]||(h?0:s.match(/\d+/)?.[0]||0));return (h*60+m)*60000;}
+/** Without premium the source's top quality is a one-minute preview. A stream counts as one only when it is short and the title is known to run much longer; with no length known, only under 90 s, so a short film keeps its best quality. */
+export function isPreview(ms,expectedMs){if(!(ms>0))return false;if(expectedMs>0)return ms<180000&&ms*2<expectedMs;return ms<90000;}
