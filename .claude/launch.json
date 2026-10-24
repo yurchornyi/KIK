@@ -15,42 +15,6 @@
         "8787"
       ],
       "port": 8787
-    },
-    {
-      "name": "kik-web-perf",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "--prefix",
-        "web",
-        "wrangler",
-        "dev",
-        "--cwd",
-        "web",
-        "--port",
-        "8797",
-        "--inspector-port",
-        "9239",
-        "--persist-to",
-        "/private/tmp/claude-501/-Users-chornyi-Projects-KIK/4c572d38-29dd-418e-8ece-870a40d88ec1/scratchpad/wstate"
-      ],
-      "port": 8797
-    },
-    {
-      "name": "kik-search-web",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "--prefix",
-        "/Users/chornyi/Projects/KIK-search/web",
-        "wrangler",
-        "dev",
-        "--cwd",
-        "/Users/chornyi/Projects/KIK-search/web",
-        "--port",
-        "8807",
-        "--persist-to",
-        "/private/tmp/claude-501/-Users-chornyi--claude-spares-spare-byIzuf/328b621d-38cb-4ab9-822a-bb2ebee79ea0/scratchpad/wstate"
-      ],
-      "port": 8807
     }
   ]
 }
