@@ -56,12 +56,14 @@ async function api(request,env,ctx){
  }
  if(path==="/api/metadata"){const m=await metadata(url.searchParams.get("imdb"),env,url.searchParams.get("kind")||''),t=await localizedFilm(db,{title:m.title,description:m.overview});return json({...m,title:t.title,overview:t.description});}
  // Three-line synopsis for the TV title page, generated once per title from the catalogue page itself.
- if(path==="/api/synopsis"&&request.method==="GET")return json(await synopsis(db,env,url.searchParams.get("link")||""));
+ // Only a signed-in viewer may spend the day's AI budget; everyone reads what is already written.
+ let viewer;const signedIn=async()=>!!(viewer??=await identity(request,db));
+ if(path==="/api/synopsis"&&request.method==="GET")return json(await synopsis(db,env,url.searchParams.get("link")||"",undefined,undefined,{generate:await signedIn()}));
  // Ad clips inside sponsored voice tracks: players read them, the scanner PC fills them in.
- if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams)));
+ if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams),undefined,{queue:await signedIn()}));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
  // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
- if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150);return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2"),86400,async()=>({aliases:await searchAlternatives(db,env,query,aliases)}));}
+ if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:{...env,AI:null},query,aliases)}));}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
@@ -83,14 +85,14 @@ async function api(request,env,ctx){
    // After an admin reset the account keeps its profiles and history; only the password is new.
    if(known.password_hash)fail("Ця пошта вже зареєстрована",409);
    if(!(await db.prepare("UPDATE users SET salt=?,password_hash=? WHERE id=? AND password_hash=''").bind(salt,password_hash,known.id).run()).meta.changes)fail("Ця пошта вже зареєстрована",409);
-   const token=await session(db,known.id);return json({user:{id:known.id,email,role:known.role},profiles:await profiles(db,{id:known.id}),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
+   const token=await session(db,known.id,password_hash);return json({user:{id:known.id,email,role:known.role},profiles:await profiles(db,{id:known.id}),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
   }
   const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");
   // The TV creates the account first and asks for the profile name on the next screen.
   const id=crypto.randomUUID(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40),withProfile=b.profile!==false;
   try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),...withProfile?[db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=?)").bind(crypto.randomUUID(),id,name,avatar,now,id)]:[]]);}catch{fail("Ця пошта вже зареєстрована",409);}
   if(!await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first())fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
-  const token=await session(db,id);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id}),...b.device===true?{token}:{}},201,{"Set-Cookie":cookie(token)});
+  const token=await session(db,id,password_hash);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id}),...b.device===true?{token}:{}},201,{"Set-Cookie":cookie(token)});
  }
  if(path==="/api/auth/login"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email),legacy=typeof b.username==="string"?b.username.trim().toLowerCase():"";if((!validEmail(email)&&!validUsername(legacy))||typeof b.password!=="string"||b.password.length>256)fail("Неправильна пошта або пароль",401);
@@ -98,9 +100,9 @@ async function api(request,env,ctx){
   if(env.LOGIN_LIMIT&&!(await env.LOGIN_LIMIT.limit({key:await hash(loginEmail||loginLegacy)})).success)fail("Забагато спроб входу. Зачекайте хвилину.",429);
   const user=await db.prepare("SELECT * FROM users WHERE email=? OR (email IS NULL AND username=?)").bind(loginEmail,loginLegacy).first();if(user&&!user.password_hash)fail("Пароль скинув адміністратор. Натисніть «Вперше тут? Створити обліковий запис» з цією поштою й задайте новий пароль.",403);const digest=await passwordHash(b.password,user?.salt||"invalid-account-timing-padding");if(!user||!equal(digest,user.password_hash))fail("Неправильна пошта або пароль",401);
   if(user.role!=="admin"&&user.email&&!await registrationAllowed(db,user.email))fail("Доступ до KIK для цієї пошти відкликано. Зверніться до адміністратора.",403);
-  const token=await session(db,user.id);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
+  const token=await session(db,user.id,user.password_hash);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
  }
- const user=await identity(request,db);
+ const user=viewer===undefined?await identity(request,db):viewer;
  if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>env.AI&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
  if(path==="/api/auth/logout"&&request.method==="POST"){
   const token=requestToken(request);if(token){const digest=await hash(token);await db.batch([db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(digest),db.prepare("DELETE FROM pairs WHERE approved_session_hash=?").bind(digest)]);}return json({ok:true},200,{"Set-Cookie":cookie("",true)});

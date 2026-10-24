@@ -10,7 +10,14 @@ a=ET.parse(root/'decoded/AndroidManifest.xml').getroot();b=ET.parse(root/'locali
 assert b.get('package')==release['application_id']
 old_permissions={e.get(ns+'name') for e in a.findall('uses-permission') if not e.get(ns+'name').startswith('rezkatv.')}
 new_permissions={e.get(ns+'name') for e in b.findall('uses-permission') if not e.get(ns+'name').startswith(('rezkatv.',release['application_id']+'.'))}
-assert not old_permissions-new_permissions
+# Inherited permissions KIK never uses are dropped (localize.py); nothing else changes.
+DROPPED={'android.permission.'+n for n in ('MANAGE_EXTERNAL_STORAGE','READ_EXTERNAL_STORAGE','WRITE_EXTERNAL_STORAGE','USE_BIOMETRIC','USE_FINGERPRINT','ACCESS_ADSERVICES_ATTRIBUTION','ACCESS_ADSERVICES_AD_ID')}|{'com.google.android.gms.permission.AD_ID','com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE'}
+assert old_permissions-new_permissions==DROPPED,old_permissions-new_permissions
+app=b.find('application');assert app.get(ns+'allowBackup')=='false'
+meta={e.get(ns+'name'):e.get(ns+'value') for e in app.findall('meta-data')}
+assert meta.get('firebase_analytics_collection_deactivated')=='true' and meta.get('firebase_crashlytics_collection_enabled')=='false' and meta.get('google_analytics_adid_collection_enabled')=='false'
+assert b.find("./application/receiver[@"+ns+"name='rezkatv.web.app.security.ScreenLockAdminReceiver']") is None
+assert 'cleartextTrafficPermitted="true"' not in (root/'localized/res/xml/network_security_config.xml').read_text()
 assert new_permissions-old_permissions=={'android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION'}
 job=b.find("./application/service[@"+ns+"name='kik.i18n.UpdateJob']")
 assert job is not None and job.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE'

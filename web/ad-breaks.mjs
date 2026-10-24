@@ -20,13 +20,14 @@ export function episodeOf(p){
  return {key,voice,season,episode};
 }
 /** Known breaks for the players; an unknown sponsored episode joins the scan queue. */
-export async function adBreaks(db,params,now=Date.now()){
+export async function adBreaks(db,params,now=Date.now(),{queue=true}={}){
  const e=episodeOf(params),args=[e.key,e.voice,e.season,e.episode];
  const row=await db.prepare('SELECT duration,breaks,suggested,scanned_at FROM ad_breaks WHERE title_key=? AND voice=? AND season=? AND episode=?').bind(...args).first();
  const breaks=row?cleanBreaks(JSON.parse(row.breaks),row.duration):[],suggested=row?hints(JSON.parse(row.suggested||'[]'),breaks,row.duration):[];
  if(row&&(breaks.length||now-row.scanned_at<RESCAN))return {duration:row.duration,breaks,...suggested.length?{suggested}:{}};
- if(!SPONSORED.has(e.voice))return {breaks:[]};
- const queued=await db.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue').first();
+ // Only a signed-in player adds to the queue: anonymous requests cannot fill it with made-up episodes.
+ if(!SPONSORED.has(e.voice)||!queue)return {breaks:[]};
+ const queued=await db.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue WHERE attempts<3').first();
  if((queued?.n||0)<QUEUE_MAX)await db.prepare('INSERT OR IGNORE INTO ad_scan_queue(title_key,voice,season,episode,requested_at) VALUES(?,?,?,?,?)').bind(...args,now).run();
  return {breaks:[],pending:true};
 }

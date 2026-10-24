@@ -14,7 +14,7 @@ final class Synopsis {
  /** Asks the KIK server; its answer is kept on the TV for a month. */
  static String fetch(Context c,String link){
   String key=Progress.norm(link);if(key.startsWith("uaserials/"))return null;HttpURLConnection h=null;
-  try{h=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/synopsis?link="+URLEncoder.encode("https://hdrezka.sh/"+key,"UTF-8")).openConnection();h.setConnectTimeout(8000);h.setReadTimeout(25000);
+  try{h=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/synopsis?link="+URLEncoder.encode("https://hdrezka.sh/"+key,"UTF-8")).openConnection();CloudSync.authorize(h);h.setConnectTimeout(8000);h.setReadTimeout(25000);
    if(h.getResponseCode()!=200)return null;String s=new JSONObject(Site.read(h.getInputStream())).optString("summary","");if(s.isEmpty()||"null".equals(s))return null;
    prefs(c).edit().putString(key,s).putLong(key+"@",System.currentTimeMillis()).apply();return s;
   }catch(Exception e){android.util.Log.w("KIK","Synopsis",e);return null;}finally{if(h!=null)h.disconnect();}

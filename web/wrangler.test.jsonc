@@ -6,7 +6,9 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "workers_dev": true,
+  // Local `wrangler dev` only. It shares the production D1 id so local migrations apply to it; with no public
+  // address and no routes, an accidental deploy of this config cannot expose that database without rate limits.
+  "workers_dev": false,
   "d1_databases": [
     {
       "binding": "DB",

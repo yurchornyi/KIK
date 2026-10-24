@@ -1,12 +1,13 @@
 /** KIK ad scanner: runs on the always-on PC, finds ad clips in episodes somebody started and reports them to the Worker.
  *  node --import ./register.mjs scan.mjs            — loop forever (queue every 5 minutes)
  *  node --import ./register.mjs scan.mjs <link> <season> <episode> [voice]   — scan one episode now, print, do not report
- *  Env: KIK_SCANNER_TOKEN (same secret as the Worker's AD_SCANNER_TOKEN), KIK_ORIGIN, KIK_SCANNER_DATA, FFMPEG, KIK_SCANNER_AI=0 to turn the AI check off. */
+ *  Env: KIK_SCANNER_TOKEN (same secret as the Worker's AD_SCANNER_TOKEN), KIK_ORIGIN, KIK_SCANNER_DATA, FFMPEG, KIK_SCANNER_AI=0 to turn the AI check off,
+ *  KIK_SCANNER_CA — a CA bundle when this FFmpeg build has no system certificates. */
 import {spawn} from 'node:child_process';import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
 import {film,stream,voiceOrder} from '../catalogue.mjs';import {titleKey} from '../sync.mjs';
 import {fingerprint,RATE,toBase64,fromBase64} from '../ad-fingerprint.mjs';import {FPS,SIZE} from '../ad-align.mjs';
 import {fromLibrary,discover,fromReference,merge,suggest,IDENT,CREDITS} from '../ad-detect.mjs';import {SPONSORED} from '../ad-breaks.mjs';
-const ORIGIN=process.env.KIK_ORIGIN||'https://kiktv.pages.dev',TOKEN=process.env.KIK_SCANNER_TOKEN||'',FFMPEG=process.env.FFMPEG||'ffmpeg';
+const ORIGIN=process.env.KIK_ORIGIN||'https://kiktv.pages.dev',TOKEN=process.env.KIK_SCANNER_TOKEN||'',FFMPEG=process.env.FFMPEG||'ffmpeg',CA=process.env.KIK_SCANNER_CA||'';
 if(new URL(ORIGIN).origin!==ORIGIN||!ORIGIN.startsWith('https://'))throw Error('KIK_ORIGIN must be an HTTPS origin');
 const AI=process.env.KIK_SCANNER_AI!=='0',DATA=process.env.KIK_SCANNER_DATA||path.join(os.homedir(),'.kik-ad-scanner'),POOL=40,IDLE=5*60_000;
 const log=(...a)=>console.log(new Date().toISOString().slice(0,19),...a);
@@ -33,7 +34,8 @@ function remember(e){const n=path.join(DATA,'pool',poolName(e));fs.writeFileSync
 const SAMPLE=4;
 function features(url,{audio=true,samples=false}={}){return new Promise((resolve,reject)=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'kik-scan-')),pcm=path.join(tmp,'a.pcm'),gray=path.join(tmp,'v.gray'),done=()=>fs.rmSync(tmp,{recursive:true,force:true});
- const args=['-nostdin','-loglevel','error','-rw_timeout','30000000','-protocol_whitelist','https,tls,tcp,crypto','-t','21600','-i',url,...(audio?['-map','0:a:0','-ac','1','-ar',String(RATE),'-f','s16le','-y',pcm]:[]),'-map','0:v:0','-vf',`fps=${FPS},crop=iw*0.7:ih*0.7,scale=12:9,format=gray`,'-f','rawvideo','-y',gray,
+ // FFmpeg accepts any TLS certificate unless told otherwise: a forged source on the network would plant fake ad breaks.
+ const args=['-nostdin','-loglevel','error','-rw_timeout','30000000','-protocol_whitelist','https,tls,tcp,crypto','-tls_verify','1',...(CA?['-ca_file',CA]:[]),'-t','21600','-i',url,...(audio?['-map','0:a:0','-ac','1','-ar',String(RATE),'-f','s16le','-y',pcm]:[]),'-map','0:v:0','-vf',`fps=${FPS},crop=iw*0.7:ih*0.7,scale=12:9,format=gray`,'-f','rawvideo','-y',gray,
   ...(samples?['-map','0:v:0','-vf',`fps=1/${SAMPLE},crop=iw:ih*0.84:0:ih*0.08,scale=352:-2`,'-pix_fmt','yuvj420p','-q:v','6','-y',path.join(tmp,'s%05d.jpg')]:[])];
  const p=spawn(FFMPEG,args,{stdio:['ignore','ignore','pipe'],timeout:20*60_000});let err='';p.stderr.on('data',d=>err=(err+d).slice(-4096));
  p.on('error',e=>{done();reject(e);});p.on('close',code=>{try{if(code)throw Error('ffmpeg '+code+': '+err.slice(-300));

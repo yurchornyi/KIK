@@ -194,7 +194,7 @@ public final class KikPlayerActivity extends Activity {
   Ui.bg(()->{final String url=Site.resolve(address);h.post(()->{if(destroyed||gen!=playGeneration||player==null)return;Log.d("KIK.Player","Resolved in "+(SystemClock.elapsedRealtime()-t0)+" ms"+(url.equals(address)?"":" via node"));load(url);});});
  }
  private void load(String url){
-  DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent(Site.UA).setConnectTimeoutMs(12000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(true);
+  DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent(Site.UA).setConnectTimeoutMs(12000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(false);
   DefaultLoadErrorHandlingPolicy retries=new Retries();
   DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,Doh.media(http));
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);

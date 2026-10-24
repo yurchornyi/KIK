@@ -57,15 +57,17 @@ public final class Site {
   synchronized(Site.class){for(String s:set){String pair=s.split(";",2)[0];int eq=pair.indexOf('=');if(eq>0)COOKIES.put(pair.substring(0,eq).trim(),pair.substring(eq+1).trim());}}
   saveCookies();
  }
+ private static boolean mirror(String host){if(host==null)return false;for(String h:HOSTS)if(h.equalsIgnoreCase(host))return true;return false;}
  private static String send(String url,String form,boolean xhr)throws IOException{
   for(int hop=0;hop<6;hop++){
    HttpURLConnection c=Doh.open(url);
    c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(15000);
    c.setRequestProperty("User-Agent",UA);c.setRequestProperty("Accept-Encoding","gzip");c.setRequestProperty("Accept-Language","ru-RU,ru;q=0.9,uk;q=0.8");
-   String ck=cookieHeader();if(!ck.isEmpty())c.setRequestProperty("Cookie",ck);
+   // The catalogue's cookies go only to its own mirrors, never to a host a redirect points at.
+   boolean own=mirror(new URL(url).getHost());String ck=own?cookieHeader():"";if(!ck.isEmpty())c.setRequestProperty("Cookie",ck);
    if(xhr){String base=new URL(url).getProtocol()+"://"+new URL(url).getHost();c.setRequestProperty("X-Requested-With","XMLHttpRequest");c.setRequestProperty("Referer",base+"/");c.setRequestProperty("Origin",base);}
    if(form!=null){c.setDoOutput(true);c.setRequestMethod("POST");c.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=UTF-8");OutputStream o=c.getOutputStream();o.write(form.getBytes("UTF-8"));o.close();}
-   int code=c.getResponseCode();takeCookies(c);
+   int code=c.getResponseCode();if(own)takeCookies(c);
    if(code>=300&&code<400&&c.getHeaderField("Location")!=null){url=new URL(new URL(url),c.getHeaderField("Location")).toString();form=null;c.disconnect();continue;}
    InputStream in=code>=400?c.getErrorStream():c.getInputStream();
    String body=read(in);PAGE_HOST.set(new URL(url).getHost());PAGE_CODE.set(code);c.disconnect();

@@ -87,7 +87,22 @@ manifest=dst/'AndroidManifest.xml'
 s=manifest.read_text().replace('package="rezkatv.web.app"','package="'+APP+'"')
 for suffix in ['.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION','.androidx-startup','.search','.fileprovider','.firebaseinitprovider','.main','.player']:
  s=s.replace('"rezkatv.web.app'+suffix+'"','"'+APP+suffix+'"')
+# The inherited app reports to its original developer's Firebase project: KIK keeps the libraries (old code still
+# calls them) but switches every collection off, and drops permissions and components KIK never uses.
+for permission in ['MANAGE_EXTERNAL_STORAGE','READ_EXTERNAL_STORAGE','WRITE_EXTERNAL_STORAGE','USE_BIOMETRIC','USE_FINGERPRINT','ACCESS_ADSERVICES_ATTRIBUTION','ACCESS_ADSERVICES_AD_ID']:
+ s,n=re.subn(r'\s*<uses-permission (?:android:maxSdkVersion="\d+" )?android:name="android\.permission\.'+permission+'"/>','',s);assert n==1,permission
+for permission in ['com.google.android.gms.permission.AD_ID','com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE']:
+ s,n=re.subn(r'\s*<uses-permission android:name="'+re.escape(permission)+'"/>','',s);assert n==1,permission
+s,n=re.subn(r'\s*<receiver [^>]*android:name="rezkatv\.web\.app\.security\.ScreenLockAdminReceiver"[^>]*>.*?</receiver>','',s,flags=re.S);assert n==1
+s,n=re.subn(r' android:requestLegacyExternalStorage="true"','',s);assert n==1
+# Sign-in tokens stay on this TV: no adb backup, no device-to-device copy.
+s,n=re.subn(r'android:allowBackup="true"','android:allowBackup="false"',s);assert n==1
+off=''.join(f'\n        <meta-data android:name="{k}" android:value="{v}"/>' for k,v in [('firebase_analytics_collection_deactivated','true'),('google_analytics_adid_collection_enabled','false'),('google_analytics_ssaid_collection_enabled','false'),('google_analytics_default_allow_ad_personalization_signals','false'),('firebase_crashlytics_collection_enabled','false'),('firebase_sessions_enabled','false'),('firebase_messaging_auto_init_enabled','false')])
+s,n=re.subn(r'(<application [^>]*>)',lambda m:m[1]+off,s,count=1);assert n==1
 manifest.write_text(s)
+# Every connection KIK makes is HTTPS; plain HTTP is refused everywhere.
+nsc=dst/'res/xml/network_security_config.xml';s=nsc.read_text()
+s,n=re.subn(r'<base-config cleartextTrafficPermitted="true">','<base-config cleartextTrafficPermitted="false">',s);assert n==1;nsc.write_text(s)
 for p in dst.glob('res/xml/*.xml'):
  s=p.read_text();new=s.replace('rezkatv.web.app.search',APP+'.search')
  if s!=new:p.write_text(new)
