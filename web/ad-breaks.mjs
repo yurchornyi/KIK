@@ -17,9 +17,9 @@ For each frame give two probabilities from 0 to 1:
 - overlay: ${AD_QUESTIONS.overlay.instructions} Yes: ${AD_QUESTIONS.overlay.criteria.true} No: ${AD_QUESTIONS.overlay.criteria.false}
 Answer only JSON: {"frames":[{"ad":0.0,"overlay":0.0}, ...]} with exactly ${n} items in the frames' order.`;
 const share=v=>typeof v==='number'&&v>=0&&v<=1?v:null;
-/** Images per Sentra request: Groq's image model takes at most 5. */
-const SENTRA_FRAMES=5;
-/** Sentra first (skill kik-ad-frames, role vision), five frames a request: [ad, overlay] per frame, or null when any part is unusable. */
+/** Images per Sentra request: Groq's image model (qwen3.8-27b) takes at most 3. */
+const SENTRA_FRAMES=3;
+/** Sentra first (skill kik-ad-frames, role vision), three frames a request: [ad, overlay] per frame, or null when any part is unusable. */
 async function viaSentraFrames(env,frames){
  if(!sentraReady(env))return null;
  if(frames.length>SENTRA_FRAMES){
