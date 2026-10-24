@@ -165,7 +165,7 @@ public final class HomeActivity extends Activity {
  /** A red dot on «Налаштування» while a postponed update waits there. */
  private void paintSettingsBadge(){if(settingsItem==null||destroyed)return;boolean waiting=AppUpdater.availableName(this)!=null;if(!waiting){settingsItem.setText("Налаштування");return;}android.text.SpannableString t=new android.text.SpannableString("Налаштування  ●");t.setSpan(new android.text.style.ForegroundColorSpan(RED),t.length()-1,t.length(),0);settingsItem.setText(t);}
  private View topBar(){
-  LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(16),dp(40),dp(8));
+  LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(26),dp(40),dp(8));
   bar.addView(Brand.logo(this,64,30));
   menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
   HorizontalScrollView navigation=Ui.horizontal(this,menuRow);LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,-2,1);navLp.setMargins(dp(14),0,dp(10),0);bar.addView(navigation,navLp);
@@ -177,16 +177,12 @@ public final class HomeActivity extends Activity {
   TextView settings=menu("Налаштування",v->startActivity(new Intent(this,BasicSettingsActivity.class)));menuRow.addView(settings);settingsItem=settings;paintSettingsBadge();
 
   String name=ProfileStore.nameOf(this,ProfileStore.current(this));lastProfileName=name;lastProfileAvatar=ProfileStore.avatarOf(this,ProfileStore.current(this));
-  ImageView avatar=Avatars.view(this,lastProfileAvatar,42);
+  ImageView avatar=Avatars.view(this,lastProfileAvatar,40);
   avatar.setOnClickListener(v->startActivity(new Intent(this,ProfilesActivity.class)));
   // The remote reaches «Хто дивиться?» from the menu: right of «Налаштування» is the avatar, not the posters below.
   avatar.setFocusable(true);avatar.setId(View.generateViewId());avatar.setForeground(states(shape(0,dp(10),0,0),shape(0,dp(10),dp(3),Color.WHITE)));avatar.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.1f));settings.setId(View.generateViewId());settings.setNextFocusRightId(avatar.getId());avatar.setNextFocusLeftId(settings.getId());avatar.setNextFocusRightId(avatar.getId());
-  // As on Netflix: the profile picture, a little larger and clear on the projector, with a small ▾ that turns on focus.
-  LinearLayout me=new LinearLayout(this);me.setOrientation(0);me.setGravity(Gravity.CENTER_VERTICAL);me.setClipChildren(false);
-  me.addView(avatar,new LinearLayout.LayoutParams(dp(42),dp(42)));
-  final TextView caret=text("▾",16,Color.WHITE);caret.setIncludeFontPadding(false);LinearLayout.LayoutParams cl=new LinearLayout.LayoutParams(-2,-2);cl.leftMargin=dp(6);me.addView(caret,cl);
-  avatar.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.1f);caret.animate().rotation(f?180:0).setDuration(200).start();});
-  bar.addView(me,new LinearLayout.LayoutParams(-2,-2));
+  // As on Netflix: just the profile picture at the end of the menu line, a little larger so it reads on the projector.
+  bar.addView(avatar,new LinearLayout.LayoutParams(dp(40),dp(40)));
   avatar.setContentDescription("Профіль: "+(name==null?"вибрати":name));
   return bar;
  }
