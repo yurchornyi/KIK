@@ -8,7 +8,7 @@ public final class NetworkAudit extends Instrumentation {
  boolean await(BooleanSupplier f,int ms){long end=SystemClock.elapsedRealtime()+ms;while(SystemClock.elapsedRealtime()<end){try{if(f.getAsBoolean())return true;}catch(Throwable ignored){}SystemClock.sleep(200);}return false;}
  void check(String n,boolean b){Bundle out=new Bundle();out.putString("stream",(b?"PASS ":"FAIL ")+n+"\n");sendStatus(0,out);if(!b)throw new AssertionError(n);checks++;}
  @Override public void onCreate(Bundle b){super.onCreate(b);start();}
- @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();original=ProfileStore.current(c);list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
+ @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();for(ProfileStore.Profile x:ProfileStore.list(c))if("QA Network".equals(x.name))ProfileStore.delete(c,x.id);original=ProfileStore.current(c);list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
   check("plain HTTP is refused",!android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted("example.com"));
   HttpURLConnection probe=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/health").openConnection();
   Method authorize=CloudSync.class.getDeclaredMethod("authorize",HttpURLConnection.class);authorize.setAccessible(true);authorize.invoke(null,probe);
