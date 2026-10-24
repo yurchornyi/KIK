@@ -76,15 +76,17 @@ public final class CloudSync {
  }
  private static void sync(Context c,String p)throws Exception{
   final String token=prefs(c).getString("token_"+p,""),remote=prefs(c).getString("remote_"+p,"");if(token.isEmpty()||remote.isEmpty())return;status="Синхронізація…";
-  if(!prefs(c).contains("offset_"+p)){JSONObject first=request("/api/sync",new JSONObject().put("profile_id",remote).put("source_schema",2).put("records",new JSONArray()),token);prefs(c).edit().putLong("offset_"+p,first.getLong("server_time")-System.currentTimeMillis()).commit();}
-  JSONArray dirty=new JSONArray();synchronized(CloudSync.class){JSONObject root=read(stateFile(c,p));collect(c,p,root);JSONObject records=root.getJSONObject("records");Iterator<String> it=records.keys();while(it.hasNext()){JSONObject r=records.getJSONObject(it.next());if(r.optBoolean("dirty"))dirty.put(r);}write(stateFile(c,p),root.toString());}
-  JSONObject response=null;for(int at=0;at<Math.max(1,dirty.length());at+=400){JSONArray batch=new JSONArray();for(int i=at;i<Math.min(at+400,dirty.length());i++)batch.put(dirty.get(i));response=request("/api/sync",new JSONObject().put("profile_id",remote).put("source_schema",2).put("records",batch),token);}
+  // This first call only measures the clock offset: «since» now keeps the server from sending the whole history for it.
+  if(!prefs(c).contains("offset_"+p)){JSONObject first=request("/api/sync",new JSONObject().put("profile_id",remote).put("source_schema",2).put("since",System.currentTimeMillis()).put("records",new JSONArray()),token);prefs(c).edit().putLong("offset_"+p,first.getLong("server_time")-System.currentTimeMillis()).commit();}
+  // Server time of the last applied sync: the server then answers only records written after it. No state yet means the whole history.
+  JSONArray dirty=new JSONArray();long since;synchronized(CloudSync.class){JSONObject root=read(stateFile(c,p));since=root.optLong("since");collect(c,p,root);JSONObject records=root.getJSONObject("records");Iterator<String> it=records.keys();while(it.hasNext()){JSONObject r=records.getJSONObject(it.next());if(r.optBoolean("dirty"))dirty.put(r);}write(stateFile(c,p),root.toString());}
+  JSONObject response=null;for(int at=0;at<Math.max(1,dirty.length());at+=400){JSONArray batch=new JSONArray();for(int i=at;i<Math.min(at+400,dirty.length());i++)batch.put(dirty.get(i));JSONObject body=new JSONObject().put("profile_id",remote).put("source_schema",2).put("records",batch);if(since>0)body.put("since",since);response=request("/api/sync",body,token);}
   if(!token.equals(prefs(c).getString("token_"+p,"")))return;
   JSONObject account=response.optJSONObject("profile");if(account!=null)prefs(c).edit().putBoolean("adskip_"+p,account.optInt("ad_skip")==1).apply();
   synchronized(CloudSync.class){if(!token.equals(prefs(c).getString("token_"+p,"")))return;JSONObject root=read(stateFile(c,p));collect(c,p,root);JSONObject records=root.getJSONObject("records"),fingerprints=root.getJSONObject("fingerprints");JSONArray incoming=response.getJSONArray("records");
    for(int i=0;i<incoming.length();i++){JSONObject r=incoming.getJSONObject(i);String id=r.getString("kind")+"\n"+r.getString("key");JSONObject old=records.optJSONObject(id);long ts=r.getLong("updated_at");if(old==null||ts>old.optLong("updated_at")||ts==old.optLong("updated_at")&&canonical(r.opt("data")).compareTo(canonical(old.opt("data")))>=0){r.put("dirty",false);records.put(id,r);}}
    if(!Objects.equals(playingProfile,p)){apply(c,p,records);JSONObject fresh=new JSONObject().put("records",records).put("fingerprints",new JSONObject());refreshFingerprints(c,p,fresh);root.put("fingerprints",fresh.getJSONObject("fingerprints"));}
-   write(stateFile(c,p),root.toString());
+   root.put("since",response.getLong("server_time"));write(stateFile(c,p),root.toString());
   }status="Історію та прогрес синхронізовано";
  }
  private static void refreshFingerprints(Context c,String p,JSONObject root)throws Exception{

@@ -154,7 +154,8 @@ async function api(request,env,ctx){
   const b=await body(request,8192),name=typeof b.name==="string"?b.name.trim().slice(0,40):"";if(!name)fail("Введіть ім’я профілю");if((await profiles(db,user)).length>=8)fail("Доступно до 8 профілів");const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");const id=crypto.randomUUID();await db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES(?,?,?,?,?)").bind(id,user.id,name,avatar,Date.now()).run();return json({id,name,avatar,enhanced_recs:0,ad_skip:0},201);
  }
  if(path==="/api/sync"&&request.method==="POST"){
-  const b=await body(request);const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[])).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:Date.now()});
+  // server_time is read before the writes: the next sync's `since` then covers everything this one did not return.
+  const b=await body(request),now=Date.now();const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[],b.since??null,now)).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:now,delta:Number.isSafeInteger(b.since)&&b.since>0});
  }
  if(path==="/api/episodes"||path==="/api/stream"){
   if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),result=await resolvePlayback(b.link,String(b.voice),String(b.season||""),String(b.episode||""),{attempt:b.recovery_attempt??0,method:path.endsWith("episodes")?"episodes":"stream"});return json(path==="/api/stream"?await protectPlayback(result,request,env):result);
