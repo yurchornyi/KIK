@@ -1,6 +1,6 @@
 {
-  "version_code": 43,
-  "version_name": "1.5",
+  "version_code": 44,
+  "version_name": "1.6",
   "application_id": "kik.app",
   "repository": "yurchornyi/KIK",
   "min_sdk": 24,
