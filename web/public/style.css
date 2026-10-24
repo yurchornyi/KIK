@@ -253,3 +253,5 @@ dialog.detail-loading #modal-content{min-height:min(420px,70dvh);padding:36px 28
 @keyframes hero-dot{to{transform:scaleX(1)}}.hero:has(:focus-visible) .hero-dot i{animation-play-state:paused}@media(hover:hover){.hero:hover .hero-dot i{animation-play-state:paused}}
 .hero-resume{display:flex;align-items:center;gap:10px;font-size:13px;color:#d1d1d5;margin-bottom:18px}.hero-bar{flex:0 0 120px;height:3px;border-radius:2px;background:#ffffff40;overflow:hidden}.hero-bar i{display:block;height:100%;background:var(--red)}
 @media (max-width:650px){.hero:after{background:linear-gradient(0deg,var(--bg) 1%,#0d0d0fe6 28%,#0d0d0f40 70%,#0d0d0f99)}}
+.signed-out .header nav,.signed-out .header-actions{display:none}
+.gate{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:110px 5vw 40px;text-align:center;background:radial-gradient(ellipse at 50% 15%,#34323c 0,#15151b 45%,#0d0d0f 80%)}.gate-copy{max-width:540px;animation:rise .5s both}.gate h1{font-size:clamp(32px,4.2vw,56px);letter-spacing:-1.5px;line-height:1.06;margin:0 0 16px;font-weight:750;text-wrap:balance}.gate .actions{justify-content:center}
