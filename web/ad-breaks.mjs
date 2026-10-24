@@ -17,9 +17,15 @@ For each frame give two probabilities from 0 to 1:
 - overlay: ${AD_QUESTIONS.overlay.instructions} Yes: ${AD_QUESTIONS.overlay.criteria.true} No: ${AD_QUESTIONS.overlay.criteria.false}
 Answer only JSON: {"frames":[{"ad":0.0,"overlay":0.0}, ...]} with exactly ${n} items in the frames' order.`;
 const share=v=>typeof v==='number'&&v>=0&&v<=1?v:null;
-/** Sentra first (skill kik-ad-frames, role vision): [ad, overlay] per frame, or null when it is unavailable or its answer does not fit. */
+/** Images per Sentra request: Groq's image model takes at most 5. */
+const SENTRA_FRAMES=5;
+/** Sentra first (skill kik-ad-frames, role vision), five frames a request: [ad, overlay] per frame, or null when any part is unusable. */
 async function viaSentraFrames(env,frames){
  if(!sentraReady(env))return null;
+ if(frames.length>SENTRA_FRAMES){
+  const parts=await Promise.all(Array.from({length:Math.ceil(frames.length/SENTRA_FRAMES)},(_,i)=>viaSentraFrames(env,frames.slice(i*SENTRA_FRAMES,(i+1)*SENTRA_FRAMES))));
+  return parts.every(Boolean)?parts.flat():null;
+ }
  const messages=[{role:'user',content:[{type:'text',text:AD_PROMPT(frames.length)},...frames.map(url=>({type:'image_url',image_url:{url}}))]}];
  const accept=raw=>{const text=String(raw),list=JSON.parse(text.slice(text.indexOf('{'),text.lastIndexOf('}')+1))?.frames;if(!Array.isArray(list)||list.length!==frames.length)return null;const pairs=list.map(f=>[share(f?.ad),share(f?.overlay)]);return pairs.every(([a,o])=>a!==null&&o!==null)?pairs:null;};
  return (await complete(env,{skill:'kik-ad-frames',role:'vision',messages,maxTokens:40+30*frames.length,temperature:0,json:true,timeout:25000},[],accept,'ad frames'))?.value??null;

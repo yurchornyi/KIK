@@ -114,3 +114,11 @@ test('the frame check asks Sentra first, all frames in one request, and Workers 
   assert.deepEqual(await adScanner(req({frames:[frame]}),d,env,'/api/ad-breaks/classify',read),{ad:[1],overlay:[0]});
  }finally{globalThis.fetch=original;}
 });
+test('more than five frames go to Sentra five at a time, in order',async()=>{
+ const d=db(),env={AD_SCANNER_TOKEN:'s'.repeat(40),SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},original=globalThis.fetch,sizes=[];
+ const req=body=>new Request('https://kik.example/api/ad-breaks/classify',{method:'POST',headers:{Authorization:'Bearer '+env.AD_SCANNER_TOKEN},body:JSON.stringify(body)}),read=async r=>r.json();
+ globalThis.fetch=async(_url,init)=>{const n=JSON.parse(init.body).messages[0].content.filter(p=>p.type==='image_url').length;sizes.push(n);return Response.json({choices:[{message:{content:JSON.stringify({frames:Array.from({length:n},()=>({ad:n/10,overlay:0}))})}}]});};
+ try{d.budget=0;const r=await adScanner(req({frames:Array(12).fill('data:image/jpeg;base64,/9j/AAAA')}),d,env,'/api/ad-breaks/classify',read);
+  assert.deepEqual(sizes.sort(),[2,5,5]);assert.deepEqual(r.ad,[...Array(10).fill(0.5),0.2,0.2]);}
+ finally{globalThis.fetch=original;}
+});
