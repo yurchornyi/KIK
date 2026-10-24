@@ -99,7 +99,7 @@ public final class HomeActivity extends Activity {
  }
  @Override public void onBackPressed(){
   long now=SystemClock.elapsedRealtime();
-  if(now-backAt<3000){finishAffinity();return;}
+  if(now-backAt<3000){Ui.leaveApp(this);return;}
   backAt=now;
   if(backHint==null){backHint=text("Натисніть «Назад» ще раз, щоб вийти",16,Color.WHITE);backHint.setPadding(dp(22),dp(10),dp(22),dp(10));backHint.setBackground(shape(0xe61b1b1f,dp(22),0,0));
    root.addView(backHint,new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL){{bottomMargin=dp(40);}});}

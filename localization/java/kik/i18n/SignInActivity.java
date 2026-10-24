@@ -100,7 +100,7 @@ public final class SignInActivity extends Activity {
   else if(step==AVATAR)show(NAME);
   else if(step==NAME&&adding)finish();
   else if(step==NAME&&remote.length()>0)show(PICK);
-  else finishAffinity();
+  else Ui.leaveApp(this);
  }
 
  // ---------- sign-in from a phone ----------
