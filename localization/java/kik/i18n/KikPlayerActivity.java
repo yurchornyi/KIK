@@ -50,12 +50,14 @@ public final class KikPlayerActivity extends Activity {
  private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
  private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
- private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,options;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
+ private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,settings,options;private HorizontalScrollView optionsBox;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1,playIndex=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
  private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
  private long lastMovement,lastPosition,recoveryStarted,bufferingSince,seekAt,stableSince;private final List<Long> rebuffers=new ArrayList<Long>();
  private String menu;private int optFocus,optSelected;private List<String> optLabels=new ArrayList<String>();private List<Runnable> optActions=new ArrayList<Runnable>();
+ /** Sleep timer, the round clock button at the end of the controls row: playback pauses at the deadline and the screen may go dark, or the player closes after this episode instead of starting the next. Set per viewing, as on Netflix; the time left shows in the facts line under the title. */
+ static final int[] SLEEP_MINUTES={15,30,45,60,90,120};private int sleepMinutes;private long sleepAt;private boolean sleepAfterEpisode,sleepWarned,slept;private String sleepShown="";private TextView sleepIcon;
  private List<Object[]> cues=new ArrayList<Object[]>();private int subIndex=-1;
  private ConnectivityManager.NetworkCallback network;
  private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
@@ -183,7 +185,7 @@ public final class KikPlayerActivity extends Activity {
  }
  /** Shows the problem; unless the viewer has to choose, retries by itself every 20 s for 10 minutes. */
  private void failure(String message,boolean auto){
-  prepared=false;failed=true;focus=1;progressFocus=false;menu=null;options.setVisibility(View.GONE);loading.setText(message);waiting(true);show(true);
+  prepared=false;failed=true;focus=1;progressFocus=false;menu=null;rowSwap++;optionsBox.setVisibility(View.GONE);settings.setVisibility(View.VISIBLE);settings.setAlpha(1);settings.setScaleX(1);settings.setScaleY(1);loading.setText(message);waiting(true);show(true);
   h.removeCallbacks(retry);if(auto&&autoRetry<30){autoRetry++;h.postDelayed(retry,RETRY_MS);}
  }
  /** Starts over with a fresh recovery budget at the same moment of the same episode. */
@@ -287,9 +289,11 @@ public final class KikPlayerActivity extends Activity {
   if(intro!=null){intro.release();intro=null;}paintWait();if(introSurface!=null){root.removeView(introSurface);introSurface=null;}
   if(player!=null&&!destroyed)player.setPlayWhenReady(wanted());lastMovement=SystemClock.elapsedRealtime();
  }
- /** Without premium the source serves a one-minute preview for its top quality: drop it and play the next one down. */
+ /** Without premium the source serves a one-minute preview for its top quality: drop it and play the next one down (RecoveryPolicy.preview says when a short stream is one). */
  private boolean truncated(){
-  long d=dur();if(stream==null||quality==null||d<=0||d>=SHORT_HLS_MS||stream.qualities.size()<2)return false;
+  long d=dur();if(stream==null||quality==null||stream.qualities.size()<2)return false;
+  long[] saved=Progress.episode(this,film.link,season,episode);long known=saved==null||saved[1]<SHORT_HLS_MS?0:saved[1];
+  if(!RecoveryPolicy.preview(d,Math.max(known,RecoveryPolicy.runtimeMs(film.duration))))return false;
   String lower=null;boolean past=false;for(String q:stream.qualities.keySet()){if(past){lower=q;break;}if(q.equals(quality))past=true;}
   if(lower==null)return false;Log.w("KIK.Player",quality+" is a "+d+" ms preview, switching to "+lower);
   stream.qualities.remove(quality);stream.alternatives.remove(quality);quality=lower;resumeAt=Math.max(resumeAt,pos());play();return true;
@@ -339,7 +343,8 @@ public final class KikPlayerActivity extends Activity {
   if(truncated())return;
   long d=dur(),at=pos();if(d>0&&at<d-ENDED_SLACK_MS&&earlyEnds++<3){Log.w("KIK.Player","Ended early at "+at+" of "+d+", resuming");resumeAt=at;retrySame();return;}
   save();Site.Episode n=film.series?next(film,season,episode):null;
-  boolean auto=getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true);
+  boolean auto=getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true)&&!sleepAfterEpisode;
+  if(sleepAfterEpisode)Log.d("KIK.Player","Sleep timer: episode over, closing");
   if(n!=null&&auto){season=n.season;episode=n.episode;playIntro();start(true);}else if(ask!=null&&ask.getVisibility()==View.VISIBLE)finishAfterAsk=true;else finish();
  }
  private void save(){
@@ -370,13 +375,20 @@ public final class KikPlayerActivity extends Activity {
   if(film.series)addControl("⏮",()->{if(!prepared&&!failed)return;Site.Episode n=previous(film,season,episode);Log.d("KIK.Player","Episode step previous S"+season+"E"+episode+" -> "+(n==null?"none":"S"+n.season+"E"+n.episode)+" of "+film.episodes.size());if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це перша серія");});
   addControl("⟲10",()->seek(-10000));playIndex=controls.size();focus=playIndex;addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
   if(film.series)addControl("⏭",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);Log.d("KIK.Player","Episode step next S"+season+"E"+episode+" -> "+(n==null?"none":"S"+n.season+"E"+n.episode)+" of "+film.episodes.size());if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це остання серія");});
-  View gap=new View(this);buttons.addView(gap,new LinearLayout.LayoutParams(0,1,1));
+  // The settings sit in one frame at the right end of the row. A menu's choices open in that same frame, out of the pressed button, so the row never grows.
+  // It clips at its padding: nothing in it, at rest or in flight, is ever drawn over the transport buttons. The small inset leaves room for the focus zoom.
+  FrameLayout side=new FrameLayout(this);side.setPadding(dp(16),dp(4),dp(4),dp(4));side.setClipChildren(true);side.setClipToPadding(true);
+  settings=new LinearLayout(this);settings.setOrientation(0);settings.setGravity(Gravity.CENTER_VERTICAL);settings.setClipChildren(false);settings.setClipToPadding(false);
+  side.addView(settings,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
+  options=new LinearLayout(this);options.setOrientation(0);options.setGravity(Gravity.CENTER_VERTICAL);options.setClipChildren(false);options.setClipToPadding(false);
+  optionsBox=new HorizontalScrollView(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setClipChildren(true);optionsBox.setClipToPadding(true);optionsBox.setHorizontalFadingEdgeEnabled(true);optionsBox.setFadingEdgeLength(dp(40));optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
+  side.addView(optionsBox,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
+  buttons.addView(side,new LinearLayout.LayoutParams(0,-2,1));
   if(voiceNames().size()>1)addControl("Озвучка",()->openVoices());
   addControl("Якість",()->openQualities());
   addControl("Швидкість",()->openSpeeds());
   addControl("Субтитри",()->openSubtitles());
-  options=new LinearLayout(this);options.setOrientation(0);options.setGravity(Gravity.END);options.setPadding(0,dp(12),0,0);options.setVisibility(View.GONE);
-  HorizontalScrollView os=new HorizontalScrollView(this);os.setHorizontalScrollBarEnabled(false);os.addView(options);bottom.addView(os);
+  sleepIcon=addControl("⏾",()->openSleep());
   root.addView(bottom,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
   flash=Ui.bold(this,"",44);flash.setGravity(Gravity.CENTER);flash.setPadding(dp(26),dp(14),dp(26),dp(14));flash.setBackground(Ui.shape(0x99000000,dp(40),0,0));flash.setAlpha(0);
   root.addView(flash,new FrameLayout.LayoutParams(-2,-2,Gravity.CENTER));
@@ -391,6 +403,8 @@ public final class KikPlayerActivity extends Activity {
    if(s.equals("❚❚")){ink.setStyle(Paint.Style.FILL);box.set(cx-3.6f*u,cy-4.4f*u,cx-1.2f*u,cy+4.4f*u);canvas.drawRoundRect(box,u*.7f,u*.7f,ink);box.offset(4.8f*u,0);canvas.drawRoundRect(box,u*.7f,u*.7f,ink);}
    else if(s.equals("⏮")||s.equals("⏭")){boolean back=s.equals("⏮");float d=back?-1:1;ink.setStyle(Paint.Style.FILL);path.reset();path.moveTo(cx-d*3.6f*u,cy-4.4f*u);path.lineTo(cx+d*2.8f*u,cy);path.lineTo(cx-d*3.6f*u,cy+4.4f*u);path.close();canvas.drawPath(path,ink);
     box.set(cx+d*3.2f*u-(back?1.6f*u:0),cy-4.4f*u,cx+d*3.2f*u+(back?0:1.6f*u),cy+4.4f*u);canvas.drawRoundRect(box,u*.6f,u*.6f,ink);}
+   else if(s.startsWith("⏾")){ink.setStyle(Paint.Style.STROKE);ink.setStrokeWidth(1.1f*u);canvas.drawCircle(cx,cy,5.2f*u,ink);canvas.drawLine(cx,cy,cx,cy-3.2f*u,ink);canvas.drawLine(cx,cy,cx+2.4f*u,cy+1.2f*u,ink);
+    if(s.length()>1){ink.setStyle(Paint.Style.FILL);ink.setColor(Ui.RED);canvas.drawCircle(cx+5.4f*u,cy-5.4f*u,1.8f*u,ink);}}
    else if(s.equals("▶")){ink.setStyle(Paint.Style.FILL);path.reset();path.moveTo(cx-2.8f*u,cy-4.8f*u);path.lineTo(cx+5f*u,cy);path.lineTo(cx-2.8f*u,cy+4.8f*u);path.close();canvas.drawPath(path,ink);}
    else{boolean back=s.startsWith("⟲");ink.setStyle(Paint.Style.STROKE);ink.setStrokeWidth(1.1f*u);box.set(cx-5.6f*u,cy-5.6f*u,cx+5.6f*u,cy+5.6f*u);
     // Circle open at the top; the arrowhead sits at one end of the gap and points across it.
@@ -399,28 +413,72 @@ public final class KikPlayerActivity extends Activity {
     ink.setTextSize(4.6f*u);canvas.drawText("10",cx,cy+1.7f*u,ink);}
   }
  }
- private void addControl(String label,Runnable r){
-  if(label.equals("⟲10")||label.equals("❚❚")||label.equals("10⟳")||label.equals("⏮")||label.equals("⏭")){boolean main=label.equals("❚❚");Icon t=new Icon(this,label);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
-   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(main?54:44),dp(main?54:44));lp.setMargins(0,0,dp(10),0);buttons.addView(t,lp);controls.add(t);return;}
-  boolean icon=label.length()<=4;TextView t=Ui.bold(this,label,icon?18:14);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(icon?0:dp(14),0,icon?0:dp(14),0);t.setTag(r);t.setOnClickListener(v->{r.run();show(true);});
-  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(icon?dp(44):-2,dp(38));lp.setMargins(0,0,dp(8),0);buttons.addView(t,lp);controls.add(t);
+ private TextView addControl(String label,Runnable r){
+  if(label.equals("⟲10")||label.equals("❚❚")||label.equals("10⟳")||label.equals("⏮")||label.equals("⏭")||label.startsWith("⏾")){boolean main=label.equals("❚❚"),timer=label.startsWith("⏾");Icon t=new Icon(this,label);t.setTag(r);t.setOnClickListener(v->{focus=controls.indexOf(t);r.run();show(true);});
+   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(main?54:timer?38:44),dp(main?54:timer?38:44));lp.setMargins(0,0,timer?0:dp(10),0);(timer?settings:buttons).addView(t,lp);controls.add(t);return t;}
+  boolean icon=label.length()<=4;TextView t=Ui.bold(this,label,icon?18:14);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(icon?0:dp(14),0,icon?0:dp(14),0);t.setTag(r);t.setOnClickListener(v->{focus=controls.indexOf(t);r.run();show(true);});
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(icon?dp(44):-2,dp(38));lp.setMargins(0,0,dp(8),0);settings.addView(t,lp);controls.add(t);return t;
  }
- private List<String> voiceNames(){List<String> n=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)n.add(v.name);return n;}
+ private List<String> voiceNames(){List<String> n=new ArrayList<String>(),other=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)("other".equals(PlaybackPolicy.lang(v.name))?other:n).add(v.name);return n.isEmpty()?other:n;}
  private void paintSub(){
   String s=film.series&&season!=null?"Сезон "+season+" · Серія "+episode:"";
-  sub.setText(Ui.join(s,PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)),quality));
+  sub.setText(Ui.join(s,PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)),quality,sleepText()));
  }
  private void openMenu(String kind,List<String> labels,List<Runnable> actions,int selected){
   if(labels.isEmpty()){Ui.toast(this,"Немає доступних варіантів");return;}
+  Log.d("KIK.Player","Menu "+kind+" from control "+focus+" of "+controls.size());
   menu=kind;optLabels=labels;optActions=actions;optSelected=optFocus=Math.min(labels.size()-1,Math.max(0,selected));options.removeAllViews();
-  for(int i=0;i<labels.size();i++){final int at=i;TextView t=Ui.bold(this,labels.get(i),16);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(dp(18),0,dp(18),0);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(44));lp.setMargins(dp(8),dp(4),dp(8),dp(4));options.addView(t,lp);t.setOnClickListener(v->{Runnable r=optActions.get(at);closeMenu();r.run();show(true);});}
-  options.setVisibility(View.VISIBLE);show(true);options.post(this::placeSubtitles);
+  for(int i=0;i<labels.size();i++){final int at=i;TextView t=Ui.bold(this,labels.get(i),14);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(dp(16),0,dp(16),0);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(38));lp.setMargins(i==0?0:dp(8),0,0,0);options.addView(t,lp);t.setOnClickListener(v->{Runnable r=optActions.get(at);closeMenu();r.run();show(true);});}
+  // The choices take the place of the buttons, in the same row and at the same height: the controls never grow a second row.
+  swapRow(true);show(true);
  }
- private void closeMenu(){menu=null;options.setVisibility(View.GONE);paint();}
+ private void closeMenu(){boolean open=menu!=null;menu=null;if(open)swapRow(false);paint();}
+ private int rowSwap;private float menuFrom=-1;private long swapUntil;private final List<android.animation.Animator> fades=new ArrayList<android.animation.Animator>();
+ private static float centreX(View v){int[] at=new int[2];v.getLocationOnScreen(at);return at[0]+v.getWidth()/2f;}
+ /**
+  * A menu opens in place of the settings buttons: they fade, and the choices grow out of the pressed button and spread to
+  * their places, one after another. Closing gathers them back into that spot and the buttons return. Small views only.
+  */
+ /** Material "emphasized" curves: a soft start and a long gentle landing; the way back speeds up as it leaves. */
+ private static final android.view.animation.Interpolator GLIDE=new android.view.animation.PathInterpolator(.2f,0f,0f,1f),LEAVE=new android.view.animation.PathInterpolator(.3f,0f,.8f,.15f);
+ private void swapRow(final boolean toMenu){
+  final int gen=++rowSwap;settings.animate().cancel();for(int i=0;i<options.getChildCount();i++)options.getChildAt(i).animate().cancel();for(android.animation.Animator a:fades)a.cancel();fades.clear();
+  final boolean animate=Ui.animations()&&visible;
+  if(toMenu){
+   View from=focus>=0&&focus<controls.size()?controls.get(focus):null;menuFrom=from!=null&&from.getWidth()>0?centreX(from):-1;
+   optionsBox.scrollTo(0,0);optionsBox.setVisibility(View.VISIBLE);
+   if(!animate){settings.setVisibility(View.INVISIBLE);for(int i=0;i<options.getChildCount();i++)reset(options.getChildAt(i));return;}
+   final int n=options.getChildCount();for(int i=0;i<n;i++)options.getChildAt(i).setAlpha(0);
+   // The buttons step back towards the pressed one while the choices unfold out of it.
+   if(menuFrom>=0){int[] at=new int[2];settings.getLocationOnScreen(at);settings.setPivotX(menuFrom-at[0]);}settings.setPivotY(settings.getHeight()/2f);
+   settings.animate().alpha(0).scaleX(.94f).scaleY(.94f).setStartDelay(0).setDuration(180).setInterpolator(GLIDE).withEndAction(()->{if(gen==rowSwap)settings.setVisibility(View.INVISIBLE);}).start();
+   final long flight=n*40L+420;swapUntil=SystemClock.elapsedRealtime()+flight;h.postDelayed(()->{if(gen==rowSwap&&menu!=null)paint();},flight+20);
+   optionsBox.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener(){@Override public boolean onPreDraw(){
+    optionsBox.getViewTreeObserver().removeOnPreDrawListener(this);if(gen!=rowSwap)return true;
+    // Nearest to the button first: the choices fan out from it like a deck.
+    for(int i=0;i<n;i++){View c=options.getChildAt(i);float dx=menuFrom<0?dp(28):menuFrom-centreX(c);int order=menuFrom<0?i:n-1-i;
+     c.setTranslationX(dx);c.setScaleX(.82f);c.setScaleY(.82f);c.setAlpha(0);
+     c.animate().translationX(0).scaleX(1).scaleY(1).setStartDelay(40+order*40L).setDuration(420).setInterpolator(GLIDE).start();
+     // Opacity arrives sooner than the movement settles, so a choice is readable while it still glides.
+     android.animation.ObjectAnimator a=android.animation.ObjectAnimator.ofFloat(c,View.ALPHA,0f,1f);a.setStartDelay(40+order*40L);a.setDuration(220);a.setInterpolator(GLIDE);fades.add(a);a.start();}
+    return true;}});
+   return;
+  }
+  int n=options.getChildCount();
+  if(!animate||menuFrom<0||n==0){optionsBox.setVisibility(View.GONE);settings.setVisibility(View.VISIBLE);settings.setAlpha(1);settings.setScaleX(1);settings.setScaleY(1);return;}
+  swapUntil=SystemClock.elapsedRealtime()+320;
+  for(int i=0;i<n;i++){final View c=options.getChildAt(i);c.animate().cancel();
+   c.animate().translationX(menuFrom-centreX(c)+c.getTranslationX()).scaleX(.82f).scaleY(.82f).alpha(0).setStartDelay(i*18L).setDuration(220).setInterpolator(LEAVE).start();}
+  h.postDelayed(()->{if(gen!=rowSwap)return;optionsBox.setVisibility(View.GONE);for(int k=0;k<options.getChildCount();k++)reset(options.getChildAt(k));
+   settings.setVisibility(View.VISIBLE);settings.setAlpha(0);settings.setScaleX(.94f);settings.setScaleY(.94f);settings.animate().alpha(1).scaleX(1).scaleY(1).setStartDelay(0).setDuration(320).setInterpolator(GLIDE).start();},140+n*18L);
+ }
+ private static void reset(View v){v.setTranslationX(0);v.setScaleX(1);v.setScaleY(1);v.setAlpha(1);}
  /** Every free studio, best first (Ukrainian, then Russian, then the rest), named with its language. */
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  for(final Site.Voice v:film.voices){if(v.premium)continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
+  // Ukrainian, Russian and English only, as on the web; other languages show only when a title has none of these.
+  boolean main=false;for(Site.Voice v:film.voices)if(!v.premium&&!"other".equals(PlaybackPolicy.lang(v.name)))main=true;
+  for(final Site.Voice v:film.voices){if(v.premium||main&&"other".equals(PlaybackPolicy.lang(v.name)))continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
    String lang=PlaybackPolicy.lang(v.name);l.add("other".equals(lang)?Ua.t(v.name):lang.toUpperCase(Locale.ROOT).replace("UK","UA")+" · "+voiceName(v.name));
    a.add(()->{if(voice!=null&&v.id.equals(voice.id))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
@@ -438,6 +496,35 @@ public final class KikPlayerActivity extends Activity {
   if(stream!=null)for(int i=0;i<stream.subtitleList.size();i++){final int index=i;final String[] s=stream.subtitleList.get(i);l.add(Ua.t(s[0]));a.add(()->loadSubtitles(s[1],index));}
   if(l.size()==1){Ui.toast(this,"Для цього відео немає субтитрів");return;}
   openMenu("subs",l,a,subIndex+1);
+ }
+ /** Off, 15 min … 2 h, and for a series «після цієї серії»; the current choice is marked. */
+ private void openSleep(){
+  List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
+  l.add("Вимкнено");a.add(()->sleep(0,false));
+  for(final int m:SLEEP_MINUTES){if(sleepAt>0&&m==sleepMinutes)sel=l.size();l.add(sleepLabel(m));a.add(()->sleep(m,false));}
+  if(film.series){if(sleepAfterEpisode)sel=l.size();l.add("Після цієї серії");a.add(()->sleep(0,true));}
+  openMenu("sleep",l,a,sel);
+ }
+ private void sleep(int minutes,boolean afterEpisode){
+  sleepMinutes=minutes;sleepAfterEpisode=afterEpisode;sleepWarned=false;sleepAt=minutes>0?SystemClock.elapsedRealtime()+minutes*60000L:0;
+  Log.d("KIK.Player","Sleep timer: "+(afterEpisode?"after episode":minutes>0?minutes+" min":"off"));
+  Ui.toast(this,afterEpisode?"Плеєр закриється після цієї серії":minutes>0?"Відтворення зупиниться через "+sleepLabel(minutes):"Таймер сну вимкнено");paintSleep();
+ }
+ /** The deadline passed: pause, keep the place, and let the projector dim as it would with nothing playing. */
+ private void sleepNow(){
+  sleepAt=0;sleepMinutes=0;slept=true;Log.d("KIK.Player","Sleep timer: paused playback");
+  playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);save();getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+  focus=playIndex;progressFocus=false;closeMenu();show(true);pulse("❚❚");Ui.toast(this,"Таймер сну: відтворення зупинено");paintSleep();
+ }
+ /** «Таймер 27 хв» / «Таймер · після серії» for the facts line and the speed chip; empty when off. */
+ private String sleepText(){return sleepAfterEpisode?"Таймер · після серії":sleepAt>0?"Таймер "+sleepLeft(sleepAt-SystemClock.elapsedRealtime()):"";}
+ private void paintSleep(){String s=sleepText();if(!s.equals(sleepShown)){sleepShown=s;if(sub!=null)paintSub();}if(sleepIcon!=null){String icon=s.isEmpty()?"⏾":"⏾•";if(!icon.contentEquals(sleepIcon.getText())){sleepIcon.setText(icon);sleepIcon.invalidate();}}}
+ /** 15 хв, 45 хв, 1 год, 1,5 год, 2 год. */
+ static String sleepLabel(int minutes){return minutes%60==0?minutes/60+" год":minutes>60?minutes/60+","+minutes%60*10/60+" год":minutes+" хв";}
+ /** What is left, as the button shows it: whole minutes rounded up, seconds inside the last minute. */
+ static String sleepLeft(long ms){
+  if(ms<60000)return Math.max(1,(ms+999)/1000)+" с";long m=(ms+59999)/60000;
+  return m>=60?m/60+" год"+(m%60>0?" "+m%60+" хв":""):m+" хв";
  }
  private void loadSubtitles(final String url,final int index){
   final int gen=++subGeneration;Ui.bg(()->{HttpURLConnection c=null;try{c=Doh.open(url);c.setConnectTimeout(5000);c.setReadTimeout(8000);c.setRequestProperty("User-Agent",Site.UA);String body=Site.read(c.getInputStream());final List<Object[]> parsed=vtt(body);h.post(()->{if(destroyed||gen!=subGeneration)return;cues=parsed;subIndex=index;update();});}
@@ -533,6 +620,9 @@ public final class KikPlayerActivity extends Activity {
     else if(player.isPlaying()&&now-lastMovement>FROZEN_MS){Log.w("KIK.Player","Picture frozen at "+position);lastMovement=now;recover(null);}
    }
   }
+  if(sleepAt>0){long leftMs=sleepAt-now;if(leftMs<=0)sleepNow();else if(leftMs<=60000&&!sleepWarned){sleepWarned=true;Ui.toast(this,"Таймер сну: ще хвилина");}}
+  if(slept&&playWhenReady){slept=false;getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);}
+  if(sleepAt>0)paintSleep();
   String item=season+":"+episode;if(!item.equals(askItem)){askItem=item;watchedItem=0;askChecked=false;if(ask!=null&&ask.getVisibility()==View.VISIBLE)hideAsk(false);}
   if(player!=null){long watched=watchTracker.sample(now,prepared?pos():0,prepared&&!seeking&&active&&playWhenReady&&player.isPlaying());watchedPending+=watched;watchedItem+=watched;}
   if(prepared&&player!=null){
@@ -548,7 +638,8 @@ public final class KikPlayerActivity extends Activity {
   for(int i=0;i<controls.size();i++){boolean f=menu==null&&!progressFocus&&i==focus;TextView t=controls.get(i);
    if(t instanceof Icon){GradientDrawable o=new GradientDrawable();o.setShape(GradientDrawable.OVAL);o.setColor(f?Color.WHITE:0x26ffffff);if(f)o.setStroke(dp(2),Ui.RED);t.setBackground(o);t.setTextColor(f?Color.BLACK:Color.WHITE);t.animate().scaleX(f?1.08f:1f).scaleY(f?1.08f:1f).setDuration(150).start();t.invalidate();}
    else Ui.paintControl(t,f);}
-  for(int i=0;i<options.getChildCount();i++){TextView t=(TextView)options.getChildAt(i);boolean f=i==optFocus;Ui.paintControl(t,f);if(!f&&i==optSelected)t.setBackground(Ui.shape(Ui.RED,dp(24),0,0));if(f){final View target=t;options.post(()->((HorizontalScrollView)options.getParent()).smoothScrollTo(Math.max(0,target.getLeft()-dp(120)),0));}}
+  // While the choices fly in or out, only their colours are painted: a focus scale would cancel that flight.
+  if(menu!=null)for(int i=0;i<options.getChildCount();i++){TextView t=(TextView)options.getChildAt(i);boolean f=i==optFocus;t.setBackground(Ui.shape(f?Color.WHITE:i==optSelected?Ui.RED:0xff333337,dp(24),f?dp(2):0,Ui.RED));t.setTextColor(f?Color.BLACK:Color.WHITE);if(SystemClock.elapsedRealtime()>=swapUntil)Ui.focus(t,f,1.04f);if(f){final View target=t;options.post(()->((HorizontalScrollView)options.getParent()).smoothScrollTo(Math.max(0,target.getLeft()-dp(120)),0));}}
   knob.animate().scaleX(progressFocus?1.6f:1f).scaleY(progressFocus?1.6f:1f).setDuration(180).start();
  }
 
