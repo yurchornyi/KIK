@@ -4,7 +4,10 @@ import android.content.*;
 import android.graphics.*;
 import android.graphics.drawable.*;
 import android.os.*;
+import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.ReplacementSpan;
 import android.view.*;
 import android.view.animation.*;
 import android.widget.*;
@@ -13,6 +16,7 @@ import java.util.*;
 /** Shared look of KIK's native screens: palette, buttons, poster cards and a background worker. */
 public final class Ui {
  public static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
+ public static final Typeface MEDIUM=Typeface.create("sans-serif-medium",Typeface.NORMAL);
  public static final android.view.animation.Interpolator EASE=new DecelerateInterpolator(1.6f);
  public static final Handler MAIN=new Handler(Looper.getMainLooper());
  /** Short grace period for missing translations; network services must not hold screen navigation. */
@@ -146,4 +150,37 @@ public final class Ui {
  public static String join(String... parts){StringBuilder b=new StringBuilder();for(String p:parts)if(p!=null&&!p.isEmpty()){if(b.length()>0)b.append("  •  ");b.append(year(p));}return b.toString();}
  /** The source writes a running series as "2026-..." and a finished one as "2010-2022": show "2026" and "2010–2022". */
  public static String year(String s){if(s==null)return null;java.util.regex.Matcher m=java.util.regex.Pattern.compile("^(\\d{4})\\s*-\\s*(\\d{4}|\\.{3}|…)?$").matcher(s.trim());if(!m.matches())return s;String end=m.group(2);return end==null||!Character.isDigit(end.charAt(0))||end.equals(m.group(1))?m.group(1):m.group(1)+"–"+end;}
+
+ /** The line under a title, as on Netflix: the year bright, the age rating in an outlined badge, the rest softer with
+  *  dim dots between, the score last after a gold star. Empty parts are skipped. */
+ public static CharSequence facts(Context c,String year,String age,String rating,String... rest){
+  SpannableStringBuilder b=new SpannableStringBuilder();boolean badge=age!=null&&!age.isEmpty();
+  if(year!=null&&!year.isEmpty()){b.append(year(year));b.setSpan(new ForegroundColorSpan(Color.WHITE),0,b.length(),33);}
+  if(badge){if(b.length()>0)b.append("  ");int at=b.length();b.append(age.trim());b.setSpan(new Badge(c),at,b.length(),33);}
+  for(String p:rest)if(p!=null&&!p.isEmpty()){gap(b,badge);badge=false;b.append(p);}
+  if(rating!=null&&!rating.isEmpty()){gap(b,badge);int at=b.length();b.append("★ ");b.setSpan(new ForegroundColorSpan(0xfff5c518),at,at+1,33);at=b.length();b.append(rating);b.setSpan(new ForegroundColorSpan(Color.WHITE),at,b.length(),33);}
+  return b;
+ }
+ /** The badge frame keeps its neighbours apart by itself; between plain words goes a dim dot. */
+ private static void gap(SpannableStringBuilder b,boolean afterBadge){if(b.length()==0)return;b.append("  ");if(afterBadge)return;int at=b.length();b.append("•  ");b.setSpan(new ForegroundColorSpan(0x66ffffff),at,at+1,33);}
+ /** The source's "105 мин." reads "1 год 45 хв"; anything else is returned as otherwise. */
+ public static String minutes(String s,String otherwise){if(s==null)return otherwise;java.util.regex.Matcher m=java.util.regex.Pattern.compile("^(\\d{1,4})\\s*(мин|хв)\\.?$").matcher(s.trim());if(!m.matches())return otherwise;int n=Integer.parseInt(m.group(1));return n>=60?n/60+" год"+(n%60>0?" "+n%60+" хв":""):n+" хв";}
+ /** An age rating in a thin rounded frame: the text a little smaller, centred on the line's digits. */
+ static final class Badge extends ReplacementSpan{
+  private static final float SCALE=0.8f;private final float pad,radius,stroke;private final Rect glyph=new Rect();private final RectF box=new RectF();
+  Badge(Context c){float d=c.getResources().getDisplayMetrics().density;pad=5*d;radius=3*d;stroke=Math.max(1f,d);}
+  @Override public int getSize(Paint p,CharSequence t,int s,int e,Paint.FontMetricsInt fm){
+   if(fm!=null)p.getFontMetricsInt(fm);
+   float size=p.getTextSize();p.setTextSize(size*SCALE);float w=p.measureText(t,s,e);p.setTextSize(size);
+   return Math.round(w+2*pad+stroke);
+  }
+  @Override public void draw(Canvas c,CharSequence t,int s,int e,float x,int top,int y,int bottom,Paint p){
+   float size=p.getTextSize(),width=p.getStrokeWidth();int color=p.getColor();Paint.Style style=p.getStyle();
+   p.getTextBounds("8",0,1,glyph);float mid=y+(glyph.top+glyph.bottom)/2f;
+   p.setTextSize(size*SCALE);p.getTextBounds("8",0,1,glyph);float half=(glyph.bottom-glyph.top)/2f,w=p.measureText(t,s,e),left=x+stroke/2;
+   box.set(left,mid-half-pad*0.7f,left+w+2*pad,mid+half+pad*0.7f);
+   p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(stroke);p.setColor(0x8cffffff);c.drawRoundRect(box,radius,radius,p);
+   p.setStyle(style);p.setStrokeWidth(width);p.setColor(color);c.drawText(t,s,e,left+pad,mid+half,p);p.setTextSize(size);
+  }
+ }
 }

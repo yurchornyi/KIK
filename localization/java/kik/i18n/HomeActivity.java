@@ -23,7 +23,7 @@ import org.json.*;
 public final class HomeActivity extends Activity {
  static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
 
- static final class Item{String link,title,poster,wide,year,genre,rating,sub,heroLine,description;boolean resume,wideArt;float progress;}
+ static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description;boolean resume,wideArt;float progress;}
  static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
@@ -57,8 +57,8 @@ public final class HomeActivity extends Activity {
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   content.addView(topBar());
   LinearLayout info=new LinearLayout(this);info.setOrientation(1);info.setClipChildren(false);info.setClipToPadding(false);info.setPadding(dp(40),dp(6),dp(40),dp(12));info.setMinimumHeight(dp(200));info.setGravity(Gravity.BOTTOM);
-  heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
-  heroMeta=text("",14,0xffd8d8dc);heroMeta.setSingleLine(true);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
+  heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setLetterSpacing(-0.01f);heroTitle.setShadowLayer(dp(10),0,dp(1),0x99000000);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
+  heroMeta=text("",15,0xffd8d8dc);heroMeta.setTypeface(Ui.MEDIUM);heroMeta.setSingleLine(true);heroMeta.setEllipsize(TextUtils.TruncateAt.END);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
   heroText=text("",14,0xffd0d0d4);heroText.setLines(2);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
   info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
   heroResume=new LinearLayout(this);heroResume.setOrientation(0);heroResume.setGravity(Gravity.CENTER_VERTICAL);
@@ -246,7 +246,7 @@ public final class HomeActivity extends Activity {
  private void translateNow(List<Row> rows){mergeTranslations(TitleTranslate.cached(words(rows)));}
  private synchronized void mergeTranslations(Map<String,String> m){Map<String,String> n=new HashMap<String,String>(uk);n.putAll(m);uk=n;}
  private void translateLater(List<Row> rows,int gen,String profile){
-  main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{Map<String,String> got=TitleTranslate.resolve(words(rows));main.post(()->{if(!valid(gen,profile))return;mergeTranslations(got);translateLabels(content);if(hero!=null){heroTitle.setText(tr(hero.title));heroMeta.setText(join(hero.year,tr(hero.genre),hero.rating==null?null:"★ "+hero.rating));}});},"kik-home-text").start();},800);
+  main.postDelayed(()->{if(!valid(gen,profile)||!foreground)return;new Thread(()->{Map<String,String> got=TitleTranslate.resolve(words(rows));main.post(()->{if(!valid(gen,profile))return;mergeTranslations(got);translateLabels(content);if(hero!=null){heroTitle.setText(tr(hero.title));heroMeta.setText(facts(hero));}});},"kik-home-text").start();},800);
  }
  private static final class Label{final Item item;final boolean meta;Label(Item i,boolean m){item=i;meta=m;}}
  private void translateLabels(View v){if(v instanceof TextView&&v.getTag() instanceof Label){Label l=(Label)v.getTag();String shown=l.meta?(l.item.resume?l.item.sub:join(l.item.year,tr(l.item.genre))):tr(l.item.title);if(!TextUtils.equals(((TextView)v).getText(),shown))((TextView)v).setText(shown);}if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)translateLabels(((ViewGroup)v).getChildAt(i));}
@@ -269,7 +269,7 @@ public final class HomeActivity extends Activity {
    i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"наступна серія":"з "+Ui.time(e.pos));
    long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
    i.heroLine=join(e.season!=null&&!"0".equals(e.season)?"Сезон "+e.season+" · Серія "+e.episode:null,e.finished()?"далі наступна серія":left>0?"ще "+left+" хв":"з "+Ui.time(e.pos));
-   String[] d=DETAILS.get(norm(e.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.year=d[3];i.genre=d[4];}
+   String[] d=DETAILS.get(norm(e.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.year=d[3];i.genre=d[4];i.age=d[5];i.duration=d[6];}
    resume.items.add(i);if(resume.items.size()>=20)break;
   }
   if(!resume.items.isEmpty())rows.add(resume);
@@ -304,7 +304,7 @@ public final class HomeActivity extends Activity {
   try{JSONArray a=new JSONArray(getSharedPreferences("kik_home",0).getString("rows","[]"));
    for(int k=0;k<a.length();k++){JSONObject o=a.getJSONObject(k);Row r=new Row(o.getString("title"));JSONArray items=o.getJSONArray("items");
     for(int n=0;n<items.length();n++){JSONObject x=items.getJSONObject(n);Item i=new Item();i.link=x.optString("link");i.title=x.optString("title");i.poster=x.optString("poster",null);i.year=x.optString("year",null);i.genre=x.optString("genre",null);
-     String[] d=DETAILS.get(norm(i.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];}r.items.add(i);}
+     String[] d=DETAILS.get(norm(i.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.age=d[5];i.duration=d[6];}r.items.add(i);}
     rows.add(r);}
   }catch(JSONException ignored){}
   return rows;
@@ -316,11 +316,11 @@ public final class HomeActivity extends Activity {
   if(i.description!=null)return;
   detailTask=()->new Thread(()->{
    try{Site.Film f=Site.film(i.link);String d=f.description==null?"":DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);mergeTranslations(TitleTranslate.resolve(f.genres.isEmpty()?Collections.<String>emptySet():Collections.singleton(f.genres.get(0)),Ui.TRANSLATE_WAIT));
-    final String[] g=new String[]{d,f.poster,f.rating,f.year,f.genres.isEmpty()?null:f.genres.get(0)};DETAILS.put(norm(i.link),g);
-    main.post(()->{i.description=g[0];if(g[1]!=null&&!i.wideArt)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];
-     if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null&&!i.wideArt)Images.crossfade(i.wide,heroImage);}});
+    final String[] g=new String[]{d,f.poster,f.rating,f.year,f.genres.isEmpty()?null:f.genres.get(0),f.age,f.duration};DETAILS.put(norm(i.link),g);
+    main.post(()->{i.description=g[0];if(g[1]!=null&&!i.wideArt)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];if(g[5]!=null)i.age=g[5];if(g[6]!=null)i.duration=g[6];
+     if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(facts(i));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null&&!i.wideArt)Images.crossfade(i.wide,heroImage);}});
     String translated=DescTranslate.tr(f.description);Map<String,String> got=TitleTranslate.resolve(Collections.singleton(g[4]));
-    main.post(()->{if(destroyed)return;mergeTranslations(got);g[0]=translated;i.description=translated;if(hero==i){heroText.setText(translated);heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));}});
+    main.post(()->{if(destroyed)return;mergeTranslations(got);g[0]=translated;i.description=translated;if(hero==i){heroText.setText(translated);heroMeta.setText(facts(i));}});
    }catch(Exception e){Log.w("KIK","Hero details: "+e);}
   },"kik-hero").start();
   main.postDelayed(detailTask,600);
@@ -508,7 +508,7 @@ public final class HomeActivity extends Activity {
  private void setHero(Item i){
   if(i==hero)return;hero=i;expanded=false;heroText.setLines(2);
   heroTitle.setText(tr(i.title));
-  heroMeta.setText(join(i.year,tr(i.genre),i.rating==null?null:"★ "+i.rating));
+  heroMeta.setText(facts(i));
   heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.INVISIBLE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();
   HeroActions.label(watch,i.resume?"Продовжити":"Дивитися",HeroActions.PLAY);
   paintLater();
@@ -530,6 +530,7 @@ public final class HomeActivity extends Activity {
 
  private String tr(String s){if(s==null)return null;String t=uk.get(s);return t==null?TitleTranslate.shown(s):t;}
  private static String join(String... parts){return Ui.join(parts);}
+ private CharSequence facts(Item i){return Ui.facts(this,i.year,i.age,i.rating,Ui.minutes(i.duration,tr(i.duration)),tr(i.genre));}
 
  private void open(Item i){
   if(i==null||i.link==null)return;

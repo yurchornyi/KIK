@@ -39,9 +39,9 @@ public final class FilmActivity extends Activity {
   ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   body=new LinearLayout(this);body.setOrientation(1);body.setClipChildren(false);body.setClipToPadding(false);body.setPadding(dp(40),dp(24),dp(40),dp(40));scroll.addView(body,new ScrollView.LayoutParams(-1,-2));
   body.addView(Brand.logo(this,56,26));Ui.space(body,16);
-  name=Ui.bold(this,title==null?"":title,34);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
+  name=Ui.bold(this,title==null?"":title,34);name.setLetterSpacing(-0.01f);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
-  meta=Ui.text(this,"",14,0xffd8d8dc);body.addView(meta);Ui.space(body,12);
+  meta=Ui.text(this,"",15,0xffd8d8dc);meta.setTypeface(Ui.MEDIUM);body.addView(meta);Ui.space(body,12);
   studioLabel=Ui.text(this,"",13,Ui.GREY);studioLabel.setVisibility(View.GONE);body.addView(studioLabel);
   desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(Ui.contentWidth(this,640,80),-2));
   sourceInfo=Ui.text(this,"",13,Ui.GREY);sourceInfo.setVisibility(View.GONE);body.addView(sourceInfo);
@@ -139,7 +139,7 @@ public final class FilmActivity extends Activity {
   name.setText(tr(f.title));original.setText(f.original==null?"":f.original);
   List<String> g=new ArrayList<String>();for(String x:f.genres)g.add(tr(x));
   String country=null;if(f.country!=null){StringBuilder b=new StringBuilder();for(String c:f.country.split(",\\s*")){if(b.length()>0)b.append(", ");b.append(tr(c));}country=b.toString();}
-  meta.setMaxLines(2);meta.setEllipsize(TextUtils.TruncateAt.END);meta.setText(Ui.join(f.year,country,TextUtils.join(", ",g.subList(0,Math.min(2,g.size()))),tr(f.duration),f.age,f.rating==null?null:(f.ratingName+" "+f.rating)));
+  meta.setMaxLines(2);meta.setEllipsize(TextUtils.TruncateAt.END);meta.setText(Ui.facts(this,f.year,f.age,f.rating==null?null:f.rating+" "+f.ratingName,Ui.minutes(f.duration,tr(f.duration)),country,TextUtils.join(", ",g.subList(0,Math.min(2,g.size())))));
   fitDescription(f,description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Немає доступного потоку для перегляду у KIK.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
  }
  private void pickVoice(){
