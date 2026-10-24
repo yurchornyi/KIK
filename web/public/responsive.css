@@ -183,6 +183,9 @@ dialog.player-modal[open]{display:flex;flex-direction:column}
 .player-modal .player-tools .dropdown-label{font-size:12px;color:#8b8b95}
 .player-modal .player-tools .dropdown-value{font-weight:600;color:#f1f1f3}
 .player-modal .player-tools .dropdown-arrow{opacity:.5}
+.player-modal .player-tools .sleep-dropdown{flex:0 0 34px;width:34px}
+.player-modal .player-tools .sleep-dropdown .dropdown-trigger{width:34px;padding:0;justify-content:center;border-radius:50%;color:#d8d8de;position:relative}
+.player-modal .player-tools .sleep-dropdown .dropdown-trigger.active:after{content:"";position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--red)}
 /* No status line under the picture: the note is for screen readers; what the player is doing shows on the picture (.player-status). */
 .player-modal .player-note{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;margin:0}
 @media(max-width:720px){
