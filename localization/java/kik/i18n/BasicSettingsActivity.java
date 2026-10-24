@@ -18,10 +18,11 @@ public final class BasicSettingsActivity extends Activity {
  private TextView updateStatus;
  private Button updateNow;
  // A postponed update stays visible here: a red «Оновити до …» on top of the updates card until it is installed.
- private final Runnable updateChanged=()->{if(updateStatus!=null)updateStatus.setText(AppUpdater.status(this));if(updateNow!=null){String name=AppUpdater.availableName(this);updateNow.setVisibility(name==null?View.GONE:View.VISIBLE);if(name!=null)updateNow.setText("Оновити до "+name);}};
+ private final Runnable updateChanged=()->{if(updateStatus!=null)updateStatus.setText(AppUpdater.status(this));if(updateNow!=null){String name=AppUpdater.availableName(this);updateNow.setVisibility(name==null?View.GONE:View.VISIBLE);if(name!=null)updateNow.setText("Оновити до "+name);}linkColumn(this.rightColumn);};
  private final String[] qualities={"4k","2k","1080p","720p","480p","360p"};
  private final List<Button> qualityButtons=new ArrayList<>();
  private int cardWidth;
+ private LinearLayout rightColumn;
  private int dp(float n){return Ui.dp(this,n);}
 
  @Override public void onCreate(Bundle state){
@@ -38,7 +39,7 @@ public final class BasicSettingsActivity extends Activity {
   int available=Ui.contentWidth(this,1120,80);boolean wide=available>=dp(720);
   LinearLayout layout=new LinearLayout(this);layout.setOrientation(wide?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);layout.setClipChildren(false);layout.setClipToPadding(false);
   page.addView(layout,new LinearLayout.LayoutParams(available,-2));
-  LinearLayout left=column(),right=column();cardWidth=wide?(available-dp(20))/2:available;
+  LinearLayout left=column(),right=column();rightColumn=right;cardWidth=wide?(available-dp(20))/2:available;
   layout.addView(left,new LinearLayout.LayoutParams(cardWidth,-2));
   LinearLayout.LayoutParams rightLp=new LinearLayout.LayoutParams(cardWidth,-2);if(wide)rightLp.leftMargin=dp(20);layout.addView(right,rightLp);
   int inner=cardWidth-dp(40);
@@ -86,7 +87,15 @@ public final class BasicSettingsActivity extends Activity {
   action(about,"Джерела даних",()->FreeSources.credits(this));
   action(about,"Очистити кеш зображень",()->Ui.dialog(this).setTitle("Очистити кеш зображень?").setMessage("Обране та історія перегляду збережуться.").setNegativeButton("Скасувати",null).setPositiveButton("Очистити",(dialog,which)->Ui.bg(()->{clearImages(getCacheDir());HomeActivity.Images.clear();runOnUiThread(()->Ui.toast(this,"Кеш зображень очищено"));})).show());
   TextView author=Ui.text(this,"◐  Створено Чорним",13,Ui.GREY);author.setPadding(0,dp(8),0,0);about.addView(author);
+  linkColumn(right);
   if(selectedButton!=null)selectedButton.requestFocus();
+ }
+ // Up/Down stays inside the column: the taller catalogue grid on the left otherwise wins the focus search from the lower right cards.
+ private void linkColumn(LinearLayout column){
+  if(column==null)return;
+  ArrayList<View> views=new ArrayList<>();column.addFocusables(views,View.FOCUS_DOWN,View.FOCUSABLES_ALL);
+  for(int i=0;i<views.size();i++){View v=views.get(i);if(v.getId()==View.NO_ID)v.setId(View.generateViewId());}
+  for(int i=0;i<views.size();i++){View v=views.get(i);v.setNextFocusUpId(i>0?views.get(i-1).getId():View.NO_ID);v.setNextFocusDownId(i+1<views.size()?views.get(i+1).getId():v.getId());}
  }
  private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setClipChildren(false);l.setClipToPadding(false);return l;}
  private LinearLayout card(LinearLayout parent,String title,String description){
