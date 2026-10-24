@@ -205,7 +205,7 @@ function heroCopy(item){
  return el('div',{class:'hero-copy'},el('div',{class:'eyebrow'},'KIK · ЗНАЙДІТЬ СВОЮ НАСТУПНУ ІСТОРІЮ'),el('h1',{},item.title),
   el('div',{class:'meta'},el('span',{class:'match'},item.resume?'Продовжити перегляд':state.user?'Підібрано для вас':'Варто подивитися'),el('span',{},item.info?.split(',').slice(0,2).join(' · ')||item.genre||item.year||'Фільми та серіали'),el('span',{class:'tag'},'HD')),
   resume?el('div',{class:'hero-resume'},el('span',{class:'hero-bar'},el('i',{style:`width:${Math.max(3,Math.min(100,item.pos/item.dur*100))}%`})),el('span',{},`Ви зупинилися на ${where}`)):null,
-  el('p',{},item.resume?'Продовжуйте з того самого місця: прогрес зберігається на телефоні, комп’ютері та TV.':state.user?`Нові історії, які захочеться прожити. Рекомендації для профілю «${state.profile?.name||''}» враховують ваш вибір і перегляди.`:'Кіно для кожного настрою. Увійдіть, щоб зберігати своє та продовжувати перегляд на телефоні, комп’ютері або TV.'),
+  item.resume?null:el('p',{},state.user?`Нові історії, які захочеться прожити. Рекомендації для профілю «${state.profile?.name||''}» враховують ваш вибір і перегляди.`:'Кіно для кожного настрою. Увійдіть, щоб зберігати своє та продовжувати перегляд на телефоні, комп’ютері або TV.'),
   heroActions(item),el('div',{class:'hero-dots',role:'group','aria-label':'Слайди'}));
 }
 /** Small pills under the buttons: the slide on screen is a wider track that fills in white over the 9 s it stays, like Netflix. */
