@@ -303,7 +303,7 @@ function account(){
  if(!state.user){auth();return;}
  const tiles=state.profiles.map(profile=>{
   const active=profile.id===state.profile?.id;
-  const avatar=el('span',{class:'profile-avatar'},el('img',{src:avatarUrl(profile.avatar),alt:'',width:88,height:88}),active?el('span',{class:'profile-current','aria-hidden':'true'},'✓'):null);
+  const avatar=el('span',{class:'profile-avatar'},el('img',{src:avatarUrl(profile.avatar),alt:'',width:136,height:136}),active?el('span',{class:'profile-current','aria-hidden':'true'},'✓'):null);
   const tile=button([avatar,el('span',{class:'profile-tile-name'},profile.name)],async()=>{modal.close();await selectProfile(profile);},'profile-tile');
   tile.setAttribute('aria-pressed',String(active));tile.setAttribute('aria-label',profile.name+(active?' — поточний профіль':''));return tile;
  });
