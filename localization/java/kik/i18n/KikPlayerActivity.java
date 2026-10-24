@@ -375,15 +375,15 @@ public final class KikPlayerActivity extends Activity {
   if(film.series)addControl("⏮",()->{if(!prepared&&!failed)return;Site.Episode n=previous(film,season,episode);Log.d("KIK.Player","Episode step previous S"+season+"E"+episode+" -> "+(n==null?"none":"S"+n.season+"E"+n.episode)+" of "+film.episodes.size());if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це перша серія");});
   addControl("⟲10",()->seek(-10000));playIndex=controls.size();focus=playIndex;addControl("❚❚",()->toggle());addControl("10⟳",()->seek(10000));
   if(film.series)addControl("⏭",()->{if(!prepared&&!failed)return;Site.Episode n=next(film,season,episode);Log.d("KIK.Player","Episode step next S"+season+"E"+episode+" -> "+(n==null?"none":"S"+n.season+"E"+n.episode)+" of "+film.episodes.size());if(n!=null){save();season=n.season;episode=n.episode;playIntro();start(true);}else Ui.toast(this,"Це остання серія");});
-  View gap=new View(this);buttons.addView(gap,new LinearLayout.LayoutParams(0,1,1));
   // The settings sit in one frame at the right end of the row. A menu's choices open in that same frame, out of the pressed button, so the row never grows.
-  FrameLayout side=new FrameLayout(this);side.setClipChildren(false);side.setClipToPadding(false);
+  // It clips at its padding: nothing in it, at rest or in flight, is ever drawn over the transport buttons. The small inset leaves room for the focus zoom.
+  FrameLayout side=new FrameLayout(this);side.setPadding(dp(16),dp(4),dp(4),dp(4));side.setClipChildren(true);side.setClipToPadding(true);
   settings=new LinearLayout(this);settings.setOrientation(0);settings.setGravity(Gravity.CENTER_VERTICAL);settings.setClipChildren(false);settings.setClipToPadding(false);
   side.addView(settings,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
   options=new LinearLayout(this);options.setOrientation(0);options.setGravity(Gravity.CENTER_VERTICAL);options.setClipChildren(false);options.setClipToPadding(false);
-  optionsBox=new HorizontalScrollView(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setHorizontalFadingEdgeEnabled(true);optionsBox.setFadingEdgeLength(dp(40));optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
+  optionsBox=new HorizontalScrollView(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setClipChildren(true);optionsBox.setClipToPadding(true);optionsBox.setHorizontalFadingEdgeEnabled(true);optionsBox.setFadingEdgeLength(dp(40));optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
   side.addView(optionsBox,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
-  buttons.addView(side,new LinearLayout.LayoutParams(-2,-2));
+  buttons.addView(side,new LinearLayout.LayoutParams(0,-2,1));
   if(voiceNames().size()>1)addControl("Озвучка",()->openVoices());
   addControl("Якість",()->openQualities());
   addControl("Швидкість",()->openSpeeds());
@@ -419,7 +419,7 @@ public final class KikPlayerActivity extends Activity {
   boolean icon=label.length()<=4;TextView t=Ui.bold(this,label,icon?18:14);t.setSingleLine(true);t.setGravity(Gravity.CENTER);t.setPadding(icon?0:dp(14),0,icon?0:dp(14),0);t.setTag(r);t.setOnClickListener(v->{focus=controls.indexOf(t);r.run();show(true);});
   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(icon?dp(44):-2,dp(38));lp.setMargins(0,0,dp(8),0);settings.addView(t,lp);controls.add(t);return t;
  }
- private List<String> voiceNames(){List<String> n=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)n.add(v.name);return n;}
+ private List<String> voiceNames(){List<String> n=new ArrayList<String>(),other=new ArrayList<String>();for(Site.Voice v:film.voices)if(!v.premium)("other".equals(PlaybackPolicy.lang(v.name))?other:n).add(v.name);return n.isEmpty()?other:n;}
  private void paintSub(){
   String s=film.series&&season!=null?"Сезон "+season+" · Серія "+episode:"";
   sub.setText(Ui.join(s,PlaybackPolicy.label(PlaybackPolicy.lang(voice.name)),quality,sleepText()));
@@ -476,7 +476,9 @@ public final class KikPlayerActivity extends Activity {
  /** Every free studio, best first (Ukrainian, then Russian, then the rest), named with its language. */
  private void openVoices(){
   List<String> l=new ArrayList<String>();List<Runnable> a=new ArrayList<Runnable>();int sel=0;
-  for(final Site.Voice v:film.voices){if(v.premium)continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
+  // Ukrainian, Russian and English only, as on the web; other languages show only when a title has none of these.
+  boolean main=false;for(Site.Voice v:film.voices)if(!v.premium&&!"other".equals(PlaybackPolicy.lang(v.name)))main=true;
+  for(final Site.Voice v:film.voices){if(v.premium||main&&"other".equals(PlaybackPolicy.lang(v.name)))continue;if(voice!=null&&v.id.equals(voice.id))sel=l.size();
    String lang=PlaybackPolicy.lang(v.name);l.add("other".equals(lang)?Ua.t(v.name):lang.toUpperCase(Locale.ROOT).replace("UK","UA")+" · "+voiceName(v.name));
    a.add(()->{if(voice!=null&&v.id.equals(voice.id))return;save();voice=v;Progress.chooseVoice(this,film.link,v.id);start(false,true);});}
   openMenu("voice",l,a,sel);
