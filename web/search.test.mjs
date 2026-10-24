@@ -45,3 +45,12 @@ test('similar titles: TMDB recommendations found on the catalogue first, then th
  assert.deepEqual((await similar(page.link,{token:'',load:async()=>page,search:async()=>[]})).map(i=>i.title),['Война и мир']);
  assert.equal(sameWork({name:'Озарк',first_air_date:'2017',media_type:'tv'},{link:'https://hdrezka.sh/films/drama/9-ozark-2017.html',title:'Озарк',info:'2017'}),false);
 });
+test('search fixes come from Sentra first; its «not sure» is an answer, not a reason to ask Workers AI',async()=>{
+ const original=globalThis.fetch,sent=[];let reply='{"titles":["Интерстеллар"]}';
+ globalThis.fetch=async(url,opts)=>{sent.push(opts);return Response.json({choices:[{message:{content:reply}}]});};
+ try{
+  let runs=0;const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t',AI:{run:async()=>{runs++;return {response:'{"titles":["Wrong"]}'};}}};
+  assert.deepEqual(await corrections(fakeDb(),env,'интерстелар',memoryCache()),['Интерстеллар']);assert.equal(sent[0].headers['x-sentra-skill'],'kik-search-fix');assert.equal(JSON.parse(sent[0].body).model,'role:fast');
+  reply='{"titles":[]}';assert.deepEqual(await corrections(fakeDb(),env,'qqqq zzzz',memoryCache()),[]);assert.equal(runs,0);
+ }finally{globalThis.fetch=original;}
+});

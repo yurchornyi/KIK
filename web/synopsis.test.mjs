@@ -22,3 +22,14 @@ test('synopsis falls back to the small model and returns null without AI',async(
  assert.equal((await synopsis(fakeDb(),{},link,async()=>page,async(d,f)=>f)).summary,null);
  await assert.rejects(()=>synopsis(db,env,'https://example.com/x',async()=>page,async(d,f)=>f),/Некоректне/);
 });
+test('synopsis is written by Sentra first; a non-Ukrainian answer from it goes to Workers AI',async()=>{
+ const original=globalThis.fetch,skills=[];let reply='Хлопчик з Каппадокії стає ченцем Паїсієм і крізь війни та вигнання шукає шлях до Бога.';
+ globalThis.fetch=async(url,opts)=>{skills.push(opts.headers['x-sentra-skill']);return Response.json({choices:[{message:{content:reply}}]});};
+ try{
+  const models=[],env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t',AI:{run:async m=>{models.push(m);return {response:'Хлопчик з Каппадокії стає ченцем і крізь війни шукає шлях до Бога.'};}}};
+  assert.match((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,/Паїсієм/);assert.deepEqual(skills,['kik-synopsis']);assert.equal(models.length,0);
+  reply='Это история о монахе, который ищет веру и проходит испытания войной.';
+  assert.ok((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary);assert.equal(models.length,1);
+  assert.equal((await synopsis(fakeDb(),{SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},link,async()=>page,async(d,f)=>f)).summary,null);
+ }finally{globalThis.fetch=original;}
+});
