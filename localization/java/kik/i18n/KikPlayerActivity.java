@@ -108,6 +108,7 @@ public final class KikPlayerActivity extends Activity {
   buildControls();
   player=createPlayer();player.setVideoSurfaceView(surface);
   watchNetwork();
+  startSession();
   h.post(tick);h.postDelayed(saver,5000);
   playIntro();
   start(true);
@@ -119,6 +120,8 @@ public final class KikPlayerActivity extends Activity {
   p.addListener(new Player.Listener(){
    @Override public void onPlaybackStateChanged(int state){onState(state);}
    @Override public void onPlayerError(PlaybackException error){Log.w("KIK.Player","Player error "+error.getErrorCodeName()+" http="+httpCode(error),error);recover(error);}
+   // Headphones unplugged or their Bluetooth gone: ExoPlayer pauses by itself, and the player follows.
+   @Override public void onPlayWhenReadyChanged(boolean play,int reason){if(reason==Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY&&!play&&playWhenReady){playWhenReady=false;Log.d("KIK.Player","Headphones gone: paused");update();show(true);}}
    @Override public void onVideoSizeChanged(VideoSize size){if(size.width>0&&size.height>0){aspect=size.width*size.pixelWidthHeightRatio/size.height;fit();}}
    @Override public void onRenderedFirstFrame(){Log.d("KIK.Player","First frame after "+(SystemClock.elapsedRealtime()-recoveryStarted)+" ms");}
   });
@@ -137,7 +140,43 @@ public final class KikPlayerActivity extends Activity {
  private boolean online(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);NetworkInfo n=cm.getActiveNetworkInfo();return n!=null&&n.isConnected();}catch(Exception e){return true;}}
  @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}}
  @Override protected void onPause(){super.onPause();active=false;endIntro();save();CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
- @Override protected void onDestroy(){destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
+ /**
+  * A media session, so the play/pause button on headphones (Bluetooth or wired) and any other media remote reaches
+  * this player: Android sends such buttons to the session that last played, not to the screen in front.
+  */
+ private android.media.session.MediaSession session;private int sessionState=-1;
+ private void startSession(){
+  try{session=new android.media.session.MediaSession(this,"KIK player");
+   session.setCallback(new android.media.session.MediaSession.Callback(){
+    @Override public void onPlay(){headset(true);}
+    @Override public void onPause(){headset(false);}
+    @Override public void onStop(){headset(false);}
+    @Override public boolean onMediaButtonEvent(Intent i){
+     KeyEvent k=i.getParcelableExtra(Intent.EXTRA_KEY_EVENT);if(k==null)return super.onMediaButtonEvent(i);
+     if(k.getAction()!=KeyEvent.ACTION_DOWN||k.getRepeatCount()>0)return true;
+     switch(k.getKeyCode()){
+      case KeyEvent.KEYCODE_HEADSETHOOK:case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:headset(!playWhenReady);return true;
+      case KeyEvent.KEYCODE_MEDIA_PLAY:headset(true);return true;
+      case KeyEvent.KEYCODE_MEDIA_PAUSE:case KeyEvent.KEYCODE_MEDIA_STOP:headset(false);return true;
+      default:return super.onMediaButtonEvent(i);}
+    }});
+   session.setFlags(android.media.session.MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|android.media.session.MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+   session.setMetadata(new android.media.MediaMetadata.Builder().putString(android.media.MediaMetadata.METADATA_KEY_TITLE,title==null?"KIK":title).build());
+   publishSession();session.setActive(true);}
+  catch(Exception e){Log.w("KIK","Media session",e);session=null;}
+ }
+ /** A headphone press: the same pause and play as OK on the remote, with the same mark on screen. */
+ private void headset(boolean play){
+  if(destroyed||!prepared||player==null||playWhenReady==play)return;Log.d("KIK.Player","Headset "+(play?"play":"pause"));
+  toggle();if(!visible)pulse(play?"▶":"❚❚");
+ }
+ /** Playing or paused, as Android should see it; it routes the next headphone press by this. */
+ private void publishSession(){
+  if(session==null)return;int state=prepared&&playWhenReady&&active?android.media.session.PlaybackState.STATE_PLAYING:android.media.session.PlaybackState.STATE_PAUSED;if(state==sessionState)return;sessionState=state;
+  long actions=android.media.session.PlaybackState.ACTION_PLAY|android.media.session.PlaybackState.ACTION_PAUSE|android.media.session.PlaybackState.ACTION_PLAY_PAUSE|android.media.session.PlaybackState.ACTION_STOP;
+  session.setPlaybackState(new android.media.session.PlaybackState.Builder().setActions(actions).setState(state,pos(),state==android.media.session.PlaybackState.STATE_PLAYING?speed:0f).build());
+ }
+ @Override protected void onDestroy(){if(session!=null){try{session.setActive(false);session.release();}catch(Exception ignored){}session=null;}destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
 
  private long pos(){return player==null?0:Math.max(0,player.getCurrentPosition());}
  /** For the device audits: position, duration and whether frames are advancing right now. */
@@ -440,7 +479,7 @@ public final class KikPlayerActivity extends Activity {
   * their places, one after another. Closing gathers them back into that spot and the buttons return. Small views only.
   */
  /** Material "emphasized" curves: a soft start and a long gentle landing; the way back speeds up as it leaves. */
- private static final android.view.animation.Interpolator GLIDE=new android.view.animation.PathInterpolator(.2f,0f,0f,1f),LEAVE=new android.view.animation.PathInterpolator(.3f,0f,.8f,.15f);
+ private final android.view.animation.Interpolator GLIDE=new android.view.animation.PathInterpolator(.2f,0f,0f,1f),LEAVE=new android.view.animation.PathInterpolator(.3f,0f,.8f,.15f);
  private void swapRow(final boolean toMenu){
   final int gen=++rowSwap;settings.animate().cancel();for(int i=0;i<options.getChildCount();i++)options.getChildAt(i).animate().cancel();for(android.animation.Animator a:fades)a.cancel();fades.clear();
   final boolean animate=Ui.animations()&&visible;
@@ -602,6 +641,7 @@ public final class KikPlayerActivity extends Activity {
  }
  private void pulse(String s){flash.setText(s);flash.animate().cancel();flash.setScaleX(0.9f);flash.setScaleY(0.9f);flash.animate().alpha(1).scaleX(1).scaleY(1).setDuration(200).setInterpolator(Ui.EASE).withEndAction(()->flash.animate().alpha(0).setStartDelay(500).setDuration(300).start()).start();}
  private void update(){
+  publishSession();
   long now=SystemClock.elapsedRealtime();
   if(!destroyed&&!failed&&!recovering&&!offline&&active&&playWhenReady&&player!=null&&stream!=null){
    int state=player.getPlaybackState();long position=pos();
@@ -650,7 +690,7 @@ public final class KikPlayerActivity extends Activity {
   if(k==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   if(e.getAction()!=KeyEvent.ACTION_DOWN)return true;
   switch(k){
-   case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_SPACE:toggle();if(!visible)pulse(playWhenReady?"▶":"❚❚");return true;
+   case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_HEADSETHOOK:case KeyEvent.KEYCODE_SPACE:toggle();if(!visible)pulse(playWhenReady?"▶":"❚❚");return true;
    case KeyEvent.KEYCODE_MEDIA_PLAY:playWhenReady=true;if(player!=null)player.setPlayWhenReady(wanted());show(true);return true;
    case KeyEvent.KEYCODE_MEDIA_PAUSE:playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);update();show(true);return true;
    case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:seek(10000);pulse("10 »");return true;
@@ -692,6 +732,6 @@ public final class KikPlayerActivity extends Activity {
   paint();return true;
  }
  /** Remote keys the player handles; any other key (volume, mute, power, home…) keeps its system behaviour. */
- private static boolean playerKey(int key){switch(key){case KeyEvent.KEYCODE_BACK:case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_SPACE:case KeyEvent.KEYCODE_MEDIA_PLAY:case KeyEvent.KEYCODE_MEDIA_PAUSE:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:case KeyEvent.KEYCODE_MEDIA_REWIND:case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_DPAD_DOWN:return true;default:return false;}}
+ private static boolean playerKey(int key){switch(key){case KeyEvent.KEYCODE_BACK:case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_HEADSETHOOK:case KeyEvent.KEYCODE_SPACE:case KeyEvent.KEYCODE_MEDIA_PLAY:case KeyEvent.KEYCODE_MEDIA_PAUSE:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:case KeyEvent.KEYCODE_MEDIA_REWIND:case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_DPAD_DOWN:return true;default:return false;}}
  @Override public void onBackPressed(){if(menu!=null){closeMenu();return;}if(visible){show(false);return;}if(askOn){answer(0);return;}save();finish();}
 }
