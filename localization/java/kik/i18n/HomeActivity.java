@@ -73,6 +73,9 @@ public final class HomeActivity extends Activity {
   more=action("",HeroActions.INFO,false);HeroActions.round(more);more.setContentDescription("Детальніше");LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(48),dp(48));lp.setMargins(dp(10),0,0,0);buttons.addView(more,lp);
   watch.setOnClickListener(v->{if(hero!=null)startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));});
   more.setOnClickListener(v->open(hero));
+  // No extra controls: ◀ past the first button and ▶ past the last one turn the slides, as on Disney+ and Prime Video.
+  watch.setOnKeyListener((v,k,e)->k==KeyEvent.KEYCODE_DPAD_LEFT&&e.getAction()==KeyEvent.ACTION_DOWN&&turn(-1));
+  more.setOnKeyListener((v,k,e)->k==KeyEvent.KEYCODE_DPAD_RIGHT&&e.getAction()==KeyEvent.ACTION_DOWN&&turn(1));
   dots=new LinearLayout(this);dots.setOrientation(0);dots.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams dl=new LinearLayout.LayoutParams(-2,dp(6));dl.topMargin=dp(16);info.addView(dots,dl);
   content.addView(info);
   Ui.enter(info,60);
@@ -485,6 +488,8 @@ public final class HomeActivity extends Activity {
   if(at>=0){showSlide(at);return;}
   borrowed=true;setHero(i);scheduleSlide();paintDots();
  }
+ /** One slide back or forward by hand; the pill starts filling again and the show goes on from there. */
+ private boolean turn(int by){int n=slides.size();if(n<2)return false;showSlide(((slide+by)%n+n)%n);return true;}
  /** The picks changed under the hero: the title on screen keeps its pill (or its borrowed turn) and its timer. */
  private void keepTurn(){
   if(slides.isEmpty())return;int at=slides.indexOf(hero);
