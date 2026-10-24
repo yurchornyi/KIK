@@ -8,7 +8,8 @@ public final class NetworkAudit extends Instrumentation {
  boolean await(BooleanSupplier f,int ms){long end=SystemClock.elapsedRealtime()+ms;while(SystemClock.elapsedRealtime()<end){try{if(f.getAsBoolean())return true;}catch(Throwable ignored){}SystemClock.sleep(200);}return false;}
  void check(String n,boolean b){Bundle out=new Bundle();out.putString("stream",(b?"PASS ":"FAIL ")+n+"\n");sendStatus(0,out);if(!b)throw new AssertionError(n);checks++;}
  @Override public void onCreate(Bundle b){super.onCreate(b);start();}
- @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();for(ProfileStore.Profile x:ProfileStore.list(c))if("QA Network".equals(x.name))ProfileStore.delete(c,x.id);original=ProfileStore.current(c);list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
+ @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();for(ProfileStore.Profile x:ProfileStore.list(c))if("QA Network".equals(x.name))ProfileStore.delete(c,x.id);original=ProfileStore.current(c);
+  if(ProfileStore.nameOf(c,original)==null&&!ProfileStore.list(c).isEmpty()){original=ProfileStore.list(c).get(0).id;c.getSharedPreferences("kik_profiles",0).edit().putString("current",original).commit();}list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
   check("plain HTTP is refused",!android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted("example.com"));
   HttpURLConnection probe=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/health").openConnection();
   Method authorize=CloudSync.class.getDeclaredMethod("authorize",HttpURLConnection.class);authorize.setAccessible(true);authorize.invoke(null,probe);
@@ -16,9 +17,8 @@ public final class NetworkAudit extends Instrumentation {
   qa=ProfileStore.create(c,"QA Network","Network6789").id;c.getSharedPreferences("kik_profiles",0).edit().putString("current",qa).commit();ProfileStore.completeTasteSetup(c,qa);
   List<Site.Card> cards=Site.search("Один вдома",1);Site.Card card=null;for(Site.Card x:cards)if(x.link.contains("/films/")){card=x;break;}check("catalogue reachable over HTTPS",card!=null);
   Site.Film f=Site.film(card.link);Site.Voice voice=null;for(Site.Voice v:(List<Site.Voice>)get(f,"voices"))if(!v.premium&&!v.ads){voice=v;break;}check("free voice found",voice!=null);
-  ActivityMonitor monitor=addMonitor(KikPlayerActivity.class.getName(),null,false);final Site.Film film=f;final Site.Voice track=voice;
-  runOnMainSync(()->{try{Method open=KikPlayerActivity.class.getDeclaredMethod("open",Context.class,Site.Film.class,Site.Voice.class,String.class,String.class,String.class,String.class);open.setAccessible(true);open.invoke(null,c,film,track,null,null,film.title,film.poster);}catch(Exception e){throw new RuntimeException(e);}});
-  p=(KikPlayerActivity)waitForMonitorWithTimeout(monitor,15000);check("player opened",p!=null);
+  Field film=KikPlayerActivity.class.getDeclaredField("openingFilm"),track=KikPlayerActivity.class.getDeclaredField("openingVoice");film.setAccessible(true);track.setAccessible(true);film.set(null,f);track.set(null,voice);
+  p=(KikPlayerActivity)startActivitySync(new Intent(c,KikPlayerActivity.class).putExtra("title",f.title).putExtra("poster",f.poster).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));check("player opened",p!=null);
   check("real film starts playing",await(()->ui(()->(Boolean)get(p,"prepared")&&p.playing()),45000));
   long at=ui(()->p.position());SystemClock.sleep(4000);check("playback advances",ui(()->p.position())>at+2500);passed=true;
  }catch(Throwable e){error=e.toString();}finally{try{if(p!=null)ui(()->{p.finish();return null;});SystemClock.sleep(1500);if(qa!=null)ProfileStore.delete(c,qa);c.getSharedPreferences("kik_profiles",0).edit().putString("list",list).putString("current",original).commit();}catch(Exception e){passed=false;error=e.toString();}Bundle b=new Bundle();b.putString("stream",(passed?"Network audit passed: "+checks:"Network audit failed: "+error)+"\n");finish(passed?Activity.RESULT_OK:Activity.RESULT_CANCELED,b);}}
