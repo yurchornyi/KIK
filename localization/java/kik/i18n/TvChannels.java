@@ -154,7 +154,7 @@ public final class TvChannels {
   List<Program> out=new ArrayList<Program>();Set<String> seen=new HashSet<String>();int checked=0;
   for(Progress.Entry e:Progress.recent(c,profile)){
    if(e.link==null||e.season==null||!e.finished()||!seen.add(Progress.norm(e.link)))continue;if(++checked>10)break;
-   try{Site.Film f=Site.film(e.link);if(!f.series||f.sourceUrl!=null)continue;
+   try{Site.Film f=FreeSources.metadata(e.link);if(!f.series||f.sourceUrl!=null)continue;
     // An unfinished episode is already in Continue; a finished one points at the next, if it is out.
     Site.Episode n=e.finished()?KikPlayerActivity.next(f,e.season,e.episode):null;if(n==null)continue;
     Program p=new Program();p.link=e.link;p.title=e.title;p.poster=e.poster;p.season=n.season;p.episode=n.episode;p.play=true;p.type=TvContract.PreviewPrograms.TYPE_TV_EPISODE;out.add(p);
@@ -165,7 +165,7 @@ public final class TvChannels {
   JSONArray later=Progress.later(c,profile);
   for(int i=0;i<later.length()&&out.size()<LIMIT&&checked<16;i++){JSONObject o=later.optJSONObject(i);if(o==null)continue;String link=o.optString("link",null);
    if(link==null||!Progress.norm(link).startsWith("series/")||!seen.add(Progress.norm(link))||started(c,profile,link))continue;checked++;
-   try{Site.Film f=Site.film(link);if(!f.series||f.sourceUrl!=null||f.episodes.isEmpty())continue;Site.Episode n=f.episodes.get(f.episodes.size()-1);
+   try{Site.Film f=FreeSources.metadata(link);if(!f.series||f.sourceUrl!=null||f.episodes.isEmpty())continue;Site.Episode n=f.episodes.get(f.episodes.size()-1);
     Program p=new Program();p.link=link;String t=o.optString("title",null);p.title=Ua.t(t==null||t.isEmpty()?f.title:t);p.poster=o.optString("poster",f.poster);p.season=n.season;p.episode=n.episode;p.type=TvContract.PreviewPrograms.TYPE_TV_EPISODE;out.add(p);
    }catch(Exception x){Log.w(TAG,"Series "+link,x);}
   }return out;
@@ -182,9 +182,8 @@ public final class TvChannels {
   try{for(Program p:programs){String key=Progress.norm(p.link);String hit=cache.getString(key,null);long at=cache.getLong(key+"@",0);
     if(hit!=null&&now-at<(hit.isEmpty()?MISS_TTL:ARTWORK_TTL)){if(!hit.isEmpty())out.put(key,hit);continue;}
     if(key.startsWith("uaserials/")||ask.length()>=24)continue;
-    // TMDB needs the original title and year to be sure; read the page once when the metadata cache has neither.
+    // The artwork service can match a title without opening a source page for each launcher card.
     ContentSimilarity.Document d=RecommendationMetadata.get(c,p.link);String title=d!=null&&!d.title.isEmpty()?d.title:p.title,original=d==null?"":d.original,year=d==null||d.year==0?"":String.valueOf(d.year);
-    if(original.isEmpty()||year.isEmpty())try{Site.Film f=Site.film(p.link);RecommendationMetadata.remember(c,f);if(f.title!=null)title=f.title;if(f.original!=null)original=f.original;if(f.year!=null)year=f.year;}catch(Exception e){Log.w(TAG,"Title page "+key,e);}
     ask.put(new JSONObject().put("link","https://hdrezka.sh/"+key).put("title",title).put("original",original).put("year",year));}
   }catch(JSONException ignored){}
   if(ask.length()==0)return out;

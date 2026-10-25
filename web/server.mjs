@@ -8,7 +8,7 @@ import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport} from './management.mjs';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
 import {exchange,titleKey,canonicalLink} from "./sync.mjs";
-import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
+import {uaSearch,uaFilmPlayable,findUaAlternative} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
 import {searchAlternatives} from "./search-fix.mjs";
 import {similar} from "./similar.mjs";
@@ -63,7 +63,8 @@ async function api(request,env,ctx){
  if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams),undefined,{queue:await signedIn()}));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
  // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
- if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:{...env,AI:null},query,aliases)}));}
+ // Signed out, only the free lookups run: no env reaches the model, so neither Sentra nor Workers AI is asked.
+ if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:null,query,aliases)}));}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
@@ -127,9 +128,15 @@ async function api(request,env,ctx){
   if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
   if(params.studio&&!env.TMDB_READ_TOKEN)fail('Фільтр студій тимчасово недоступний. Спробуйте пізніше.',503);
   const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5");
-  return edgeCached(ctx,key,180,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
+  return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),180,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link),independent=source.hostname==="uaserials.com"&&url.searchParams.get("independent")==="1";return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+(independent?"&independent=1":"")+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film,{independent}):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
+ if(path==="/api/alternative"&&request.method==="GET"){
+  const title=(url.searchParams.get("title")||"").trim().slice(0,150),original=(url.searchParams.get("original")||"").trim().slice(0,150),year=(url.searchParams.get("year")||"").slice(0,32),kind=url.searchParams.get("kind");
+  if(!title)fail("Потрібна назва фільму");
+  const key=new Request(url.origin+path+"?title="+encodeURIComponent(title.toLowerCase())+"&original="+encodeURIComponent(original.toLowerCase())+"&year="+encodeURIComponent(year)+"&kind="+(kind==="series"?"series":kind==="film"?"film":"any")+"&__v=1");
+  return edgeCached(ctx,key,900,async()=>({film:await findUaAlternative({title,original,year,series:kind==="series"?true:kind==="film"?false:undefined}).then(f=>f?localizedFilm(db,f):null)}));
+ }
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
   const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:catalogue}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()));return r;}
@@ -167,4 +174,4 @@ async function api(request,env,ctx){
 async function asset(request,env){const r=await env.ASSETS.fetch(request);if(r.status!==200||!new URL(request.url).searchParams.has("v"))return r;const out=new Response(r.body,r);out.headers.set("Cache-Control","public, max-age=31536000, immutable");return out;}
 function pairRedirect(request){const code=String(new URL(request.url).searchParams.get("code")||"").replace(/[\s-]/g,"").toUpperCase();return new Response(null,{status:302,headers:{Location:/^[A-Z2-9]{8}$/.test(code)?"/?pair="+code:"/","Cache-Control":"no-store"}});}
 function secure(response){const r=new Response(response.body,response);r.headers.set("Strict-Transport-Security","max-age=31536000");r.headers.set("Permissions-Policy","camera=(), microphone=(), geolocation=(), payment=()");r.headers.set("Cross-Origin-Opener-Policy","same-origin");r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Referrer-Policy","no-referrer");r.headers.set("X-Frame-Options","DENY");r.headers.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'");return r;}
-export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));return secure(path.startsWith("/api/")?await api(request,env,ctx):await asset(request,env));}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname.replace(/^\/api\/media\/.*/,"/api/media/[redacted]"),status,e.status?"handled":"unexpected");return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз."},status,status===429?{"Retry-After":"60"}:{}));}}};
+export default {async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));return secure(path.startsWith("/api/")?await api(request,env,ctx):await asset(request,env));}catch(e){const status=e.status||(e.sourcePaused?503:400);console.warn("KIK request failed",new URL(request.url).pathname.replace(/^\/api\/media\/.*/,"/api/media/[redacted]"),status,e.status?"handled":"unexpected");return secure(json({error:e.sourcePaused?"HDRezka тимчасово відхиляє запити":e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз.",...e.sourcePaused?{code:"source_paused"}:{}},status,status===429?{"Retry-After":"60"}:{}));}}};

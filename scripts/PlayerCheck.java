@@ -10,7 +10,7 @@ public final class PlayerCheck {
   Site.Film f=new Site.Film();for(int i=1;i<=3;i++){Site.Episode e=new Site.Episode();e.season=i==3?"2":"1";e.episode=i==3?"1":String.valueOf(i);f.episodes.add(e);}
   Method next=KikPlayerActivity.class.getDeclaredMethod("next",Site.Film.class,String.class,String.class);next.setAccessible(true);require(next.invoke(null,f,"1","1")==f.episodes.get(1),"Next episode");require(next.invoke(null,f,"1","2")==f.episodes.get(2),"Next season");require(next.invoke(null,f,"2","1")==null,"Last episode");
   Method keys=KikPlayerActivity.class.getDeclaredMethod("playerKey",int.class);keys.setAccessible(true);
-  for(int key:new int[]{4,19,20,21,22,23,62,66,85,89,90,126,127})require((Boolean)keys.invoke(null,key),"Player remote key must be handled");
+  for(int key:new int[]{4,19,20,21,22,23,62,66,79,85,89,90,126,127})require((Boolean)keys.invoke(null,key),"Player remote key must be handled");
   for(int key:new int[]{3,24,25,26,164,187})require(!(Boolean)keys.invoke(null,key),"System key must keep its system behaviour");
   Method label=KikPlayerActivity.class.getDeclaredMethod("sleepLabel",int.class);label.setAccessible(true);
   require("15 хв".equals(label.invoke(null,15))&&"45 хв".equals(label.invoke(null,45)),"Sleep minutes");require("1 год".equals(label.invoke(null,60))&&"2 год".equals(label.invoke(null,120)),"Sleep whole hours");require("1,5 год".equals(label.invoke(null,90)),"Sleep hour and a half");

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {writeFile, mkdir} from 'node:fs/promises';
+import {writeFile, mkdir, readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {hash, passwordHash, randomToken} from './auth.mjs';
 
@@ -65,8 +65,19 @@ try {
     ['/api/sync',{profile_id:adminProfile,records:[]}],
     ['/api/settings',{profile_id:adminProfile,settings:{}}],
     ['/api/profiles/update',{profile_id:adminProfile,name:'attacker'}],
-    ['/api/pair/claim',{profile_id:adminProfile,code:'AAAAAAAA'}]
+    ['/api/pair/claim',{profile_id:adminProfile,code:'AAAAAAAA'}],
+    ['/api/recommendations',{profile_id:adminProfile,items:[]}]
   ]) check((await req(path,data,owner)).status === 404, path+' enforces ownership');
+  // Every admin route, read from management.mjs so a new one is covered too: signed out 401, an ordinary account 403.
+  const adminRoutes=[...(await readFile(new URL('./management.mjs',import.meta.url),'utf8')).matchAll(/path==='(\/api\/admin\/[\w/-]+)'&&request\.method==='(GET|POST)'/g)].map(m=>[m[1],m[2]]);
+  check(adminRoutes.length>=10, 'admin routes found in management.mjs');
+  for (const [path,method] of adminRoutes) {
+    const query=method==='GET'?'?user_id='+adminId:'',data=method==='POST'?{id:adminId,profile_id:adminProfile,user_id:adminId,email:memberEmail,action:'revoke',enabled:true,confirm:adminEmail}:undefined;
+    check((await req(path+query,data)).status === 401, method+' '+path+' rejects a signed-out request');
+    check((await req(path+query,data,owner)).status === 403, method+' '+path+' rejects an ordinary account');
+  }
+  check((await req('/api/admin/nonexistent',undefined,owner)).status === 403, 'unknown admin paths are refused before routing');
+  const mine=await req('/api/me',undefined,owner);check(mine.body.profiles.every(p=>p.id!==adminProfile)&&mine.body.profiles.some(p=>p.id===profileId), 'an account lists only its own profiles');
   check((await req('/api/settings?profile_id='+adminProfile,undefined,owner)).status === 404, 'settings reads enforce ownership');
   for (const headers of [{Origin:'https://attacker.example'},{'Sec-Fetch-Site':'cross-site'}]) {
     check((await req('/api/profiles/update',{profile_id:profileId,name:'CSRF'},owner,headers)).status === 403, 'CSRF profile mutation denied');
