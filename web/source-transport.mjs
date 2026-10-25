@@ -17,7 +17,7 @@ export async function socketHttp(value,options={}){
  const url=new URL(value);if(url.protocol!=='https:'||!ALLOWED.has(url.hostname)||url.port&&url.port!=='443'||url.username||url.password)throw Error('Untrusted source socket');
  const {connect}=await import('cloudflare:sockets');const socket=connect({hostname:url.hostname,port:443},{secureTransport:'on'});socket.closed.catch(()=>{});let timer;
  try{
-  timer=setTimeout(()=>socket.close().catch(()=>{}),15000);await socket.opened;
+  timer=setTimeout(()=>socket.close().catch(()=>{}),Math.max(1000,Math.min(15000,options.timeout||15000)));await socket.opened;
   const headers={...options.headers,Host:url.hostname,Connection:'close','Accept-Encoding':'gzip'};const body=options.body?new TextEncoder().encode(options.body):null;if(body)headers['Content-Length']=String(body.length);
   const head=[`${options.method||'GET'} ${url.pathname+url.search} HTTP/1.1`,...Object.entries(headers).map(([k,v])=>{if(/[\r\n]/.test(k+v))throw Error('Invalid request header');return k+': '+v;}),'',''].join('\r\n'),writer=socket.writable.getWriter();await writer.write(new TextEncoder().encode(head));if(body)await writer.write(body);
   const reader=socket.readable.getReader(),chunks=[];let length=0;for(;;){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>MAX+65536)throw Error('Source response limit');chunks.push(value);}
