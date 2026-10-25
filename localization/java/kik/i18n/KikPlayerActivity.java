@@ -339,11 +339,15 @@ public final class KikPlayerActivity extends Activity {
  /** Without premium the source serves a one-minute preview for its top quality: drop it and play the next one down (RecoveryPolicy.preview says when a short stream is one). */
  private boolean truncated(){
   long d=dur();if(stream==null||quality==null||stream.qualities.size()<2)return false;
-  long[] saved=Progress.episode(this,film.link,season,episode);long known=saved==null||saved[1]<SHORT_HLS_MS?0:saved[1];
-  if(!RecoveryPolicy.preview(d,Math.max(known,RecoveryPolicy.runtimeMs(film.duration))))return false;
+  if(!RecoveryPolicy.preview(d,expectedMs()))return false;
   String lower=null;boolean past=false;for(String q:stream.qualities.keySet()){if(past){lower=q;break;}if(q.equals(quality))past=true;}
   if(lower==null)return false;Log.w("KIK.Player",quality+" is a "+d+" ms preview, switching to "+lower);
   stream.qualities.remove(quality);stream.alternatives.remove(quality);quality=lower;resumeAt=Math.max(resumeAt,pos());play();return true;
+ }
+ /** How long this episode or film really runs: its saved full duration or the site's running time; 0 when unknown. */
+ private long expectedMs(){
+  long[] saved=Progress.episode(this,film.link,season,episode);long known=saved==null||saved[1]<SHORT_HLS_MS?0:saved[1];
+  return Math.max(known,RecoveryPolicy.runtimeMs(film.duration));
  }
  private Bitmap asset(String name){try(InputStream in=getAssets().open(name)){BitmapFactory.Options o=new BitmapFactory.Options();o.inPreferredConfig=Bitmap.Config.RGB_565;return BitmapFactory.decodeStream(in,null,o);}catch(Exception e){Log.w("KIK","Wait screen "+name,e);return null;}}
  /** The logo crop sits exactly where it was cut from the 1280×720 frame, as the background is scaled. */
@@ -388,7 +392,11 @@ public final class KikPlayerActivity extends Activity {
  private void onEnded(){
   // A broken stream can report the end long before the credits: resume it instead of marking the episode watched.
   if(truncated())return;
-  long d=dur(),at=pos();if(d>0&&at<d-ENDED_SLACK_MS&&earlyEnds++<3){Log.w("KIK.Player","Ended early at "+at+" of "+d+", resuming");resumeAt=at;retrySame();return;}
+  // A stream cut short by the source (it ends at 1:00 of a two-hour film) takes fresh links; it never closes the player.
+  long d=dur(),at=pos(),expected=expectedMs();
+  if(RecoveryPolicy.endedEarly(at,d,expected)){
+   if(earlyEnds++<3){Log.w("KIK.Player","Ended early at "+at+" of "+d+" (title "+expected+"), resuming");resumeAt=at;if(at<d-ENDED_SLACK_MS)retrySame();else recover(null);return;}
+   failure("Відео обірвалося раніше, ніж мало.\nПробуємо ще раз автоматично… OK — повторити зараз.",true);return;}
   save();Site.Episode n=film.series?next(film,season,episode):null;
   boolean auto=getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true)&&!sleepAfterEpisode;
   if(sleepAfterEpisode)Log.d("KIK.Player","Sleep timer: episode over, closing");
@@ -398,6 +406,8 @@ public final class KikPlayerActivity extends Activity {
   if(!prepared||film==null||player==null||!profileId.equals(ProfileStore.current(this)))return;
   Progress.Entry e=new Progress.Entry();e.link=film.link;e.title=title;e.poster=poster;e.season=film.series?season:null;e.episode=film.series?episode:null;
   e.voice=voice.id;e.voiceName=voice.name;e.pos=pos();e.dur=dur();
+  // A cut-short stream's length is not the title's: saving it would mark the film watched at 1:00 and restart it from zero.
+  if(RecoveryPolicy.preview(e.dur,expectedMs()))return;
   e.observed=true;e.watchedMs=watchedPending;if(e.dur>0){Progress.save(this,e);watchedPending=0;}
  }
 
