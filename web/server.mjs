@@ -159,7 +159,7 @@ async function api(request,env,ctx){
   const b=await body(request),now=Date.now();const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[],b.since??null,now)).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:now,delta:Number.isSafeInteger(b.since)&&b.since>0});
  }
  if(path==="/api/episodes"||path==="/api/stream"){
-  if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),result=await resolvePlayback(b.link,String(b.voice),String(b.season||""),String(b.episode||""),{attempt:b.recovery_attempt??0,method:path.endsWith("episodes")?"episodes":"stream"});return json(path==="/api/stream"?await protectPlayback(result,request,env):result);
+  if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),result=await resolvePlayback(b.link,String(b.voice),String(b.season||""),String(b.episode||""),{attempt:b.recovery_attempt??0,method:path.endsWith("episodes")?"episodes":"stream"});return json(path==="/api/stream"?await protectPlayback(result,request,env,Date.now(),{direct:b.direct===true}):result);
  }
  fail("Не знайдено",404);
 }

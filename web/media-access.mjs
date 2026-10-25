@@ -57,7 +57,9 @@ async function open(request, env, sessionHash, now) {
   return payload;
 }
 
-export async function protectPlayback(result, request, env, now = Date.now()) {
+// {direct:true}: a signed-in app may also try the CDN addresses itself (they are what it would get from the catalogue
+// directly); the sealed relay stays as its fallback.
+export async function protectPlayback(result, request, env, now = Date.now(), {direct = false} = {}) {
   const sessionHash = await hash(requestToken(request)), origin = new URL(request.url).origin;
   const urls = result.qualities.flatMap(q => [q.url, ...(q.alternatives || [])]);
   const origins = [...new Set(urls.map(value => {
@@ -72,7 +74,8 @@ export async function protectPlayback(result, request, env, now = Date.now()) {
     return memo.get(url);
   }
   return {qualities: await Promise.all(result.qualities.map(async q => ({label: q.label, url: await protect(q.url),
-    alternatives: await Promise.all((q.alternatives || [q.url]).map(protect))})))};
+    alternatives: await Promise.all((q.alternatives || [q.url]).map(protect)),
+    ...(direct ? {direct: [...new Set([q.url, ...(q.alternatives || [])])]} : {})})))};
 }
 
 async function readManifest(response) {
