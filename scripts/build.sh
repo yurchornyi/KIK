@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+scripts/check-tv.sh
 export JAVA_HOME="${KIK_JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
 SDK="${KIK_ANDROID_SDK:-/opt/homebrew/share/android-commandlinetools}"
 BT="$SDK/build-tools/34.0.0"

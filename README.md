@@ -10,7 +10,7 @@ KIK збирається накладанням власного коду на �
 
 | Що | Тип | Адреса | Код і конфіг | Розгортання |
 |---|---|---|---|---|
-| `kik` | Worker | власної адреси немає (`workers_dev: false`), відкривається через `kiktv.pages.dev` | `web/` (`web/wrangler.jsonc`, вхід `web/server.mjs`, статика з `web/dist`) | `cd web && npm run deploy` |
+| `kik` | Worker | власної адреси немає (`workers_dev: false`), відкривається через `kiktv.pages.dev` | `web/` (`web/wrangler.jsonc`, вхід `web/server.mjs`, статика з `web/dist`) | автоматично після merge у `main` (Cloudflare Workers Builds, див. нижче); вручну `cd web && npm run deploy` |
 | `kiktv` | Pages-проєкт | [kiktv.pages.dev](https://kiktv.pages.dev) | `cloudflare/kiktv/` (`functions/_middleware.js` віддає кожен запит Worker'у `kik` через service binding `KIK`) | `cd cloudflare/kiktv && npx wrangler pages deploy` |
 | `kik-updates` | Worker | [kik-updates.basic-175.workers.dev](https://kik-updates.basic-175.workers.dev/health) | `cloudflare/worker.mjs`, `cloudflare/wrangler.jsonc` | `npx wrangler deploy --config cloudflare/wrangler.jsonc` |
 | `kik-data` | D1 | ID `a2f6bf81-66e7-47e7-bc22-29723145cabb` | міграції `web/migrations/` | `cd web && npx wrangler d1 migrations apply kik-data --remote` |
@@ -22,6 +22,25 @@ KIK збирається накладанням власного коду на �
 - `web/wrangler.test.jsonc` — тільки для локального `wrangler dev` і CI, публічної адреси не має.
 
 Поза Cloudflare Basic: код і APK — [GitHub yurchornyi/KIK](https://github.com/yurchornyi/KIK) (APK у Releases); AI — Sentra, окремий сервіс власника ([SENTRA.md](SENTRA.md)); сканер реклами — постійно ввімкнений ПК власника (`web/scanner/`, [docs/AD-SKIP_UA.md](docs/AD-SKIP_UA.md)); ключ підпису APK — лише на комп'ютері власника (`work/signing/`).
+
+## Перевірки й розгортання
+
+CI і розгортання виконує **Cloudflare Workers Builds** (вбудований CI Cloudflare): ні Mac власника, ні GitHub Actions для цього не потрібні, токена Cloudflare в GitHub немає. До репозиторію підключено лише Worker `kik` в акаунті Basic (Workers & Pages → `kik` → Settings → Build):
+
+| Налаштування | Значення |
+|---|---|
+| Production branch | `main` |
+| Root directory | `web` |
+| Build command | *(порожньо: залежності ставляться з `web/package-lock.json`, Node з `web/.node-version`)* |
+| Deploy command | `npm run deploy:cloudflare-build` |
+| Non-production branch builds | увімкнено |
+| Non-production branch deploy command | `npm run validate` |
+
+- `scripts/cloudflare-checks.sh` — усі перевірки перед релізом: жодних приватних файлів у Git, `py_compile` скриптів, тести `kik-updates`, `npm test`, збирання `web/dist`, інтеграційні перевірки адмінки й безпеки на локальному Worker із локальною D1.
+- `npm run deploy:cloudflare-build` (`scripts/cloudflare-deploy.sh`) — на `main`: перевірки, потім `wrangler deploy` Worker'а `kik` з тегом коміту. Будь-яка помилка зупиняє збірку до розгортання.
+- `npm run validate` (`scripts/cloudflare-validate.sh`) — гілки й pull request'и: ті самі перевірки та dry-run збірка `kik` і `kik-updates`, без розгортання. Результат видно як check у GitHub. Можна запускати й локально з `web/`.
+- Автоматично розгортається лише `kik`, як і раніше. `kik-updates`, Pages `kiktv` і міграції D1 `--remote` розгортаються вручну командами з таблиці вище.
+- Java-перевірки TV-застосунку (`scripts/check-tv.sh`) потребують JDK, якого немає в образі Workers Builds. Їх запускає `scripts/build.sh` перед кожним збиранням APK на Mac; можна запустити й окремо.
 
 ## Версія 1.4.3-uk — усі сезони й одна картка на серіал
 
