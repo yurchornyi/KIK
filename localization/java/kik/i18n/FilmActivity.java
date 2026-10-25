@@ -147,7 +147,7 @@ public final class FilmActivity extends Activity {
   List<String> g=new ArrayList<String>();for(String x:f.genres)g.add(tr(x));
   String country=null;if(f.country!=null){StringBuilder b=new StringBuilder();for(String c:f.country.split(",\\s*")){if(b.length()>0)b.append(", ");b.append(tr(c));}country=b.toString();}
   meta.setMaxLines(2);meta.setEllipsize(TextUtils.TruncateAt.END);meta.setText(Ui.facts(this,f.year,f.age,f.rating==null?null:f.rating+" "+f.ratingName,Ui.minutes(f.duration,tr(f.duration)),country,TextUtils.join(", ",g.subList(0,Math.min(2,g.size())))));
-  fitDescription(f,description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Перегляд відкриється на UASerials у браузері. Прогрес не синхронізується з KIK.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
+  fitDescription(f,description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Сторінка UASerials відкриється в браузері. Роботу відео там KIK не перевіряв; прогрес не синхронізується.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
  }
  private void pickVoice(){
   voice=null;Progress.Entry e=Progress.get(this,link);String chosen=Progress.voice(this,link);
@@ -242,7 +242,7 @@ public final class FilmActivity extends Activity {
   box.post(()->box.scrollTo(Math.max(0,v.getLeft()-dp(8)),0));
  }
  private void paintWatch(){
-  if(film==null)return;if(film.sourceUrl!=null){watch.setText("↗  Відкрити на UASerials");return;}Progress.Entry e=Progress.get(this,link);
+  if(film==null)return;if(film.sourceUrl!=null){watch.setText("↗  Сторінка UASerials");return;}Progress.Entry e=Progress.get(this,link);
   if(e!=null&&!e.finished())watch.setText(film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити з "+Ui.time(e.pos));
   else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");
   else watch.setText("▶  Дивитися");

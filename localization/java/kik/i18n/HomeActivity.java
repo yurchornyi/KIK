@@ -280,7 +280,7 @@ public final class HomeActivity extends Activity {
   return saved;
  }
  private List<Row> alternativeRows(java.util.function.Consumer<Row> first){
-  Row row=new Row("Інше джерело · UASerials");try{for(Site.Card c:FreeSources.independentCards("",null,1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre="Українською";i.sub="Відкрити на UASerials";row.items.add(i);if(row.items.size()>=15)break;}}catch(Exception e){Log.w("KIK","Alternative catalogue",e);}
+  Row row=new Row("Інше джерело · UASerials");try{for(Site.Card c:FreeSources.independentCards("",null,1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre="Українською";i.sub="Сторінка UASerials";row.items.add(i);if(row.items.size()>=15)break;}}catch(Exception e){Log.w("KIK","Alternative catalogue",e);}
   if(row.items.isEmpty())return new ArrayList<Row>();if(first!=null)first.accept(row);return Collections.singletonList(row);
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
