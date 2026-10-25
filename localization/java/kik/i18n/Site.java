@@ -44,7 +44,7 @@ public final class Site {
  private static SharedPreferences prefs(){return UiRuntime.app.getSharedPreferences("kik_site",0);}
  private static synchronized void load(){
   if(loaded)return;loaded=true;
-  host=prefs().getString("host",HOSTS[0]);
+  host=prefs().getString("host",HOSTS[0]);blockedUntil=prefs().getLong("blocked_until",0);
   try{JSONObject o=new JSONObject(prefs().getString("cookies","{}"));Iterator<String> k=o.keys();while(k.hasNext()){String n=k.next();COOKIES.put(n,o.getString(n));}}catch(Exception ignored){}
  }
  private static synchronized void saveCookies(){prefs().edit().putString("cookies",new JSONObject(COOKIES).toString()).putString("host",host).apply();}
@@ -58,7 +58,31 @@ public final class Site {
   saveCookies();
  }
  private static boolean mirror(String host){if(host==null)return false;for(String h:HOSTS)if(h.equalsIgnoreCase(host))return true;return false;}
+ // The catalogue bans a whole home network for bursts of requests: two at a time, spaced out, and none at all while a ban lasts.
+ private static final Semaphore SLOTS=new Semaphore(2,true);
+ private static final long GAP_MS=300,BAN_PAUSE_MS=30*60_000L;
+ private static long nextAt;private static volatile long blockedUntil;
+ static final String IP_BLOCKED="Source blocked this IP";
+ /** HDRezka's own 403 page: it refuses this network's public IP until it changes or the ban expires. */
+ static boolean blocked(String html){return html!=null&&html.contains("подозрительная активность с вашего IP");}
+ /** True for the error {@link #page} and {@link #film} throw while the catalogue bans this network. */
+ public static boolean blocked(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&e.getMessage().contains(IP_BLOCKED))return true;return false;}
+ private static void ban(){blockedUntil=System.currentTimeMillis()+BAN_PAUSE_MS;Log.w("KIK","Catalogue banned this IP; pausing requests for 30 min");if(UiRuntime.app!=null)prefs().edit().putLong("blocked_until",blockedUntil).apply();}
+ /** The viewer asked to try again (say, after restarting the router): one request may test whether the ban is over. */
+ public static void retryNow(){blockedUntil=0;if(UiRuntime.app!=null)prefs().edit().remove("blocked_until").apply();}
  private static String send(String url,String form,boolean xhr)throws IOException{
+  if(!mirror(new URL(url).getHost()))return transfer(url,form,xhr);
+  load();if(System.currentTimeMillis()<blockedUntil)throw new IOException(IP_BLOCKED);
+  try{SLOTS.acquire();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Request cancelled");}
+  try{
+   long wait;synchronized(SLOTS){long now=System.currentTimeMillis();wait=Math.max(0,nextAt-now);nextAt=Math.max(now,nextAt)+GAP_MS;}
+   if(wait>0)try{Thread.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Request cancelled");}
+   String body=transfer(url,form,xhr);
+   if(blocked(body)){ban();throw new IOException(IP_BLOCKED);}
+   return body;
+  }finally{SLOTS.release();}
+ }
+ private static String transfer(String url,String form,boolean xhr)throws IOException{
   for(int hop=0;hop<6;hop++){
    HttpURLConnection c=Doh.open(url);
    c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(15000);
@@ -98,6 +122,7 @@ public final class Site {
     if(mirror){Integer code=PAGE_CODE.get();if(code!=null&&(code==403||code==451))SiteReport.failed("http",tried,tried+" HTTP "+code);else SiteReport.ok(tried,Doh.used(tried));}
     return h;
    }catch(IOException e){
+    if(blocked(e))throw e;
     last=e;Log.w("KIK","Site "+host+": "+e);
     String kind=SiteReport.kind(e);if(kind==null)cancelled=true;else{status=status==null||status.equals(kind)?kind:"mixed";if(detail.length()>0)detail.append(", ");detail.append(SiteReport.detail(tried,kind,e));}
     if(path.startsWith("http"))path=path.replaceFirst("^https?://[^/]+","");
@@ -151,7 +176,16 @@ public final class Site {
  private static final ThreadLocal<Integer> RAW=new ThreadLocal<Integer>();
  /** Titles on the last parsed page of this thread before the country filter; 0 means the source has no more pages. */
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
- public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(page(listPath(category,genre,filter,page)));}
+ public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(listPage(listPath(category,genre,filter,page)));}
+ private static final long LIST_TTL_MS=30*60_000L;
+ /** Catalogue lists change slowly: reopening the home screen reads them from disk for half an hour instead of asking the site again. */
+ private static String listPage(String path)throws IOException{
+  File f=UiRuntime.app==null?null:new File(UiRuntime.app.getCacheDir(),"site_list_"+Integer.toHexString(path.hashCode())+".html");
+  if(f!=null&&f.isFile()&&System.currentTimeMillis()-f.lastModified()<LIST_TTL_MS)try{return read(new FileInputStream(f));}catch(IOException ignored){}
+  String html=page(path);
+  if(f!=null&&html.contains("b-content__inline_item"))try{FileOutputStream o=new FileOutputStream(f);o.write(html.getBytes("UTF-8"));o.close();}catch(IOException ignored){}
+  return html;
+ }
  public static List<Card> studioList(String category,String genre,String filter,String studio,int page)throws IOException{
   JSONObject result=FreeSources.get("/api/catalogue?category="+FreeSources.enc(category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter)+"&studio="+FreeSources.enc(studio)+"&page="+page,60000);
   List<Card> out=new ArrayList<Card>();JSONArray items=result.optJSONArray("items");if(items==null)throw new IOException("Studio catalogue unavailable");
@@ -231,7 +265,9 @@ public final class Site {
    finally{if(owner&&!force)synchronized(FILM_PAGES){FILM_PENDING.remove(key);}}
   }
   // Parse a separate model per caller: voice/episode changes cannot mutate another screen's film.
-  Film f=parseFilm(link,cached.html);f.origin=cached.origin;if(UiRuntime.app!=null)RecommendationMetadata.remember(UiRuntime.app,f);return f;
+  Film f=parseFilm(link,cached.html);f.origin=cached.origin;
+  // An error or stub page parses to a film with no title and no tracks: say the page failed instead, and fetch it again next time.
+  if((f.title==null||f.title.isEmpty())&&f.voices.isEmpty()&&f.id==null){synchronized(FILM_PAGES){FILM_PAGES.remove(key);}throw new IOException("Film page unreadable: "+PAGE_CODE.get());}if(UiRuntime.app!=null)RecommendationMetadata.remember(UiRuntime.app,f);return f;
  }
  /** Kept independent of transport so catalogue markup changes can be regression-checked locally. */
  static Film parseFilm(String link,String h){
