@@ -22,6 +22,7 @@ public final class Site {
  private static boolean loaded;
  private static final ThreadLocal<String> PAGE_HOST=new ThreadLocal<String>();
  private static final ThreadLocal<Integer> PAGE_CODE=new ThreadLocal<Integer>();
+ private static final ThreadLocal<Long> PAGE_RETRY_MS=new ThreadLocal<Long>();
 
  // ---------- models ----------
  public static final class Card{public String link,title,poster,info,type,studio;public String year(){Matcher m=Pattern.compile("(\\d{4}(?:\\s*-\\s*(?:\\d{4}|\\.\\.\\.))?)").matcher(info==null?"":info);return m.find()?m.group(1).replace(" ",""):null;}
@@ -44,7 +45,7 @@ public final class Site {
  private static SharedPreferences prefs(){return UiRuntime.app.getSharedPreferences("kik_site",0);}
  private static synchronized void load(){
   if(loaded)return;loaded=true;
-  host=prefs().getString("host",HOSTS[0]);blockedUntil=prefs().getLong("blocked_until",0);
+  host=prefs().getString("host",HOSTS[0]);blockedUntil=prefs().getLong("blocked_until",0);blockedReason=prefs().getString("blocked_reason",IP_BLOCKED);nextProbeAt=prefs().getLong("next_probe_at",0);
   try{JSONObject o=new JSONObject(prefs().getString("cookies","{}"));Iterator<String> k=o.keys();while(k.hasNext()){String n=k.next();COOKIES.put(n,o.getString(n));}}catch(Exception ignored){}
  }
  private static synchronized void saveCookies(){prefs().edit().putString("cookies",new JSONObject(COOKIES).toString()).putString("host",host).apply();}
@@ -58,27 +59,46 @@ public final class Site {
   saveCookies();
  }
  private static boolean mirror(String host){if(host==null)return false;for(String h:HOSTS)if(h.equalsIgnoreCase(host))return true;return false;}
- // The catalogue bans a whole home network for bursts of requests: two at a time, spaced out, and none at all while a ban lasts.
- private static final Semaphore SLOTS=new Semaphore(2,true);
- private static final long GAP_MS=300,BAN_PAUSE_MS=30*60_000L;
- private static long nextAt;private static volatile long blockedUntil;
+ // Serialize catalogue traffic so a refusal stops requests already waiting in the queue.
+ private static final Semaphore SLOTS=new Semaphore(1,true);
+ private static final long GAP_MS=1000,BAN_PAUSE_MS=30*60_000L,PROBE_GAP_MS=2*60_000L;
  static final String IP_BLOCKED="Source blocked this IP";
+ static final String ACCESS_PAUSED="Source temporarily refused requests";
+ private static long nextAt,nextProbeAt;private static volatile long blockedUntil;private static volatile String blockedReason=IP_BLOCKED;
  /** HDRezka's own 403 page: it refuses this network's public IP until it changes or the ban expires. */
  static boolean blocked(String html){return html!=null&&html.contains("подозрительная активность с вашего IP");}
  /** True for the error {@link #page} and {@link #film} throw while the catalogue bans this network. */
  public static boolean blocked(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&e.getMessage().contains(IP_BLOCKED))return true;return false;}
- private static void ban(){blockedUntil=System.currentTimeMillis()+BAN_PAUSE_MS;Log.w("KIK","Catalogue banned this IP; pausing requests for 30 min");if(UiRuntime.app!=null)prefs().edit().putLong("blocked_until",blockedUntil).apply();}
- /** The viewer asked to try again (say, after restarting the router): one request may test whether the ban is over. */
- public static void retryNow(){blockedUntil=0;if(UiRuntime.app!=null)prefs().edit().remove("blocked_until").apply();}
+ public static boolean paused(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&(e.getMessage().contains(IP_BLOCKED)||e.getMessage().contains(ACCESS_PAUSED)))return true;return false;}
+ static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;if((code==403||code==429)&&(html==null||!html.contains("anubis_challenge")))return ACCESS_PAUSED;return null;}
+ private static synchronized void ban(String reason,long retryMs){
+  blockedReason=reason;blockedUntil=System.currentTimeMillis()+Math.max(BAN_PAUSE_MS,Math.min(retryMs,24*60*60_000L));
+  Log.w("KIK","Catalogue refused requests; pausing until "+blockedUntil);
+  if(UiRuntime.app!=null)prefs().edit().putLong("blocked_until",blockedUntil).putString("blocked_reason",reason).apply();
+ }
+ /** A deliberate retry is allowed at most once every two minutes while access is paused. */
+ public static synchronized boolean retryNow(){
+  load();long now=System.currentTimeMillis();if(now>=blockedUntil)return true;if(now<nextProbeAt)return false;
+  nextProbeAt=now+PROBE_GAP_MS;blockedUntil=0;
+  if(UiRuntime.app!=null)prefs().edit().remove("blocked_until").putLong("next_probe_at",nextProbeAt).apply();
+  return true;
+ }
+ static long retryAfterMs(String value){
+  if(value==null)return 0;try{return Math.min(24*60*60_000L,Math.max(0,Math.min(86_400,Long.parseLong(value.trim())))*1000L);}catch(NumberFormatException ignored){}
+  try{java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz",Locale.US);f.setTimeZone(TimeZone.getTimeZone("GMT"));return Math.max(0,f.parse(value).getTime()-System.currentTimeMillis());}catch(Exception ignored){return 0;}
+ }
  private static String send(String url,String form,boolean xhr)throws IOException{
   if(!mirror(new URL(url).getHost()))return transfer(url,form,xhr);
-  load();if(System.currentTimeMillis()<blockedUntil)throw new IOException(IP_BLOCKED);
+  load();if(System.currentTimeMillis()<blockedUntil)throw new IOException(blockedReason);
   try{SLOTS.acquire();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Request cancelled");}
   try{
+   if(System.currentTimeMillis()<blockedUntil)throw new IOException(blockedReason);
    long wait;synchronized(SLOTS){long now=System.currentTimeMillis();wait=Math.max(0,nextAt-now);nextAt=Math.max(now,nextAt)+GAP_MS;}
    if(wait>0)try{Thread.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Request cancelled");}
+   if(System.currentTimeMillis()<blockedUntil)throw new IOException(blockedReason);
    String body=transfer(url,form,xhr);
-   if(blocked(body)){ban();throw new IOException(IP_BLOCKED);}
+   Integer code=PAGE_CODE.get();String reason=mirror(PAGE_HOST.get())?pauseReason(code==null?0:code,body):null;
+   if(reason!=null){Long retry=PAGE_RETRY_MS.get();ban(reason,retry==null?0:retry);throw new IOException(reason);}
    return body;
   }finally{SLOTS.release();}
  }
@@ -94,7 +114,7 @@ public final class Site {
    int code=c.getResponseCode();if(own)takeCookies(c);
    if(code>=300&&code<400&&c.getHeaderField("Location")!=null){url=new URL(new URL(url),c.getHeaderField("Location")).toString();form=null;c.disconnect();continue;}
    InputStream in=code>=400?c.getErrorStream():c.getInputStream();
-   String body=read(in);PAGE_HOST.set(new URL(url).getHost());PAGE_CODE.set(code);c.disconnect();
+   String body=read(in);PAGE_HOST.set(new URL(url).getHost());PAGE_CODE.set(code);PAGE_RETRY_MS.set(retryAfterMs(c.getHeaderField("Retry-After")));c.disconnect();
    if(code>=500)throw new IOException("HTTP "+code);
    return body;
   }
@@ -122,7 +142,7 @@ public final class Site {
     if(mirror){Integer code=PAGE_CODE.get();if(code!=null&&(code==403||code==451))SiteReport.failed("http",tried,tried+" HTTP "+code);else SiteReport.ok(tried,Doh.used(tried));}
     return h;
    }catch(IOException e){
-    if(blocked(e))throw e;
+    if(paused(e))throw e;
     last=e;Log.w("KIK","Site "+host+": "+e);
     String kind=SiteReport.kind(e);if(kind==null)cancelled=true;else{status=status==null||status.equals(kind)?kind:"mixed";if(detail.length()>0)detail.append(", ");detail.append(SiteReport.detail(tried,kind,e));}
     if(path.startsWith("http"))path=path.replaceFirst("^https?://[^/]+","");
@@ -182,7 +202,10 @@ public final class Site {
  private static String listPage(String path)throws IOException{
   File f=UiRuntime.app==null?null:new File(UiRuntime.app.getCacheDir(),"site_list_"+Integer.toHexString(path.hashCode())+".html");
   if(f!=null&&f.isFile()&&System.currentTimeMillis()-f.lastModified()<LIST_TTL_MS)try{return read(new FileInputStream(f));}catch(IOException ignored){}
-  String html=page(path);
+  String html;try{html=page(path);}catch(IOException e){
+   if(paused(e)&&f!=null&&f.isFile()&&System.currentTimeMillis()-f.lastModified()<24*60*60_000L)try{return read(new FileInputStream(f));}catch(IOException ignored){}
+   throw e;
+  }
   if(f!=null&&html.contains("b-content__inline_item"))try{FileOutputStream o=new FileOutputStream(f);o.write(html.getBytes("UTF-8"));o.close();}catch(IOException ignored){}
   return html;
  }
@@ -197,12 +220,12 @@ public final class Site {
  public static List<Card> search(String query,int page,boolean fix)throws IOException{
   // Ukrainian names come from KIK's own service; ask it while the source search runs instead of after it.
   FutureTask<List<Card>> ua=null;if(page==1){ua=new FutureTask<List<Card>>(()->FreeSources.cards(query));Thread t=new Thread(ua,"kik-search-ua");t.setDaemon(true);t.start();}
-  List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
+  List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(paused(e)||page>1)throw e;}
   // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms, then other names.
-  String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(page>1)throw e;}
+  String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(paused(e)||page>1)throw e;}
   out=new ArrayList<Card>(relevant(query,out));
   // A typo, the wrong keyboard layout or a name in another language: KIK's service names the titles it most likely meant, and those go first.
-  if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8")))));}catch(IOException ignored){}if(!fixed.isEmpty())break;}
+  if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8")))));}catch(IOException e){if(paused(e))throw e;}if(!fixed.isEmpty())break;}
    if(!fixed.isEmpty()){fixed.addAll(out);out=fixed;}}
   // One card per title: a UASerials twin of an HDRezka result replaces it in place with the Ukrainian name.
   if(page==1)try{LinkedHashMap<String,Card> unique=new LinkedHashMap<String,Card>();for(Card c:out)unique.putIfAbsent(Progress.norm(c.link),c);
@@ -359,7 +382,7 @@ public final class Site {
    String mirror=HOSTS[(start+attempt+(rotate?1:0))%HOSTS.length];
    try{if(attempt>0||rotate){String url="https://"+mirror+"/"+Progress.norm(f.link);String html=send(url,null,false);if(html.contains("anubis_challenge"))html=solve(html,url);Film fresh=parseFilm(f.link,html);if(fresh.id==null||!fresh.id.equals(f.id))throw new IOException("Title mismatch");f.favs=fresh.favs;f.origin=mirror;}
     return requestStream(f,v,season,episode);
-   }catch(IOException e){last=e;}
+   }catch(IOException e){if(paused(e))throw e;last=e;}
   }throw last==null?new IOException("Mirrors unavailable"):last;
  }
  private static String filmEndpoint(Film f){return "https://"+(f.origin==null?host():f.origin)+"/ajax/get_cdn_series/?t="+System.currentTimeMillis();}

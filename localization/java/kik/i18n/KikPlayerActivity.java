@@ -49,7 +49,7 @@ public final class KikPlayerActivity extends Activity {
  /** «Як вам?» at the credits (PlaybackPolicy.askRating): playback goes on, it hides by itself, each title is asked once. */
  private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
- private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt,startWanted=-1;
+ private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline,sourcePaused;private int generation,subGeneration,playGeneration;private long resumeAt,startWanted=-1;
  private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,settings,options;private HorizontalScrollView optionsBox;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1,playIndex=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
@@ -210,7 +210,7 @@ public final class KikPlayerActivity extends Activity {
       // Say so only when the episode is not in the language the viewer wants (their choice, else the best one offered).
       String chosen=Progress.voice(this,selectedFilm.link),desired=null;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&(chosen==null?desired==null:v.id.equals(chosen)))desired=PlaybackPolicy.lang(v.name);
       String got=PlaybackPolicy.lang(playing.name);if(desired!=null&&!desired.equals(got))Ui.toast(this,PlaybackPolicy.label(desired)+" озвучка для цієї серії недоступна. Увімкнено: "+PlaybackPolicy.label(got).toLowerCase(Locale.ROOT)+".");}
-     recovering=false;stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.",false);return;}
+     recovering=false;sourcePaused=false;stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.",false);return;}
      quality=quality!=null&&s.qualities.containsKey(quality)&&(!fromHistory||manualQuality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
      // Start after the voice studio's ident: the film begins at once, as on Netflix.
@@ -219,7 +219,7 @@ public final class KikPlayerActivity extends Activity {
      play();
      ads=null;hints=null;showHint(-1);if(CloudSync.adSkip(this,profileId)&&PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
     });
-   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
+   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(Site.paused(e)){sourcePaused=true;failure(Site.blocked(e)?"HDRezka заблокував адресу вашої мережі.\nЗачекайте, потім натисніть OK для перевірки.":"HDRezka тимчасово відхиляє запити.\nЗачекайте, потім натисніть OK для перевірки.",false);return;}if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
   });
  }
  /** Shows the problem; unless the viewer has to choose, retries by itself every 20 s for 10 minutes. */
@@ -228,7 +228,7 @@ public final class KikPlayerActivity extends Activity {
   h.removeCallbacks(retry);if(auto&&autoRetry<30){autoRetry++;h.postDelayed(retry,RETRY_MS);}
  }
  /** Starts over with a fresh recovery budget at the same moment of the same episode. */
- private void retryNow(){h.removeCallbacks(retry);recovering=false;failed=false;start(false);}
+ private void retryNow(){if(sourcePaused&&!Site.retryNow()){Ui.toast(this,"Зачекайте дві хвилини перед повторною перевіркою.");return;}sourcePaused=false;h.removeCallbacks(retry);recovering=false;failed=false;start(false);}
  private void play(){
   seeking=false;failed=false;final String address=stream.qualities.get(quality);recovery.used(address);lastMovement=SystemClock.elapsedRealtime();lastPosition=resumeAt;bufferingSince=0;
   final int gen=++playGeneration;final long t0=SystemClock.elapsedRealtime();

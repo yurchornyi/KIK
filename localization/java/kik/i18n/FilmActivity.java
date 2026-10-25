@@ -54,7 +54,7 @@ public final class FilmActivity extends Activity {
   dislikeChip=thumb(true);LinearLayout.LayoutParams dislikeLp=new LinearLayout.LayoutParams(dp(56),dp(48));dislikeLp.setMargins(dp(12),0,0,0);buttons.addView(dislikeChip,dislikeLp);dislikeChip.setOnClickListener(v->rate(-1));paintTaste();
   voicesBox=new HorizontalScrollView(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(0,dp(14),0,0);body.addView(status);
-  status.setBackground(Ui.states(Ui.shape(0,dp(4),0,0),Ui.shape(Ui.CARD,dp(4),dp(2),Color.WHITE)));status.setOnClickListener(v->{Site.retryNow();status.setFocusable(false);status.setText("Завантаження…");load();});status.setFocusable(false);
+  status.setBackground(Ui.states(Ui.shape(0,dp(4),0,0),Ui.shape(Ui.CARD,dp(4),dp(2),Color.WHITE)));status.setOnClickListener(v->{if(!Site.retryNow()){status.setText("Зачекайте дві хвилини перед повторною перевіркою.");return;}status.setFocusable(false);status.setText("Завантаження…");load();});status.setFocusable(false);
   epHeader=Ui.bold(this,"Серії",20);epHeader.setPadding(0,dp(20),0,dp(8));epHeader.setVisibility(View.GONE);body.addView(epHeader);
   HorizontalScrollView sb=new HorizontalScrollView(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
   HorizontalScrollView eb=new HorizontalScrollView(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
@@ -94,7 +94,7 @@ public final class FilmActivity extends Activity {
     final String d=DescTranslate.tr(f.description);
     String span=run(f,null);if(span!=null)f.year=span;
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
-   }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText(Site.blocked(e)?"HDRezka заблокував інтернет-адресу вашої мережі. Перезавантажте роутер або зачекайте, потім натисніть OK.":"Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
+   }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText(Site.blocked(e)?"HDRezka заблокував інтернет-адресу вашої мережі. Зачекайте або перевірте, чи змінилася адреса, потім натисніть OK.":Site.paused(e)?"HDRezka тимчасово відхиляє запити. Зачекайте, потім натисніть OK для перевірки.":"Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
   });
  }
  /** «Вам може сподобатися»: titles like this one KIK can play (from KIK's service), else the page's own «see also». */
