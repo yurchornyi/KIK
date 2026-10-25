@@ -236,10 +236,10 @@ public final class KikPlayerActivity extends Activity {
  }
  private void load(String url){
   DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent(Site.UA).setConnectTimeoutMs(12000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(false);
-  // Streams relayed by KIK's service are sealed to this TV's sign-in.
-  String bearer=Site.serviceMedia(url)?CloudSync.bearer():null;if(bearer!=null)http.setDefaultRequestProperties(Collections.singletonMap("Authorization",bearer));
   DefaultLoadErrorHandlingPolicy retries=new Retries();
-  DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,Doh.media(http));
+  // Streams relayed by KIK's service are sealed to this TV's sign-in: every request the player makes there carries it, on any network path.
+  final String bearer=CloudSync.bearer();
+  DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,new androidx.media3.datasource.ResolvingDataSource.Factory(Doh.media(http),spec->bearer!=null&&Site.serviceMedia(spec.uri.toString())?spec.withAdditionalHeaders(Collections.singletonMap("Authorization",bearer)):spec));
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);
   Log.d("KIK.Player","Play quality="+quality+" hls="+hls(url)+" at="+resumeAt+" alternatives="+stream.alternatives.get(quality));
   startWanted=resumeAt;player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
@@ -283,7 +283,8 @@ public final class KikPlayerActivity extends Activity {
  /** Preserve the same episode, language, position, speed and pause state across failures. */
  private void recover(PlaybackException error){
   if(destroyed||recovering||!profileId.equals(ProfileStore.current(this)))return;
-  if(prepared){long current=pos();resumeAt=current>0?current:lastPosition;save();}else if(player!=null&&player.getCurrentPosition()>0)resumeAt=player.getCurrentPosition();
+  if(prepared){long current=pos();resumeAt=current>0?current:lastPosition;save();}// A stream that failed before it was ready reports where it gave up (a 60-second preview stops at 1:00), not where the viewer was.
+  else if(player!=null&&player.getCurrentPosition()>0&&resumeAt<=0)resumeAt=player.getCurrentPosition();
   prepared=false;seeking=false;bufferingSince=0;recovery.interrupted();stableSince=0;
   int code=error==null?0:error.errorCode,http=httpCode(error);
   boolean io=error==null||code>=2000&&code<3000;
@@ -307,7 +308,9 @@ public final class KikPlayerActivity extends Activity {
  }
  private String pickQuality(Site.Stream s){
   org.json.JSONObject chosen=Progress.choices(this,film.link);String want=chosen!=null&&!chosen.optString("quality").isEmpty()?chosen.optString("quality"):getSharedPreferences("settings",0).getString("default_quality","1080p");int target=num(want);String best=null;int bestN=-1;
-  for(String q:s.qualities.keySet()){if(q.equals(want))return q;int n=num(q);if(n<=target+1&&n>bestN){best=q;bestN=n;}}
+  // Without premium "Ultra" is a 60-second preview: start a full-length title on the best real quality instead of waiting for the preview to fail.
+  boolean skipUltra=RecoveryPolicy.runtimeMs(film.duration)==0||RecoveryPolicy.runtimeMs(film.duration)>SHORT_HLS_MS;
+  for(String q:s.qualities.keySet()){if(skipUltra&&q.contains("Ultra")&&s.qualities.size()>1)continue;if(q.equals(want))return q;int n=num(q);if(n<=target+1&&n>bestN){best=q;bestN=n;}}
   if(best==null)for(String q:s.qualities.keySet())best=q;return best;
  }
  private static int num(String q){Matcher m=Pattern.compile("(\\d+)").matcher(q==null?"":q);int n=m.find()?Integer.parseInt(m.group(1)):0;if(q!=null&&q.toLowerCase(Locale.ROOT).contains("ultra"))n+=1;if(q!=null&&(q.contains("2K")||q.contains("2k")))n=1440;if(q!=null&&(q.contains("4K")||q.contains("4k")))n=2160;return n;}

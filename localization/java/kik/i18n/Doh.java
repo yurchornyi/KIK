@@ -80,6 +80,8 @@ final class Doh {
     c=Doh.open(url);c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(20000);
     for(Map.Entry<String,String> h:spec.httpRequestHeaders.entrySet())if(!"Host".equalsIgnoreCase(h.getKey()))c.setRequestProperty(h.getKey(),h.getValue());
     c.setRequestProperty("User-Agent",Site.UA);c.setRequestProperty("Accept-Encoding","identity");
+    // Streams relayed by KIK's service are sealed to this TV's sign-in; the header never follows a redirect elsewhere.
+    if(Site.serviceMedia(url)){String bearer=CloudSync.bearer();if(bearer!=null)c.setRequestProperty("Authorization",bearer);}
     if(spec.position>0||spec.length!=C.LENGTH_UNSET)c.setRequestProperty("Range","bytes="+spec.position+"-"+(spec.length==C.LENGTH_UNSET?"":String.valueOf(spec.position+spec.length-1)));
     code=c.getResponseCode();String next=c.getHeaderField("Location");
     if(code>=300&&code<400&&next!=null){url=new URL(new URL(url),next).toString();c.disconnect();continue;}
