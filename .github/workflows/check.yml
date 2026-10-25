@@ -1,16 +1,36 @@
 name: Overlay checks
-on: [push, pull_request, workflow_dispatch]
+# Runs on the owner's Mac (self-hosted runner kik-mac): GitHub-hosted runners do
+# not start for this private repository. A push to main is checked by deploy.yml,
+# which calls this workflow before it deploys.
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, kik-mac]
+    timeout-minutes: 30
     steps:
+      # On power the Mac sleeps after a minute, and a sleeping runner loses
+      # GitHub mid-job. caffeinate holds it awake while the job runs.
+      - name: Keep the Mac awake
+        run: nohup caffeinate -ims >/dev/null 2>&1 &
       - uses: actions/checkout@v4
+      # setup-python cannot install on a self-hosted Mac (its installer writes to
+      # /Users/runner); uv, already on the Mac, provides the same CPython 3.12.
+      - name: Python 3.12
+        run: |
+          uv python install 3.12
+          dirname "$(uv python find --managed-python 3.12)" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-34
       - run: python3 -m py_compile scripts/*.py
       - uses: actions/setup-node@v4
         with:
@@ -22,46 +42,49 @@ jobs:
       - name: Admin and settings integration with local D1
         run: |
           npm exec --prefix web -- wrangler d1 migrations apply kik-data --local --config web/wrangler.jsonc
-          npm exec --prefix web -- wrangler dev --config web/wrangler.test.jsonc --port 8791 > /tmp/kik-web.log 2>&1 &
+          # A free port: on the Mac 8791 may already be taken by a local server.
+          port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+          export KIK_TEST_URL=http://localhost:$port
+          npm exec --prefix web -- wrangler dev --config web/wrangler.test.jsonc --port $port > $RUNNER_TEMP/kik-web.log 2>&1 &
           preview_pid=$!
           trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           ready=0
           for attempt in $(seq 1 30); do
-            if curl -fsS http://localhost:8791/api/health >/dev/null; then ready=1; break; fi
+            if curl -fsS $KIK_TEST_URL/api/health >/dev/null; then ready=1; break; fi
             sleep 1
           done
-          if [ "$ready" != 1 ]; then cat /tmp/kik-web.log; exit 1; fi
+          if [ "$ready" != 1 ]; then cat $RUNNER_TEMP/kik-web.log; exit 1; fi
           node web/management-integration.mjs
           node web/security-integration.mjs
       - name: Update security policy
         run: |
-          mkdir -p /tmp/kik-checks
-          javac -d /tmp/kik-checks localization/java/kik/i18n/UpdatePolicy.java scripts/UpdatePolicyCheck.java
-          java -cp /tmp/kik-checks UpdatePolicyCheck
+          mkdir -p $RUNNER_TEMP/kik-checks
+          javac -d $RUNNER_TEMP/kik-checks localization/java/kik/i18n/UpdatePolicy.java scripts/UpdatePolicyCheck.java
+          java -cp $RUNNER_TEMP/kik-checks UpdatePolicyCheck
       - name: TV pairing QR encoder
         run: |
-          mkdir -p /tmp/kik-qr
-          javac -encoding UTF-8 -d /tmp/kik-qr localization/java/kik/i18n/QrCode.java scripts/QrCheck.java
-          java -cp /tmp/kik-qr QrCheck
+          mkdir -p $RUNNER_TEMP/kik-qr
+          javac -encoding UTF-8 -d $RUNNER_TEMP/kik-qr localization/java/kik/i18n/QrCode.java scripts/QrCheck.java
+          java -cp $RUNNER_TEMP/kik-qr QrCheck
       - name: Playback recovery policy
         run: |
-          javac -d /tmp/kik-checks localization/java/kik/i18n/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java
-          java -cp /tmp/kik-checks RecoveryPolicyCheck
+          javac -d $RUNNER_TEMP/kik-checks localization/java/kik/i18n/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java
+          java -cp $RUNNER_TEMP/kik-checks RecoveryPolicyCheck
       - name: DNS-over-HTTPS bypass policy
         run: |
-          mkdir -p /tmp/kik-doh
-          javac -d /tmp/kik-doh localization/java/kik/i18n/DohPolicy.java scripts/DohCheck.java
-          java -cp /tmp/kik-doh DohCheck
+          mkdir -p $RUNNER_TEMP/kik-doh
+          javac -d $RUNNER_TEMP/kik-doh localization/java/kik/i18n/DohPolicy.java scripts/DohCheck.java
+          java -cp $RUNNER_TEMP/kik-doh DohCheck
       - name: TV image memory and focus scrolling
         run: |
-          mkdir -p /tmp/kik-ui-checks
-          javac -d /tmp/kik-ui-checks localization/java/kik/i18n/ImageDecodePolicy.java scripts/ImageDecodeCheck.java localization/java/kik/i18n/FocusScrollPolicy.java scripts/FocusScrollCheck.java
-          java -cp /tmp/kik-ui-checks kik.i18n.ImageDecodeCheck
-          java -cp /tmp/kik-ui-checks kik.i18n.FocusScrollCheck
+          mkdir -p $RUNNER_TEMP/kik-ui-checks
+          javac -d $RUNNER_TEMP/kik-ui-checks localization/java/kik/i18n/ImageDecodePolicy.java scripts/ImageDecodeCheck.java localization/java/kik/i18n/FocusScrollPolicy.java scripts/FocusScrollCheck.java
+          java -cp $RUNNER_TEMP/kik-ui-checks kik.i18n.ImageDecodeCheck
+          java -cp $RUNNER_TEMP/kik-ui-checks kik.i18n.FocusScrollCheck
       - name: Android helpers compile with ExoPlayer
         run: |
           python3 scripts/localize.py --java-only
-          javac -encoding UTF-8 -source 8 -target 8 -nowarn -cp "$ANDROID_HOME/platforms/android-34/android.jar:$(scripts/media3.sh)" -d /tmp/kik-helpers localization/java/kik/i18n/*.java
+          javac -encoding UTF-8 -source 8 -target 8 -nowarn -cp "$ANDROID_HOME/platforms/android-34/android.jar:$(scripts/media3.sh)" -d $RUNNER_TEMP/kik-helpers localization/java/kik/i18n/*.java
       - name: Ensure no private build inputs are tracked
         run: |
           python3 - <<'PY'
