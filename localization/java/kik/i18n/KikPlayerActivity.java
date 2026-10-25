@@ -49,7 +49,7 @@ public final class KikPlayerActivity extends Activity {
  /** «Як вам?» at the credits (PlaybackPolicy.askRating): playback goes on, it hides by itself, each title is asked once. */
  private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
- private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline,sourcePaused;private int generation,subGeneration,playGeneration;private long resumeAt,startWanted=-1;
+ private boolean prepared,switching,seeking,failed,destroyed,active=true,playWhenReady=true,offline,sourcePaused;private int generation,subGeneration,playGeneration;private long resumeAt,startWanted=-1;
  private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,settings,options;private HorizontalScrollView optionsBox;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1,playIndex=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
@@ -119,7 +119,7 @@ public final class KikPlayerActivity extends Activity {
   ExoPlayer p=new ExoPlayer.Builder(this,renderers).setLoadControl(load).setHandleAudioBecomingNoisy(true).build();
   p.addListener(new Player.Listener(){
    @Override public void onPlaybackStateChanged(int state){onState(state);}
-   @Override public void onPlayerError(PlaybackException error){Log.w("KIK.Player","Player error "+error.getErrorCodeName()+" http="+httpCode(error),error);recover(error);}
+   @Override public void onPlayerError(PlaybackException error){if(switching)return;Log.w("KIK.Player","Player error "+error.getErrorCodeName()+" http="+httpCode(error),error);recover(error);}
    // Headphones unplugged or their Bluetooth gone: ExoPlayer pauses by itself, and the player follows.
    @Override public void onPlayWhenReadyChanged(boolean play,int reason){if(reason==Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY&&!play&&playWhenReady){playWhenReady=false;Log.d("KIK.Player","Headphones gone: paused");update();show(true);}}
    @Override public void onVideoSizeChanged(VideoSize size){if(size.width>0&&size.height>0){aspect=size.width*size.pixelWidthHeightRatio/size.height;fit();}}
@@ -230,7 +230,8 @@ public final class KikPlayerActivity extends Activity {
  /** Starts over with a fresh recovery budget at the same moment of the same episode. */
  private void retryNow(){if(sourcePaused&&!Site.retryNow()){Ui.toast(this,"Зачекайте дві хвилини перед повторною перевіркою.");return;}sourcePaused=false;h.removeCallbacks(retry);recovering=false;failed=false;start(false);}
  private void play(){
-  seeking=false;failed=false;final String address=stream.qualities.get(quality);recovery.used(address);lastMovement=SystemClock.elapsedRealtime();lastPosition=resumeAt;bufferingSince=0;
+  // Until the new address loads, the player still holds the old one: its events (a preview's 60 s) are not this quality's.
+  switching=true;seeking=false;failed=false;final String address=stream.qualities.get(quality);recovery.used(address);lastMovement=SystemClock.elapsedRealtime();lastPosition=resumeAt;bufferingSince=0;
   final int gen=++playGeneration;final long t0=SystemClock.elapsedRealtime();
   Ui.bg(()->{final String url=Site.serviceMedia(address)?address:Site.resolve(address);h.post(()->{if(destroyed||gen!=playGeneration||player==null)return;Log.d("KIK.Player","Resolved in "+(SystemClock.elapsedRealtime()-t0)+" ms"+(url.equals(address)?"":" via node"));load(url);});});
  }
@@ -242,7 +243,7 @@ public final class KikPlayerActivity extends Activity {
   DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,new androidx.media3.datasource.ResolvingDataSource.Factory(Doh.media(http),spec->bearer!=null&&Site.serviceMedia(spec.uri.toString())?spec.withAdditionalHeaders(Collections.singletonMap("Authorization",bearer)):spec));
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);
   Log.d("KIK.Player","Play quality="+quality+" hls="+hls(url)+" at="+resumeAt+" alternatives="+stream.alternatives.get(quality));
-  startWanted=resumeAt;player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
+  startWanted=resumeAt;switching=false;player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
  }
  /**
   * Up to 8 in-place retries with growing pauses: a short CDN hiccup resumes from the same byte, unseen by the viewer.
@@ -258,7 +259,7 @@ public final class KikPlayerActivity extends Activity {
  }
  static boolean hls(String url){String path=Uri.parse(url).getPath();return path!=null&&path.toLowerCase(Locale.ROOT).endsWith(".m3u8");}
  private void onState(int state){
-  if(destroyed)return;long now=SystemClock.elapsedRealtime();
+  if(destroyed||switching&&state!=Player.STATE_BUFFERING)return;long now=SystemClock.elapsedRealtime();
   if(state==Player.STATE_READY){
    if(!prepared&&truncated())return;
    // A new voice or quality must go on from the same moment: if the stream ignored the start position, seek there once.
@@ -342,6 +343,7 @@ public final class KikPlayerActivity extends Activity {
   if(!RecoveryPolicy.preview(d,expectedMs()))return false;
   String lower=null;boolean past=false;for(String q:stream.qualities.keySet()){if(past){lower=q;break;}if(q.equals(quality))past=true;}
   if(lower==null)return false;Log.w("KIK.Player",quality+" is a "+d+" ms preview, switching to "+lower);
+  if(manualQuality)Ui.toast(this,quality+" без преміуму — лише хвилинний фрагмент. Увімкнено "+lower+".");
   stream.qualities.remove(quality);stream.alternatives.remove(quality);quality=lower;resumeAt=Math.max(resumeAt,pos());play();return true;
  }
  /** How long this episode or film really runs: its saved full duration or the site's running time; 0 when unknown. */
