@@ -8,7 +8,9 @@
     "build": "node build.mjs",
     "dev": "wrangler dev",
     "deploy": "node build.mjs && wrangler deploy",
-    "test:ui": "node ui-audit.mjs"
+    "test:ui": "node ui-audit.mjs",
+    "deploy:cloudflare-build": "bash ../scripts/cloudflare-deploy.sh",
+    "validate": "bash ../scripts/cloudflare-validate.sh"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
