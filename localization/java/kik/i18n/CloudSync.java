@@ -32,6 +32,10 @@ public final class CloudSync {
  public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");final boolean keep=shared(c,profile,token);// The account profile it was is remembered: only that account takes this local profile and its history back.
   String remote=remoteId(c,profile);prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).remove("adskip_"+profile).putString("past_remote_"+profile,remote.isEmpty()?prefs(c).getString("past_remote_"+profile,""):remote).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";if(!keep)IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
  /** Signs a request to KIK's own public API with this TV's sign-in, so the server may spend its AI and scan budget on it. */
+ /** "Bearer …" for this TV's sign-in, or null. */
+ static String bearer(){Context c=UiRuntime.app;if(c==null)return null;String token=Account.token(c);
+  if(token.isEmpty())for(ProfileStore.Profile p:ProfileStore.list(c)){token=prefs(c).getString("token_"+p.id,"");if(!token.isEmpty())break;}
+  return token.matches("[a-f0-9]{64}")?"Bearer "+token:null;}
  static void authorize(HttpURLConnection connection){Context c=UiRuntime.app;if(c==null)return;String token=Account.token(c);
   if(token.isEmpty())for(ProfileStore.Profile p:ProfileStore.list(c)){token=prefs(c).getString("token_"+p.id,"");if(!token.isEmpty())break;}
   if(token.matches("[a-f0-9]{64}"))connection.setRequestProperty("Authorization","Bearer "+token);}

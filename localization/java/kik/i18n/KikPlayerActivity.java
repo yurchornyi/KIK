@@ -232,10 +232,12 @@ public final class KikPlayerActivity extends Activity {
  private void play(){
   seeking=false;failed=false;final String address=stream.qualities.get(quality);recovery.used(address);lastMovement=SystemClock.elapsedRealtime();lastPosition=resumeAt;bufferingSince=0;
   final int gen=++playGeneration;final long t0=SystemClock.elapsedRealtime();
-  Ui.bg(()->{final String url=Site.resolve(address);h.post(()->{if(destroyed||gen!=playGeneration||player==null)return;Log.d("KIK.Player","Resolved in "+(SystemClock.elapsedRealtime()-t0)+" ms"+(url.equals(address)?"":" via node"));load(url);});});
+  Ui.bg(()->{final String url=Site.serviceMedia(address)?address:Site.resolve(address);h.post(()->{if(destroyed||gen!=playGeneration||player==null)return;Log.d("KIK.Player","Resolved in "+(SystemClock.elapsedRealtime()-t0)+" ms"+(url.equals(address)?"":" via node"));load(url);});});
  }
  private void load(String url){
   DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent(Site.UA).setConnectTimeoutMs(12000).setReadTimeoutMs(20000).setAllowCrossProtocolRedirects(false);
+  // Streams relayed by KIK's service are sealed to this TV's sign-in.
+  String bearer=Site.serviceMedia(url)?CloudSync.bearer():null;if(bearer!=null)http.setDefaultRequestProperties(Collections.singletonMap("Authorization",bearer));
   DefaultLoadErrorHandlingPolicy retries=new Retries();
   DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,Doh.media(http));
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);
