@@ -7,6 +7,7 @@ test('page-close sync fits the beacon quota and sends the last playback position
  const payload=beaconPayload('profile',pending,latest),body=JSON.parse(await payload.text());
  assert.ok(payload.size<=60000);assert.deepEqual(body.records[0],latest);assert.equal(body.profile_id,'profile');assert.equal(body.source_schema,2);assert.equal(pending.length,500);
  assert.equal(JSON.parse(await beaconPayload('profile',[latest],latest).text()).records.length,1);
+ assert.equal(body.since,undefined);assert.equal(JSON.parse(await beaconPayload('profile',[latest],latest,1800000000000).text()).since,1800000000000,'beacon asks only for recent changes');
  assert.equal(JSON.parse(await beaconPayload('profile',pending.slice(0,300).map(r=>({...r,data:{}}))).text()).records.length,SYNC_BATCH);
 });
 

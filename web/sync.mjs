@@ -19,10 +19,14 @@ export function cleanRecord(input,now=Date.now()){
  return {kind:input.kind,key:input.key,data,updated_at:input.updated_at};
 }
 export function canonical(value){if(value===null||typeof value!=="object")return JSON.stringify(value);if(Array.isArray(value))return "["+value.map(canonical).join(",")+"]";return "{"+Object.keys(value).sort().map(k=>JSON.stringify(k)+":"+canonical(value[k])).join(",")+"}";}
-export async function exchange(db,profile,records){
- if(!Array.isArray(records)||records.length>1000)throw Error("Забагато записів");const valid=records.map(r=>cleanRecord(r));
- // Parameterized last-write-wins upserts retain tombstones, so an offline device cannot revive a deletion.
- for(let at=0;at<valid.length;at+=60){await db.batch(valid.slice(at,at+60).map(r=>db.prepare("INSERT INTO records(profile_id,kind,item_key,data,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,kind,item_key) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at WHERE excluded.updated_at>records.updated_at OR (excluded.updated_at=records.updated_at AND COALESCE(excluded.data,'')>COALESCE(records.data,''))").bind(profile,r.kind,r.key,r.data===null?null:canonical(r.data),r.updated_at)));}
- const result=await db.prepare("SELECT kind,item_key,data,updated_at FROM records WHERE profile_id=? ORDER BY kind,item_key LIMIT 5001").bind(profile).all();if(result.results.length>5000)throw Error("Ліміт записів профілю");
+/** Rows written up to this long before a client's last server_time come again: concurrent syncs and clock drift between Worker machines never hide a change. */
+export const SYNC_OVERLAP=120000;
+/** Upserts the device's records and answers the profile's records: all of them, or with `since` (server_time of the device's last sync) only those written after it, tombstones included. */
+export async function exchange(db,profile,records,since=null,now=Date.now()){
+ if(!Array.isArray(records)||records.length>1000)throw Error("Забагато записів");const valid=records.map(r=>cleanRecord(r,now));
+ // Parameterized last-write-wins upserts retain tombstones, so an offline device cannot revive a deletion. Only a winning write moves synced_at.
+ for(let at=0;at<valid.length;at+=60){await db.batch(valid.slice(at,at+60).map(r=>db.prepare("INSERT INTO records(profile_id,kind,item_key,data,updated_at,synced_at) VALUES(?,?,?,?,?,?) ON CONFLICT(profile_id,kind,item_key) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at,synced_at=excluded.synced_at WHERE excluded.updated_at>records.updated_at OR (excluded.updated_at=records.updated_at AND COALESCE(excluded.data,'')>COALESCE(records.data,''))").bind(profile,r.kind,r.key,r.data===null?null:canonical(r.data),r.updated_at,now)));}
+ const delta=Number.isSafeInteger(since)&&since>0;
+ const result=await (delta?db.prepare("SELECT kind,item_key,data,updated_at FROM records WHERE profile_id=? AND synced_at>=? ORDER BY kind,item_key LIMIT 5001").bind(profile,Math.min(since,now)-SYNC_OVERLAP):db.prepare("SELECT kind,item_key,data,updated_at FROM records WHERE profile_id=? ORDER BY kind,item_key LIMIT 5001").bind(profile)).all();if(result.results.length>5000)throw Error("Ліміт записів профілю");
  return result.results.map(r=>({kind:r.kind,key:r.item_key,data:r.data===null?null:JSON.parse(r.data),updated_at:r.updated_at}));
 }

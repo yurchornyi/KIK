@@ -12,9 +12,9 @@ function database() {
 test('database limits retain readable and updatable records and bound profile creation',()=>{
   const db=database();
   try {
-    db.exec("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<5000) INSERT INTO records SELECT 'profile','later',CAST(x AS TEXT),NULL,1 FROM n");
-    assert.throws(()=>db.exec("INSERT INTO records VALUES('profile','later','overflow',NULL,1)"),/Profile record limit/);
-    db.exec("INSERT INTO records VALUES('profile','later','1',NULL,2) ON CONFLICT(profile_id,kind,item_key) DO UPDATE SET updated_at=excluded.updated_at");
+    db.exec("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<5000) INSERT INTO records(profile_id,kind,item_key,data,updated_at) SELECT 'profile','later',CAST(x AS TEXT),NULL,1 FROM n");
+    assert.throws(()=>db.exec("INSERT INTO records(profile_id,kind,item_key,data,updated_at) VALUES('profile','later','overflow',NULL,1)"),/Profile record limit/);
+    db.exec("INSERT INTO records(profile_id,kind,item_key,data,updated_at) VALUES('profile','later','1',NULL,2) ON CONFLICT(profile_id,kind,item_key) DO UPDATE SET updated_at=excluded.updated_at");
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM records').get().n,5000);
     assert.equal(db.prepare("SELECT updated_at FROM records WHERE item_key='1'").get().updated_at,2);
     db.exec("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<7) INSERT INTO profiles SELECT CAST(x AS TEXT),'qa','QA','bear',1,0,0 FROM n");
