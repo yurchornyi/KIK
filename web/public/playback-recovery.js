@@ -8,6 +8,9 @@ export const sponsoredVoice=name=>/coldfilm|колдфильм|1win/i.test(name|
 export const studioIntro=name=>/rezka studio|студійна озвучка/i.test(name||'')?9.5:/coldfilm|колдфильм/i.test(name||'')?13.5:0;
 const height=q=>/4k/i.test(q)?2160:/2k/i.test(q)?1440:Number(String(q).match(/\d+/)?.[0]||0);
 export function orderedStreams(qualities,wanted){const target=height(wanted)||1080;return (qualities||[]).flatMap((q,i)=>[...new Set([q.url,...q.alternatives||[]])].map((url,j)=>({quality:q.label,url:mediaUrl(url),rank:q.label===wanted?j:100+Math.abs(height(q.label)-target)+(height(q.label)>target?3000:0)+i/100+j/1000}))).filter(x=>x.url).sort((a,b)=>a.rank-b.rank);}
+/** The CDN's own MP4 first: the relay can be slower than the video's bitrate. Only the MP4: CDN segments carry no CORS
+ * headers for hls.js and native HLS stalls after a seek in Chromium. KIK's sealed relay stays as the fallback. */
+export function preferDirect(qualities){return (qualities||[]).map(q=>{const direct=[...new Set(q.direct||[])].filter(u=>mediaUrl(u)&&!/\.m3u8(?:$|[/:?#])/i.test(new URL(u).pathname));return direct.length?{...q,url:direct[0],alternatives:[...direct.slice(1),q.url,...(q.alternatives||[])]}:q;});}
 /** A bounded outage budget, reset only after sustained progress or explicit user action. */
 export class RecoveryPlan {
  constructor(now=Date.now){this.now=now;this.reset();}

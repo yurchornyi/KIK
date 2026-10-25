@@ -13,3 +13,10 @@ test('a short stream is a preview only when the title is known to be much longer
  assert.equal(runtimeMs('2 ч. 22 мин.'),142*60000);assert.equal(runtimeMs('45 мин.'),45*60000);assert.equal(runtimeMs('1 год. 5 хв.'),65*60000);assert.equal(runtimeMs('128 min'),128*60000);assert.equal(runtimeMs(undefined),0);
  assert.equal(isPreview(60000,142*60000),true);assert.equal(isPreview(150000,0),false);assert.equal(isPreview(60000,90000),false);assert.equal(isPreview(59000,0),true);assert.equal(isPreview(NaN,142*60000),false);assert.equal(isPreview(200000,142*60000),false);
 });
+test('the CDN MP4 plays first, the sealed relay after it', async () => {
+  const {preferDirect,orderedStreams} = await import('./public/playback-recovery.js');
+  const sealed = 'https://kiktv.pages.dev/api/media/a.b.m3u8', hls = 'https://stream.example/x.mp4:hls:manifest.m3u8', mp4 = 'https://stream.example/x.mp4';
+  const q = [{label: '720p', url: sealed, alternatives: [sealed], direct: [hls, mp4]}];
+  assert.deepEqual(orderedStreams(preferDirect(q), '720p').map(s => s.url), [mp4, sealed]);
+  assert.equal(preferDirect([{label: '720p', url: sealed, alternatives: [sealed]}])[0].url, sealed);
+});
