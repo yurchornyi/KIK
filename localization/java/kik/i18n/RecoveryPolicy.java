@@ -23,6 +23,12 @@ public final class RecoveryPolicy {
   * known, only under 90 s. A short film or episode keeps its best quality.
   */
  public static boolean preview(long ms,long expectedMs){if(ms<=0)return false;if(expectedMs>0)return ms<180000&&ms*2<expectedMs;return ms<90000;}
+ /**
+  * An end that is not the end: over 90 s before the stream's own finish, or a stream under 3 min that stops before half
+  * of the title's known running time (cut short by the source, a preview with no lower quality left). It resumes, never
+  * closes. A full-length stream is trusted over the site's running time, which for a series may not fit every episode.
+  */
+ public static boolean endedEarly(long posMs,long durMs,long expectedMs){return durMs>0&&posMs<durMs-90000||durMs<180000&&expectedMs>0&&posMs*2<expectedMs;}
  private static int height(String q){String s=q==null?"":q.toLowerCase(Locale.ROOT);if(s.contains("4k"))return 2160;if(s.contains("2k"))return 1440;java.util.regex.Matcher m=java.util.regex.Pattern.compile("[0-9]+").matcher(s);return m.find()?Integer.parseInt(m.group()):1080;}
  private static int rank(String q,String want){if(q.equals(want))return -1;int h=height(q),target=height(want);return Math.abs(h-target)+(h>target?3000:0);}
  /** A title page of the catalogue (or its Ukrainian partner), never another site: what an outside intent may open. */

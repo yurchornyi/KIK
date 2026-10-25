@@ -6,6 +6,8 @@ public final class RecoveryPolicyCheck {
   check(RecoveryPolicy.runtimeMs("2 ч. 22 мин.")==142*60000L&&RecoveryPolicy.runtimeMs("45 мин.")==45*60000L&&RecoveryPolicy.runtimeMs("1 год. 5 хв.")==65*60000L&&RecoveryPolicy.runtimeMs("128 min")==128*60000L&&RecoveryPolicy.runtimeMs(null)==0&&RecoveryPolicy.runtimeMs("")==0);
   // A 60 s stream of a two-hour film is the preview; a 150 s short with no known length, or a 60 s stream of a 90 s title, is the real thing.
   check(RecoveryPolicy.preview(60000,142*60000L)&&!RecoveryPolicy.preview(150000,0)&&!RecoveryPolicy.preview(60000,90000)&&RecoveryPolicy.preview(59000,0)&&!RecoveryPolicy.preview(0,142*60000L)&&!RecoveryPolicy.preview(200000,142*60000L));
+  // A 2:22 film that "ends" at 1:00 of a 1:06 stream resumes; the real credits of a 45 min episode, or a short with no known length, end it.
+  check(RecoveryPolicy.endedEarly(60000,66000,142*60000L)&&RecoveryPolicy.endedEarly(30*60000L,142*60000L,0)&&!RecoveryPolicy.endedEarly(44*60000L,45*60000L,45*60000L)&&!RecoveryPolicy.endedEarly(60000,66000,0)&&!RecoveryPolicy.endedEarly(140*60000L,140*60000L,150*60000L)&&!RecoveryPolicy.endedEarly(22*60000L,22*60000L,50*60000L));
   System.out.println("Recovery policy checks passed");
  }
 }
