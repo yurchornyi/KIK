@@ -129,7 +129,7 @@ final class Recommendations {
    // Explore beyond the current top row so known titles cannot permanently crowd out unseen ones.
    List<HomeActivity.Item> exploration=new ArrayList<HomeActivity.Item>(items(c,s,catalogue).values());Collections.shuffle(exploration,new Random(Objects.hash(s.profile,System.currentTimeMillis()/86_400_000L)));
    for(HomeActivity.Item x:exploration)if(links.size()<8&&!s.excluded.contains(x.link)&&RecommendationMetadata.needs(c,x.link))links.add(x.link);
-   List<Callable<Void>> jobs=new ArrayList<Callable<Void>>();for(String link:links)jobs.add(()->{if(valid.getAsBoolean()&&!Thread.currentThread().isInterrupted())try{Site.film(link);}catch(Exception e){RecommendationMetadata.failed(c,link);}return null;});
+   List<Callable<Void>> jobs=new ArrayList<Callable<Void>>();for(String link:links)jobs.add(()->{if(valid.getAsBoolean()&&!Thread.currentThread().isInterrupted())try{RecommendationMetadata.remember(c,FreeSources.metadata(link));}catch(Exception e){RecommendationMetadata.failed(c,link);}return null;});
    workers.invokeAll(jobs,40,TimeUnit.SECONDS);
   }catch(InterruptedException e){Thread.currentThread().interrupt();}finally{workers.shutdownNow();WARMING.set(false);}
  }

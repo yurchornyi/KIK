@@ -41,7 +41,14 @@ public final class CatalogueCheck {
   if(!CountryFilter.blocked("СССР, Казахстан")||CountryFilter.blocked("Украина, США")||CountryFilter.blocked("Россия",new HashSet<String>()))throw new AssertionError("Country matching");
   require(Site.nameScore("шерлак","Шерлок")>=.6&&Site.nameScore("відьмак","Ведьмак")>=.6&&Site.nameScore("интерстелар","Интерстеллар")>=.6&&Site.nameScore("пиратыкарибского моря","Пираты Карибского моря: На краю Света")>=.6,"Typos, Ukrainian letters and joined words still match");
   require(Site.nameScore("брейкінг бед","Бедуин")<.6&&Site.nameScore("кот","Кит")<.6&&Site.distance("шерлко","шерлок",3)==1,"Unrelated titles that share a word do not count as a match");
-  System.out.println("Catalogue checks passed: 17");
+  require(Site.blocked("<h1>ОШИБКА ДОСТУПА</h1>Нами была обнаружена подозрительная активность с вашего IP-адреса")&&!Site.blocked(table),"The catalogue's IP ban page is recognised, a film page is not");
+  require(Site.blocked(new java.io.IOException(new java.io.IOException(Site.IP_BLOCKED)))&&!Site.blocked(new java.io.IOException("HTTP 500")),"A ban survives the film loader's exception wrapping");
+  require(Site.pauseReason(403,"Нами была обнаружена подозрительная активность с вашего IP-адреса").equals(Site.IP_BLOCKED)
+   &&Site.pauseReason(429,"Too many requests").equals(Site.ACCESS_PAUSED)
+   &&Site.pauseReason(200,"anubis_challenge").equals(Site.ACCESS_PAUSED)
+   &&Site.pauseReason(200,table)==null,"Access refusals and bot challenges pause all mirrors");
+  require(Site.retryAfterMs("120")==120000&&Site.retryAfterMs("86401")==24*60*60_000L&&Site.retryAfterMs("-10")==0,"Retry-After seconds are bounded");
+  System.out.println("Catalogue checks passed: 21");
  }
  private static void require(boolean ok,String message){if(!ok)throw new AssertionError(message);}
 }

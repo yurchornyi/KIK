@@ -1,10 +1,18 @@
 import {mediaUrl} from './public/playback-recovery.js';
 import {socketHttp} from "./source-transport.mjs";
-import {sha256} from "@noble/hashes/sha2.js";
 import {titleKey} from "./sync.mjs";
 export const HOSTS=["hdrezka.sh","hdrezka.website","rezka.ag","hdrezka.ag"],UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
-const cookies=new Map(),pages=new Map();let host=HOSTS[0];
+const cookies=new Map(),pages=new Map();let host=HOSTS[0],pausedUntil=0,nextRequestAt=0,queued=0,sourceQueue=Promise.resolve();
 const one=(h,re)=>h.match(re)?.[1]??null;
+export function sourceRefusal(status,html){return /подозрительная активность с вашего IP/i.test(html)?'ip':(status===403||status===429||html.includes('anubis_challenge'))?'refused':null;}
+function retryDelay(value){if(!value)return 0;const seconds=Number(value);if(Number.isFinite(seconds))return Math.min(86400000,Math.max(0,seconds)*1000);const date=Date.parse(value);return Number.isFinite(date)?Math.min(86400000,Math.max(0,date-Date.now())):0;}
+function paused(){return Object.assign(Error('Catalogue temporarily refusing requests'),{sourcePaused:true});}
+async function sourceSlot(task){
+ if(++queued>16){queued--;throw Object.assign(Error('Catalogue request queue full'),{sourcePaused:true});}
+ let release;const previous=sourceQueue;sourceQueue=new Promise(resolve=>{release=resolve;});
+ try{await previous;if(Date.now()<pausedUntil)throw paused();const delay=Math.max(0,nextRequestAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));if(Date.now()<pausedUntil)throw paused();nextRequestAt=Date.now()+1000;return await task();}
+ finally{queued--;release();}
+}
 export function text(h){return h==null?null:h.replace(/<br\s*\/?>/gi,"\n").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&quot;/g,'"').replace(/&#039;|&apos;/g,"'").replace(/&laquo;/g,"«").replace(/&raquo;/g,"»").replace(/&mdash;/g,"—").replace(/&ndash;/g,"–").replace(/&amp;/g,"&").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n)).replace(/[ \t\r]+/g," ").trim();}
 async function send(url,form=null,timeout=15000){
  for(let hop=0;hop<6;hop++){
@@ -12,24 +20,14 @@ async function send(url,form=null,timeout=15000){
   const headers={"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Encoding":"gzip","User-Agent":UA,"Accept-Language":"uk-UA,uk;q=0.9,ru;q=0.8","Cookie":[...jar].map(([k,v])=>`${k}=${v}`).join("; ")};
   if(!headers.Cookie)delete headers.Cookie;
   if(form){headers["Content-Type"]="application/x-www-form-urlencoded; charset=UTF-8";headers["X-Requested-With"]="XMLHttpRequest";headers.Referer=u.origin+"/";headers.Origin=u.origin;}
-  const r=await socketHttp(url,{method:form?"POST":"GET",headers,body:form,redirect:"manual",signal:AbortSignal.timeout(timeout)});
+  const {r,content}=await sourceSlot(async()=>{const r=await socketHttp(url,{method:form?"POST":"GET",headers,body:form,redirect:"manual",signal:AbortSignal.timeout(timeout)}),content=await r.text();if(sourceRefusal(r.status,content)){pausedUntil=Date.now()+Math.max(30*60000,retryDelay(r.headers.get('Retry-After')));throw paused();}return {r,content};});
   for(const cookie of r.headers.getSetCookie()){const pair=cookie.split(";",1)[0],at=pair.indexOf("=");if(at>0)jar.set(pair.slice(0,at),pair.slice(at+1));}
-  if(r.status>=300&&r.status<400){url=new URL(r.headers.get("Location"),url).href;form=null;await r.body?.cancel();continue;}
-  const content=await r.text();if(!r.ok&&!content.includes("anubis_challenge"))throw Error("Catalogue "+u.hostname+u.pathname+" HTTP "+r.status+" server="+r.headers.get("server")+" "+(one(content,/<title>(.*?)<\/title>/is)||content.slice(0,120)));if(content.length>3*1024*1024)throw Error("Catalogue limit");return {html:content,origin:u.hostname};
+  if(r.status>=300&&r.status<400){url=new URL(r.headers.get("Location"),url).href;form=null;continue;}
+  if(!r.ok)throw Error("Catalogue "+u.hostname+u.pathname+" HTTP "+r.status+" server="+r.headers.get("server")+" "+(one(content,/<title>(.*?)<\/title>/is)||content.slice(0,120)));if(content.length>3*1024*1024)throw Error("Catalogue limit");return {html:content,origin:u.hostname};
  }throw Error("Catalogue redirect limit");
 }
-async function solve(result,url){
- const raw=one(result.html,/<script[^>]*id="anubis_challenge"[^>]*>(.*?)<\/script>/s);if(!raw)return result;const challenge=JSON.parse(raw),difficulty=challenge.rules?.difficulty??2,c=challenge.challenge;
- if(difficulty>4||typeof c?.randomData!=="string")throw Error("Каталог вимагає складнішої перевірки. Спробуйте пізніше.");
- const start=Date.now(),prefix=sha256.create().update(new TextEncoder().encode(c.randomData));let nonce=0,digest;
- const zero=bytes=>{for(let i=0;i<difficulty;i++){const value=i%2?bytes[i>>1]&15:bytes[i>>1]>>4;if(value!==0)return false;}return true;};
- for(;nonce<500000;nonce++){const bytes=prefix.clone().update(new TextEncoder().encode(String(nonce))).digest();if(zero(bytes)){digest=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");break;}}if(nonce===500000)throw Error("Catalogue check timeout");
- 
- const q=new URLSearchParams({id:c.id,response:digest,nonce:String(nonce),redir:url,elapsedTime:String(Date.now()-start+500)});
- return send(`https://${result.origin}/.within.website/x/cmd/anubis/api/pass-challenge?${q}`);
-}
-async function page(path,ttl=120000,options={}){if(options.bounded)options={...options,only:true,host:options.host||host,timeout:5000};const cached=pages.get(path);if(!options.fresh&&cached&&Date.now()-cached.at<ttl)return cached.value;
- let last;for(const h of (options.only?[options.host]:[options.host||host,...HOSTS.filter(x=>x!==(options.host||host))]))try{const url="https://"+h+path;let r=await send(url,null,options.timeout||15000);if(r.html.includes("anubis_challenge"))r=await solve(r,url);if(r.html.includes("anubis_challenge"))throw Error("Каталог не пройшов перевірку");host=r.origin;if(pages.size>80)pages.delete(pages.keys().next().value);pages.set(path,{at:Date.now(),value:r});return r;}catch(e){console.warn("KIK mirror",h,e.message);last=e;}
+async function page(path,ttl=120000,options={}){if(options.bounded)options={...options,only:true,host:options.host||host,timeout:5000};const cached=pages.get(path);if(!options.fresh&&cached&&Date.now()-cached.at<ttl)return cached.value;if(Date.now()<pausedUntil&&cached&&Date.now()-cached.at<86400000)return cached.value;
+ let last;for(const h of (options.only?[options.host]:[options.host||host,...HOSTS.filter(x=>x!==(options.host||host))]))try{const r=await send("https://"+h+path,null,options.timeout||15000);host=r.origin;if(pages.size>80)pages.delete(pages.keys().next().value);pages.set(path,{at:Date.now(),value:r});return r;}catch(e){if(e.sourcePaused){if(cached&&Date.now()-cached.at<86400000)return cached.value;throw e;}console.warn("KIK mirror",h,e.message);last=e;}
  throw last;
 }
 export function parseCards(html){const out=[];for(const chunk of html.split('<div class="b-content__inline_item"').slice(1)){const link=one(chunk,/^[^>]*data-url="([^"]+)"/);if(!link)continue;try{titleKey(link);}catch{continue;}const clean=chunk.replace(/<!--.*?-->/gs,"");let title=text(one(clean,/b-content__inline_item-link">\s*<a[^>]*>(.*?)<\/a>/s));if(title)out.push({link,title,poster:one(clean,/<img src="([^"]+)"/),info:text(one(clean,/b-content__inline_item-link">\s*<a[^>]*>.*?<\/a>\s*<div[^>]*>(.*?)<\/div>/s)),type:text(one(clean,/<i class="entity">(.*?)<\/i>/s))});}return out;}
