@@ -76,6 +76,8 @@ public final class Site {
   Log.w("KIK","Catalogue refused requests; pausing until "+blockedUntil);
   if(UiRuntime.app!=null)prefs().edit().putLong("blocked_until",blockedUntil).putString("blocked_reason",reason).apply();
  }
+ /** HDRezka is refusing this network right now; KIK's own service stands in for it. */
+ public static boolean accessPaused(){load();return System.currentTimeMillis()<blockedUntil;}
  /** A deliberate retry is allowed at most once every two minutes while access is paused. */
  public static synchronized boolean retryNow(){
   load();long now=System.currentTimeMillis();if(now>=blockedUntil)return true;if(now<nextProbeAt)return false;
@@ -284,6 +286,25 @@ public final class Site {
  public static Film film(String link)throws IOException{return film(link,false);}
  private static Film film(String link,boolean force)throws IOException{
   if(FreeSources.ua(link))return FreeSources.film(link);
+  // HDRezka refuses this network: KIK's own service reads the page from its address, and playback goes through it too.
+  if(accessPaused())return serviceFilm(link);
+  try{return directFilm(link,force);}catch(IOException e){if(paused(e))return serviceFilm(link);throw e;}
+ }
+ static final String SERVICE="kik-service";
+ /** The same title as KIK's service sees it; origin {@link #SERVICE} routes its episodes and streams through the service. */
+ static Film serviceFilm(String link)throws IOException{
+  JSONObject o=FreeSources.get("/api/film?link="+FreeSources.enc(link),30000);
+  Film f=new Film();f.link=o.optString("link",link);f.origin=SERVICE;f.id=o.optString("id",null);f.title=o.optString("title",null);f.original=o.optString("original",null);f.poster=o.optString("poster",null);
+  f.description=o.optString("description",null);f.year=o.optString("year",null);f.duration=o.optString("duration",null);f.series=o.optBoolean("series");f.defaultVoice=o.optString("defaultVoice",null);f.imdb=o.optString("imdb",null);
+  String rating=o.optString("rating","");if(!rating.isEmpty()&&!"null".equals(rating)){f.rating=rating;f.ratingName="IMDb";}
+  JSONArray g=o.optJSONArray("genres");if(g!=null)for(int i=0;i<g.length();i++)f.genres.add(g.optString(i));
+  JSONArray v=o.optJSONArray("voices");if(v!=null)for(int i=0;i<v.length();i++){JSONObject x=v.optJSONObject(i);if(x==null)continue;Voice y=new Voice();y.id=x.optString("id");y.name=x.optString("name");y.premium=x.optBoolean("premium");y.camrip=x.optBoolean("camrip");y.ads=x.optBoolean("ads");y.director=x.optBoolean("director");if(!y.ads)f.voices.add(y);}
+  JSONArray e=o.optJSONArray("episodes");if(e!=null)for(int i=0;i<e.length();i++){JSONObject x=e.optJSONObject(i);if(x==null)continue;Episode y=new Episode();y.season=x.optString("season");y.episode=x.optString("episode");y.title=x.optString("title",null);f.episodes.add(y);if(!f.seasons.contains(y.season))f.seasons.add(y.season);}
+  JSONArray r=o.optJSONArray("related");if(r!=null)for(int i=0;i<r.length()&&f.related.size()<12;i++){JSONObject x=r.optJSONObject(i);if(x==null)continue;Card c=new Card();c.link=x.optString("link");c.title=x.optString("title");c.poster=x.optString("poster",null);c.info=x.optString("info",null);f.related.add(c);}
+  if(f.title==null||f.voices.isEmpty()&&f.id==null)throw new IOException("Service film unreadable");
+  return f;
+ }
+ private static Film directFilm(String link,boolean force)throws IOException{
   String key=Progress.norm(link);FilmPage cached;FutureTask<FilmPage> task;boolean owner=false;
   synchronized(FILM_PAGES){
    cached=force?null:FILM_PAGES.get(key);
@@ -382,12 +403,18 @@ public final class Site {
  private static int num(String s){try{return Integer.parseInt(s);}catch(Exception e){return 0;}}
  /** Seasons and episodes differ per voice for series. */
  public static void episodesFor(Film f,String voice)throws IOException{
+  if(SERVICE.equals(f.origin)||accessPaused()){
+   try{JSONArray a=FreeSources.post("/api/episodes",new JSONObject().put("link",f.link).put("voice",voice),30000).optJSONArray("episodes");if(a==null)return;f.episodes.clear();f.seasons.clear();
+    for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;Episode y=new Episode();y.season=x.optString("season");y.episode=x.optString("episode");y.title=x.optString("title",null);f.episodes.add(y);if(!f.seasons.contains(y.season))f.seasons.add(y.season);}}catch(JSONException e){throw new IOException(e);}
+   return;}
   String body=send(filmEndpoint(f),"id="+f.id+"&translator_id="+voice+"&favs="+enc(f.favs)+"&action=get_episodes",true);
   try{JSONObject o=new JSONObject(body);if(!o.optBoolean("success"))return;parseEpisodes(o.optString("seasons")+o.optString("episodes"),f);}catch(JSONException e){throw new IOException(e);}
  }
  public static Stream stream(Film f,Voice v,String season,String episode)throws IOException{return stream(f,v,season,episode,false);}
  public static Stream stream(Film f,Voice v,String season,String episode,boolean rotate)throws IOException{
-  if(v==null||v.premium||v.ads)throw new IOException("No clean voice");IOException last=null;String original=f.origin==null?host():f.origin;int start=Arrays.asList(HOSTS).indexOf(original);if(start<0)start=0;
+  if(v==null||v.premium||v.ads)throw new IOException("No clean voice");
+  if(SERVICE.equals(f.origin)||accessPaused())return serviceStream(f,v,season,episode,rotate);
+  IOException last=null;String original=f.origin==null?host():f.origin;int start=Arrays.asList(HOSTS).indexOf(original);if(start<0)start=0;
   long deadline=System.nanoTime()+25_000_000_000L;
   for(int attempt=0;attempt<HOSTS.length&&System.nanoTime()<deadline;attempt++){
    String mirror=HOSTS[(start+attempt+(rotate?1:0))%HOSTS.length];
@@ -396,6 +423,21 @@ public final class Site {
    }catch(IOException e){if(paused(e))throw e;last=e;}
   }throw last==null?new IOException("Mirrors unavailable"):last;
  }
+ /** Stream links through KIK's service: they come back as its own /api/media addresses, played with this TV's sign-in. */
+ private static Stream serviceStream(Film f,Voice v,String season,String episode,boolean rotate)throws IOException{
+  try{
+   JSONObject body=new JSONObject().put("link",f.link).put("voice",v.id).put("recovery_attempt",rotate?1:0);if(f.series)body.put("season",season).put("episode",episode);
+   JSONArray q=FreeSources.post("/api/stream",body,40000).optJSONArray("qualities");Stream s=new Stream();
+   if(q!=null)for(int i=0;i<q.length();i++){JSONObject x=q.optJSONObject(i);if(x==null)continue;String label=x.optString("label"),url=x.optString("url");if(label.isEmpty()||url.isEmpty())continue;
+    List<String> alts=new ArrayList<String>();JSONArray a=x.optJSONArray("alternatives");if(a!=null)for(int j=0;j<a.length();j++)if(!alts.contains(a.optString(j)))alts.add(a.optString(j));if(alts.isEmpty())alts.add(url);
+    s.qualities.put(label,url);s.alternatives.put(label,alts);}
+   if(s.qualities.isEmpty())throw new IOException("No direct media");
+   List<String> labels=new ArrayList<String>(s.qualities.keySet());Collections.sort(labels,(x,y)->Integer.compare(quality(y),quality(x)));LinkedHashMap<String,String> sorted=new LinkedHashMap<String,String>();for(String l:labels)sorted.put(l,s.qualities.get(l));s.qualities=sorted;
+   return s;
+  }catch(JSONException e){throw new IOException(e);}
+ }
+ /** Media from KIK's own service needs this TV's sign-in on every request. */
+ static boolean serviceMedia(String url){return url!=null&&url.startsWith(UpdateConfig.WEB_ORIGIN+"/");}
  private static String filmEndpoint(Film f){return "https://"+(f.origin==null?host():f.origin)+"/ajax/get_cdn_series/?t="+System.currentTimeMillis();}
  private static Stream requestStream(Film f,Voice v,String season,String episode)throws IOException{
   String form="id="+f.id+"&translator_id="+v.id+"&favs="+enc(f.favs)+(f.series?"&season="+season+"&episode="+episode+"&action=get_stream":"&is_camrip="+(v.camrip?1:0)+"&is_ads="+(v.ads?1:0)+"&is_director="+(v.director?1:0)+"&action=get_movie");
