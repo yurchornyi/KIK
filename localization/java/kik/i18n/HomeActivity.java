@@ -190,25 +190,23 @@ public final class HomeActivity extends Activity {
   final long started=SystemClock.elapsedRealtime();final int gen=++loadGeneration;final String profile=ProfileStore.current(this);
   new Thread(()->{
    final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);
-   final List<Row> local=localRows(profile);List<Row> cached=fromCache();boolean pausedAtStart=Site.accessPaused();
-   if(!cached.isEmpty()&&cached.get(0).title.startsWith("Інше джерело")!=pausedAtStart)cached=new ArrayList<Row>();
+   final List<Row> local=localRows(profile);List<Row> cached=fromCache();
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
    Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");
    // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
-   final List<Row> saved=pausedAtStart?null:savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
+   final List<Row> saved=savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
    if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(local,cached,preferences);
    Log.d("KIK.Load","Home rows "+(SystemClock.elapsedRealtime()-started)+"ms"+(saved!=null?" (saved)":""));translateNow(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
    final List<Row> first=all;
    main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if((!first.isEmpty()||loadedOnce)&&!(loadedOnce&&signature(first).equals(shownSignature)))show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
    if(saved!=null&&!cached.isEmpty()){final List<Row> fresh=Recommendations.rows(this,preferences,cached);saveRecommendations(profile,fresh);translateNow(fresh);main.post(()->{if(valid(gen,profile))for(Row r:fresh)updateRecommendations(r);});}
    long cacheAge=System.currentTimeMillis()-getSharedPreferences("kik_home",0).getLong("updated",0);
-   if(!cached.isEmpty()&&cached.get(0).title.startsWith("Інше джерело")==Site.accessPaused()&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
+   if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
    });}:null,preferences);
    if(site.isEmpty()){main.post(()->{if(valid(gen,profile)&&first.isEmpty()){heroTitle.setText("Що подивимось?");heroText.setText("Не вдалося завантажити новинки. Відкрийте каталог або спробуйте ще раз.");HeroActions.label(watch,"Спробувати ще",HeroActions.RETRY);watch.setOnClickListener(v->load());more.setVisibility(View.GONE);later.setVisibility(View.GONE);watch.requestFocus();}});return;}
    refreshedAt=SystemClock.elapsedRealtime();saveCache(site);
-   if(Site.accessPaused()&&!cached.isEmpty()&&!cached.get(0).title.startsWith("Інше джерело")){final List<Row> switched=homeRows(local,site,preferences);translateNow(switched);main.post(()->{if(valid(gen,profile)){show(switched);translateLater(switched,gen,profile);}});}
    if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(Recommendations.withoutDisliked(preferences,site.subList(1,site.size())));translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
     // The first catalogue row is already usable. Append remaining rows without replacing focus.
     appendRows(rest);translateLater(rest,gen,profile);
@@ -279,22 +277,16 @@ public final class HomeActivity extends Activity {
   for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=o.optString("link",null);i.title=o.optString("title",null);i.poster=o.optString("poster",null);i.year=o.optString("year",null);i.genre=o.optString("genre",null);if(i.link!=null&&i.title!=null)saved.items.add(i);}
   return saved;
  }
- private List<Row> alternativeRows(java.util.function.Consumer<Row> first){
-  Row row=new Row("Інше джерело · UASerials");try{for(Site.Card c:FreeSources.independentCards("",null,1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre="Українською";i.sub="Відкрити на UASerials";row.items.add(i);if(row.items.size()>=15)break;}}catch(Exception e){Log.w("KIK","Alternative catalogue",e);}
-  if(row.items.isEmpty())return new ArrayList<Row>();if(first!=null)first.accept(row);return Collections.singletonList(row);
- }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
-  if(Site.accessPaused())return alternativeRows(first);
   final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
    try{Row r=new Row(ROWS[idx][0]);for(Site.Card c:Site.list(ROWS[idx][1],null,ROWS[idx][2],1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
    catch(Exception e){Log.w("KIK","Home row "+ROWS[idx][0]+": "+e);}});
    threads.add(t);t.start();
-   if(k==0){try{t.join();}catch(InterruptedException ignored){}if(Site.accessPaused()){if(out[0]!=null&&!out[0].items.isEmpty()){out[0].title="Інше джерело · UASerials";if(first!=null)first.accept(out[0]);return Collections.singletonList(out[0]);}return alternativeRows(first);}}
+   if(k==0)try{t.join();}catch(InterruptedException ignored){} // the first request passes the bot check for the rest
   }
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty())first.accept(out[0]);
   for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  if(Site.accessPaused())return alternativeRows(first);
   List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
  }
  private void saveCache(List<Row> rows){

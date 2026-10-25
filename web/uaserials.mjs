@@ -23,29 +23,12 @@ export async function rezkaTwin({title,original,year,series}={}){
  if(twins.size>=300)twins.delete(twins.keys().next().value);twins.set(key,found);return found;
 }
 /** Search results: a title also on HDRezka becomes that playable card under its Ukrainian name, so one show appears once. */
-export async function uaSearch(params,{list=uaCatalogue,twin=rezkaTwin}={}){
- const items=await list(params);if(!params.query||params.independent==='1')return items;
- return Promise.all(items.map(async(item,i)=>{if(i>=8)return item;const match=await twin({title:item.title,original:item.original,year:item.info}).catch(()=>null);return match?{...match,title:item.title,poster:match.poster||item.poster,uaLink:item.link}:item;}));
+export async function uaSearch(params){
+ const items=await uaCatalogue(params);if(!params.query)return items;
+ return Promise.all(items.map(async(item,i)=>{if(i>=8)return item;const twin=await rezkaTwin({title:item.title,original:item.original,year:item.info}).catch(()=>null);return twin?{...twin,title:item.title,poster:twin.poster||item.poster,uaLink:item.link}:item;}));
 }
 /** Detail page: prefer the playable HDRezka twin, keeping the Ukrainian name and description. */
-export async function uaFilmPlayable(link,load,{independent=false,read=uaFilm,twin=rezkaTwin}={}){
- const f=await read(link);if(independent)return f;
- const match=await twin({title:f.title,original:f.original,year:f.year,series:f.series}).catch(()=>null);if(!match)return f;
- const r=await load(match.link);return {...r,title:f.title,description:f.description||r.description,uaLink:link};
-}
-/** A verified independent title, without searching or loading an HDRezka twin. */
-export async function findUaAlternative({title,original='',year='',series}={},{list=uaCatalogue,read=uaFilm}={}){
- const names=[...new Set([title,original].map(v=>String(v||'').trim()).filter(v=>v.length>1))].slice(0,2),wantedYear=year4(year);
- for(const name of names){
-  const cards=await list({query:name,page:1});
-  for(const c of cards.filter(c=>sameName(c.title,name)||sameName(c.original,name)).slice(0,3)){
-   if(wantedYear&&year4(c.info)&&year4(c.info)!==wantedYear)continue;
-   let f;try{f=await read(c.link);}catch{continue;}
-   if(wantedYear&&year4(f.year)&&year4(f.year)!==wantedYear)continue;
-   if(series!==undefined&&f.series!==series)continue;
-   if(!names.some(n=>sameName(f.title,n)||sameName(f.original,n)))continue;
-   return f;
-  }
- }
- return null;
+export async function uaFilmPlayable(link,load){
+ const f=await uaFilm(link),twin=await rezkaTwin({title:f.title,original:f.original,year:f.year,series:f.series}).catch(()=>null);if(!twin)return f;
+ const r=await load(twin.link);return {...r,title:f.title,description:f.description||r.description,uaLink:link};
 }
