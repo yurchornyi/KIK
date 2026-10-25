@@ -11,25 +11,25 @@ test('synopsis is cleaned, cut at a sentence and must be Ukrainian',()=>{
  assert.equal(cleanSynopsis('Коротко.'),null);
  assert.equal(cleanSynopsis('Життя святого Паїсія починається в Каппадокії, де його хрестить святой Арсений і дає йому ім’я.'),null);
 });
-test('synopsis is generated once per title and then served from the cache',async()=>{
- const db=fakeDb();let calls=0;const env={AI:{run:async()=>{calls++;return {response:'Хлопчик з Каппадокії стає ченцем Паїсієм і крізь війни та вигнання шукає шлях до Бога.'};}}};
+/** Sentra stubbed for one test: every request answered with reply(), counted; KIK has no AI of its own. */
+async function withSentra(reply,run){const original=globalThis.fetch,skills=[];globalThis.fetch=async(url,opts)=>{skills.push(opts.headers['x-sentra-skill']);return Response.json({choices:[{message:{content:reply()}}]});};try{return await run({SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},skills);}finally{globalThis.fetch=original;}}
+const good='Хлопчик з Каппадокії стає ченцем Паїсієм і крізь війни та вигнання шукає шлях до Бога.';
+test('synopsis is generated once per title and then served from the cache',()=>withSentra(()=>good,async(env,skills)=>{
+ const db=fakeDb();
  const a=await synopsis(db,env,link,async()=>page,async(d,f)=>f),b=await synopsis(db,env,link,async()=>{throw Error('page must not be read again');},async(d,f)=>f);
- assert.match(a.summary,/Паїсієм/);assert.equal(b.summary,a.summary);assert.equal(b.cached,true);assert.equal(calls,1);
-});
-test('synopsis falls back to the small model and returns null without AI',async()=>{
- const db=fakeDb();const models=[];const env={AI:{run:async m=>{models.push(m);if(models.length===1)throw Error('busy');return {response:'Хлопчик з Каппадокії стає ченцем і крізь війни шукає шлях до Бога.'};}}};
- assert.ok((await synopsis(db,env,link,async()=>page,async(d,f)=>f)).summary);assert.equal(models.length,2);
+ assert.match(a.summary,/Паїсієм/);assert.equal(b.summary,a.summary);assert.equal(b.cached,true);assert.equal(skills.length,1);
+}));
+test('synopsis returns null without Sentra, even with a Workers AI binding left behind',async()=>{
+ let runs=0;const env={AI:{run:async()=>{runs++;return {response:good};}}};
+ assert.equal((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,null);assert.equal(runs,0);
  assert.equal((await synopsis(fakeDb(),{},link,async()=>page,async(d,f)=>f)).summary,null);
- await assert.rejects(()=>synopsis(db,env,'https://example.com/x',async()=>page,async(d,f)=>f),/Некоректне/);
+ await assert.rejects(()=>synopsis(fakeDb(),{SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},'https://example.com/x',async()=>page,async(d,f)=>f),/Некоректне/);
 });
-test('synopsis is written by Sentra first; a non-Ukrainian answer from it goes to Workers AI',async()=>{
- const original=globalThis.fetch,skills=[];let reply='Хлопчик з Каппадокії стає ченцем Паїсієм і крізь війни та вигнання шукає шлях до Бога.';
- globalThis.fetch=async(url,opts)=>{skills.push(opts.headers['x-sentra-skill']);return Response.json({choices:[{message:{content:reply}}]});};
- try{
-  const models=[],env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t',AI:{run:async m=>{models.push(m);return {response:'Хлопчик з Каппадокії стає ченцем і крізь війни шукає шлях до Бога.'};}}};
-  assert.match((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,/Паїсієм/);assert.deepEqual(skills,['kik-synopsis']);assert.equal(models.length,0);
+test('synopsis is written by Sentra as its own skill; a non-Ukrainian answer is not taken',async()=>{
+ let reply=good;
+ await withSentra(()=>reply,async(env,skills)=>{
+  assert.match((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,/Паїсієм/);assert.deepEqual(skills,['kik-synopsis']);
   reply='Это история о монахе, который ищет веру и проходит испытания войной.';
-  assert.ok((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary);assert.equal(models.length,1);
-  assert.equal((await synopsis(fakeDb(),{SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},link,async()=>page,async(d,f)=>f)).summary,null);
- }finally{globalThis.fetch=original;}
+  assert.equal((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,null);
+ });
 });
