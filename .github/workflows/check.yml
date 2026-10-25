@@ -42,12 +42,15 @@ jobs:
       - name: Admin and settings integration with local D1
         run: |
           npm exec --prefix web -- wrangler d1 migrations apply kik-data --local --config web/wrangler.jsonc
-          npm exec --prefix web -- wrangler dev --config web/wrangler.test.jsonc --port 8791 > $RUNNER_TEMP/kik-web.log 2>&1 &
+          # A free port: on the Mac 8791 may already be taken by a local server.
+          port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+          export KIK_TEST_URL=http://localhost:$port
+          npm exec --prefix web -- wrangler dev --config web/wrangler.test.jsonc --port $port > $RUNNER_TEMP/kik-web.log 2>&1 &
           preview_pid=$!
           trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           ready=0
           for attempt in $(seq 1 30); do
-            if curl -fsS http://localhost:8791/api/health >/dev/null; then ready=1; break; fi
+            if curl -fsS $KIK_TEST_URL/api/health >/dev/null; then ready=1; break; fi
             sleep 1
           done
           if [ "$ready" != 1 ]; then cat $RUNNER_TEMP/kik-web.log; exit 1; fi
