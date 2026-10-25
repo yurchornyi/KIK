@@ -75,6 +75,8 @@ public final class Site {
   Log.w("KIK","Catalogue refused requests; pausing until "+blockedUntil);
   if(UiRuntime.app!=null)prefs().edit().putLong("blocked_until",blockedUntil).putString("blocked_reason",reason).apply();
  }
+ public static boolean accessPaused(){load();return System.currentTimeMillis()<blockedUntil;}
+ static void publicRefusal(){ban(ACCESS_PAUSED,0);}
  /** A deliberate retry is allowed at most once every two minutes while access is paused. */
  public static synchronized boolean retryNow(){
   load();long now=System.currentTimeMillis();if(now>=blockedUntil)return true;if(now<nextProbeAt)return false;
@@ -191,7 +193,8 @@ public final class Site {
   RAW.set(raw);return out;
  }
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{
-  return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);
+  if(accessPaused()){if(genre!=null)throw new IOException(ACCESS_PAUSED);List<Card> alt=FreeSources.independentCards(category,null,page);RAW.set(alt.size());return alt;}
+  try{return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);}catch(IOException e){if(!accessPaused()||genre!=null)throw e;List<Card> alt=FreeSources.independentCards(category,null,page);RAW.set(alt.size());return alt;}
  }
  private static final long LIST_TTL_MS=30*60_000L;
  /** Catalogue lists change slowly: reopening the home screen reads them from disk for half an hour instead of asking the site again. */
@@ -206,6 +209,7 @@ public final class Site {
   return html;
  }
  public static List<Card> studioList(String category,String genre,String filter,String studio,int page)throws IOException{
+  if(accessPaused())throw new IOException(ACCESS_PAUSED);
   JSONObject result=FreeSources.get("/api/catalogue?category="+FreeSources.enc(category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter)+"&studio="+FreeSources.enc(studio)+"&page="+page,60000);
   List<Card> out=new ArrayList<Card>();JSONArray items=result.optJSONArray("items");if(items==null)throw new IOException("Studio catalogue unavailable");
   for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null||!FreeSources.rezka(item.optString("link")))continue;Card c=new Card();c.link=item.optString("link");c.title=item.optString("title");c.poster=item.optString("poster",null);c.info=item.optString("sourceInfo",item.optString("info",null));c.type=item.optString("type",null);c.studio=Studios.id(item.optJSONArray("studios"));if(!CountryFilter.blocked(c.info))out.add(c);}
@@ -214,9 +218,10 @@ public final class Site {
  public static List<Card> search(String query,int page)throws IOException{return search(query,page,true);}
  /** fix=false for lookups by a known name (title pages, deep links): other names only when nothing was found, as before. */
  public static List<Card> search(String query,int page,boolean fix)throws IOException{
-  // Ukrainian names come from KIK's own service; ask it while the source search runs instead of after it.
+  if(accessPaused()){List<Card> alt=FreeSources.independentCards("",query,page);RAW.set(alt.size());return relevant(query,alt);}
+  List<Card> out;try{out=serviceCards("/api/catalogue?query="+FreeSources.enc(query)+"&page="+page);}catch(IOException e){if(!accessPaused())throw e;List<Card> alt=FreeSources.independentCards("",query,page);RAW.set(alt.size());return relevant(query,alt);}
+  // Only enrich a successful source search; a refusal must not start twin lookups in parallel.
   FutureTask<List<Card>> ua=null;if(page==1){ua=new FutureTask<List<Card>>(()->FreeSources.cards(query));Thread t=new Thread(ua,"kik-search-ua");t.setDaemon(true);t.start();}
-  List<Card> out=serviceCards("/api/catalogue?query="+FreeSources.enc(query)+"&page="+page);
   out=new ArrayList<Card>(relevant(query,out));
   // A typo, the wrong keyboard layout or a name in another language: KIK's service names the titles it most likely meant, and those go first.
   if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,serviceCards("/api/catalogue?query="+FreeSources.enc(alias)+"&page=1")));}catch(IOException ignored){}if(!fixed.isEmpty())break;}
