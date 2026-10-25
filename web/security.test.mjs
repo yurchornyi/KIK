@@ -53,3 +53,18 @@ test('supplying another email cannot bypass the legacy account login limit', asy
   assert.deepEqual(lookups,[['different@example.com',''],['','legacy.user']]);
   assert.deepEqual(keys,[await hash('different@example.com'),await hash('legacy.user')]);
 });
+test('a signed-out search for other spellings never reaches Sentra or Workers AI; a signed-in one does', async () => {
+  const original={fetch:globalThis.fetch,caches:globalThis.caches},sent=[],store=new Map();
+  globalThis.caches={default:{async match(k){return store.get(k.url)?.clone();},async put(k,r){store.set(k.url,r);}}};
+  globalThis.fetch=async(url,opts)=>{if(String(url).startsWith('https://sentra.test'))sent.push(opts.headers['x-sentra-skill']);return String(url).startsWith('https://sentra.test')?Response.json({choices:[{message:{content:'{"titles":["Интерстеллар"]}'}}]}):Response.json({search:[],results:{bindings:[]}});};
+  const token='a'.repeat(64),runs=[],calls=[];
+  const db={prepare(sql){return {bind(...args){return {async first(){calls.push(sql);if(sql.includes('FROM sessions'))return args[0]===await hash(token)?{id:'u1',username:'u',email:'u@kik.test',role:'user',expires_at:Date.now()+90*86400000}:null;if(sql.includes('ai_daily_budget'))return {calls:1};return null;},async run(){return {meta:{changes:1}};}};}};}};
+  const env={DB:db,SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t',AI:{async run(){runs.push(1);return {response:'{"titles":["X"]}'};}}};
+  try{
+    const anonymous=await worker.fetch(new Request('https://kik.example/api/search-aliases?query=qwpoeiruty'),env,{waitUntil(){}});
+    assert.deepEqual((await anonymous.json()).aliases,[]);assert.deepEqual(sent,[]);assert.equal(runs.length,0);
+    assert.ok(!calls.some(sql=>sql.includes('ai_daily_budget')),'the daily AI budget is not spent');
+    const member=await worker.fetch(new Request('https://kik.example/api/search-aliases?query=qwpoeiruty',{headers:{Authorization:'Bearer '+token}}),env,{waitUntil(){}});
+    assert.deepEqual((await member.json()).aliases,['Интерстеллар']);assert.deepEqual(sent,['kik-search-fix']);
+  }finally{globalThis.fetch=original.fetch;globalThis.caches=original.caches;}
+});

@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
-    "hls.js": "^1.6.13"
+    "hls.js": "^1.7.3"
   },
   "devDependencies": {
-    "wrangler": "4.151.1"
+    "wrangler": "4.152.0"
   }
 }

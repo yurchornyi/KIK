@@ -4,6 +4,25 @@ Android TV APK та вебверсія зі спільною історією. �
 
 KIK збирається накладанням власного коду на вихідний APK 1.2.0. Вихідний APK, декомпільований код, приватні дані та ключ підпису не входять у репозиторій. Для локального збирання потрібна власна вихідна копія APK та інструменти, перелічені нижче.
 
+## Де що розміщено
+
+Усе серверне — в Cloudflare-акаунті **Basic** (`175aa69489121cb4274c780bc5195f18`). Інших акаунтів KIK не використовує.
+
+| Що | Тип | Адреса | Код і конфіг | Розгортання |
+|---|---|---|---|---|
+| `kik` | Worker | власної адреси немає (`workers_dev: false`), відкривається через `kiktv.pages.dev` | `web/` (`web/wrangler.jsonc`, вхід `web/server.mjs`, статика з `web/dist`) | `cd web && npm run deploy` |
+| `kiktv` | Pages-проєкт | [kiktv.pages.dev](https://kiktv.pages.dev) | `cloudflare/kiktv/` (`functions/_middleware.js` віддає кожен запит Worker'у `kik` через service binding `KIK`) | `cd cloudflare/kiktv && npx wrangler pages deploy` |
+| `kik-updates` | Worker | [kik-updates.basic-175.workers.dev](https://kik-updates.basic-175.workers.dev/health) | `cloudflare/worker.mjs`, `cloudflare/wrangler.jsonc` | `npx wrangler deploy --config cloudflare/wrangler.jsonc` |
+| `kik-data` | D1 | ID `a2f6bf81-66e7-47e7-bc22-29723145cabb` | міграції `web/migrations/` | `cd web && npx wrangler d1 migrations apply kik-data --remote` |
+
+- **`kik`** — сайт і весь API: акаунти, профілі, синхронізація історії, каталог, плеєр, адмінпанель, синопсиси, пошук, рекомендації, черга сканера реклами. Прив'язки: D1 `DB` → `kik-data`, Workers AI `AI` (лише запасний варіант, коли Sentra недоступна), ліміти запитів `AUTH_LIMIT`, `API_LIMIT`, `MEDIA_LIMIT`, `LOGIN_LIMIT`, статика `ASSETS`. Секрети (лише назви): `SENTRA_URL`, `SENTRA_TOKEN` (записує сама Sentra), `TMDB_READ_TOKEN`, `MEDIA_TOKEN_KEY`, `AD_SCANNER_TOKEN`.
+- **`kiktv`** — лише коротка публічна адреса: своєї логіки не має, усе обробляє `kik`. TV-застосунок і сканер реклами звертаються саме сюди.
+- **`kik-updates`** — метадані автооновлень TV: `/health`, `/v1/update.json`, `/download`. Бере `update.json` з останнього релізу GitHub і пропускає лише реліз з підписом, закріпленим у `SIGNER_SHA256`. Докладно: [docs/AUTO-UPDATES_UA.md](docs/AUTO-UPDATES_UA.md).
+- **`kik-data`** — уся база: `users`, `sessions`, `pairs`, `profiles`, `profile_settings`, `records` (історія), `registration_access`, `admin_events`, `site_reports`, `recommendation_cache`, `synopsis_cache`, `public_translations`, `ai_daily_budget`, `ad_breaks`, `ad_scan_queue`. Sentra її лише читає.
+- `web/wrangler.test.jsonc` — тільки для локального `wrangler dev` і CI, публічної адреси не має.
+
+Поза Cloudflare Basic: код і APK — [GitHub yurchornyi/KIK](https://github.com/yurchornyi/KIK) (APK у Releases); AI — Sentra, окремий сервіс власника ([SENTRA.md](SENTRA.md)); сканер реклами — постійно ввімкнений ПК власника (`web/scanner/`, [docs/AD-SKIP_UA.md](docs/AD-SKIP_UA.md)); ключ підпису APK — лише на комп'ютері власника (`work/signing/`).
+
 ## Версія 1.4.3-uk — усі сезони й одна картка на серіал
 
 - Серіал показує всі сезони, які мають провідні озвучки. Для кожної серії береться ваша обрана озвучка, далі українська, потім російська; якщо української для серії немає, з'являється підказка.
