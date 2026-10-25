@@ -69,7 +69,8 @@ public final class Site {
  /** True for the error {@link #page} and {@link #film} throw while the catalogue bans this network. */
  public static boolean blocked(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&e.getMessage().contains(IP_BLOCKED))return true;return false;}
  public static boolean paused(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&(e.getMessage().contains(IP_BLOCKED)||e.getMessage().contains(ACCESS_PAUSED)))return true;return false;}
- static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;if(code==403||code==429||html!=null&&html.contains("anubis_challenge"))return ACCESS_PAUSED;return null;}
+ static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;// The routine bot check is solved in send(); only a ban, a rate limit or a plain 403 pauses the catalogue.
+  boolean challenge=html!=null&&html.contains("anubis_challenge");if(code==429||code==403&&!challenge)return ACCESS_PAUSED;return null;}
  private static synchronized void ban(String reason,long retryMs){
   blockedReason=reason;blockedUntil=System.currentTimeMillis()+Math.max(BAN_PAUSE_MS,Math.min(retryMs,24*60*60_000L));
   Log.w("KIK","Catalogue refused requests; pausing until "+blockedUntil);
@@ -96,10 +97,27 @@ public final class Site {
    if(wait>0)try{Thread.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Request cancelled");}
    if(System.currentTimeMillis()<blockedUntil)throw new IOException(blockedReason);
    String body=transfer(url,form,xhr);
+   if(body.contains("anubis_challenge")&&!blocked(body))body=solve(body,url);
+   if(body.contains("anubis_challenge"))throw new IOException("bot check not passed");
    Integer code=PAGE_CODE.get();String reason=mirror(PAGE_HOST.get())?pauseReason(code==null?0:code,body):null;
    if(reason!=null){Long retry=PAGE_RETRY_MS.get();ban(reason,retry==null?0:retry);throw new IOException(reason);}
    return body;
   }finally{SLOTS.release();}
+ }
+ /** HDRezka's routine bot check (Anubis): a small SHA-256 proof of work, as a browser would do. */
+ private static String solve(String html,String url)throws IOException{
+  try{
+   Matcher m=Pattern.compile("id=\"anubis_challenge\"[^>]*>(.*?)</script>",Pattern.DOTALL).matcher(html);if(!m.find())return html;
+   JSONObject ch=new JSONObject(m.group(1));JSONObject c=ch.getJSONObject("challenge");int d=ch.getJSONObject("rules").optInt("difficulty",2);
+   if(d>5)throw new IOException("bot check too hard: "+d);
+   String data=c.getString("randomData"),prefix=new String(new char[d]).replace('\0','0');
+   java.security.MessageDigest sha=java.security.MessageDigest.getInstance("SHA-256");long t=System.currentTimeMillis();String hash=null;int nonce=0;
+   for(;nonce<5_000_000;nonce++){StringBuilder hex=new StringBuilder();for(byte x:sha.digest((data+nonce).getBytes("UTF-8")))hex.append(String.format("%02x",x));if(hex.indexOf(prefix)==0){hash=hex.toString();break;}}
+   if(hash==null)throw new IOException("bot check timeout");
+   String q="id="+URLEncoder.encode(c.getString("id"),"UTF-8")+"&response="+hash+"&nonce="+nonce+"&redir="+URLEncoder.encode(url,"UTF-8")+"&elapsedTime="+(System.currentTimeMillis()-t+500);
+   Log.d("KIK","Site check solved with difficulty "+d);
+   return transfer("https://"+new URL(url).getHost()+"/.within.website/x/cmd/anubis/api/pass-challenge?"+q,null,false);
+  }catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}
  }
  private static String transfer(String url,String form,boolean xhr)throws IOException{
   for(int hop=0;hop<6;hop++){
