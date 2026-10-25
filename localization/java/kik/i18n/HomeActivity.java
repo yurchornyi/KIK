@@ -131,23 +131,18 @@ public final class HomeActivity extends Activity {
  static List<Site.Genre> mainGenres(List<Site.Genre> got){List<Site.Genre> out=new ArrayList<Site.Genre>();for(int n=0;n<MAIN_GENRES;n++)for(Site.Genre g:got)if(GENRE_NAMES[n][0].equalsIgnoreCase(g.name.trim())&&!out.contains(g))out.add(g);return out;}
  static boolean genreKnown(String ru){if(ru!=null)for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return true;return false;}
  static String genreName(String ru){if(ru==null)return null;for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return g[1];return TitleTranslate.shown(ru);}
- /** Netflix-style genre rows: the first ten everyday genres, the ones this profile watches most on top; six rows at most. */
+ /** Genre rows reuse the already loaded home cards, without six more catalogue requests on startup. */
  /** The first five letters match both «Комедія» and «Комедии»; a shorter name («Шоу») is matched whole. */
  private static String stem(String name){String s=name.toLowerCase(Locale.ROOT);return s.substring(0,Math.min(5,s.length()));}
- private List<Row> genreRows(Recommendations.Snapshot taste){
-  List<Site.Genre> all=filmGenres();if(all.isEmpty())return new ArrayList<Row>();
+ private List<Row> genreRows(Recommendations.Snapshot taste,List<Row> catalogue){
   final Map<String,Double> weight=new HashMap<String,Double>();
   if(taste!=null)for(RecommendationRanker.Signal s:taste.signals)if(s.genre!=null)for(String[] g:GENRE_NAMES){String key=s.genre.toLowerCase(Locale.ROOT);if(key.contains(stem(g[0]))||key.contains(stem(g[1])))weight.merge(g[0],s.weight,Double::sum);}
-  List<Site.Genre> picked=new ArrayList<Site.Genre>();
-  for(int n=0;n<10;n++)for(Site.Genre g:all)if(GENRE_NAMES[n][0].equalsIgnoreCase(g.name.trim()))picked.add(g);
-  Collections.sort(picked,(a,b)->Double.compare(weight.getOrDefault(b.name.trim(),0d),weight.getOrDefault(a.name.trim(),0d)));
-  if(picked.size()>6)picked=new ArrayList<Site.Genre>(picked.subList(0,6));
-  final Row[] out=new Row[picked.size()];List<Thread> threads=new ArrayList<Thread>();
-  for(int k=0;k<picked.size();k++){final int idx=k;final Site.Genre g=picked.get(k);Thread t=new Thread(()->{
-   try{Row r=new Row(genreName(g.name));for(Site.Card c:Site.list("films",g.slug,"popular",1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
-   catch(Exception e){Log.w("KIK","Genre row "+g.name+": "+e);}});threads.add(t);t.start();}
-  for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);return rows;
+  List<String[]> picked=new ArrayList<String[]>();for(int n=0;n<10;n++)picked.add(GENRE_NAMES[n]);
+  Collections.sort(picked,(a,b)->Double.compare(weight.getOrDefault(b[0],0d),weight.getOrDefault(a[0],0d)));
+  List<Row> rows=new ArrayList<Row>();for(String[] genre:picked){Row row=new Row(genre[1]);Set<String> seen=new HashSet<String>();
+   for(Row source:catalogue)for(Item item:source.items)if(item.genre!=null&&item.genre.toLowerCase(Locale.ROOT).contains(stem(genre[0]))&&seen.add(norm(item.link))&&row.items.size()<15)row.items.add(item);
+   if(row.items.size()>=3)rows.add(row);if(rows.size()>=6)break;
+  }return rows;
  }
  /** The catalogue's right half: every film genre in a grid, like Netflix's categories; OK opens that genre. */
  private void fillGenres(final LinearLayout box,final PopupWindow popup){
@@ -206,7 +201,7 @@ public final class HomeActivity extends Activity {
    main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if((!first.isEmpty()||loadedOnce)&&!(loadedOnce&&signature(first).equals(shownSignature)))show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
    if(saved!=null&&!cached.isEmpty()){final List<Row> fresh=Recommendations.rows(this,preferences,cached);saveRecommendations(profile,fresh);translateNow(fresh);main.post(()->{if(valid(gen,profile))for(Row r:fresh)updateRecommendations(r);});}
    long cacheAge=System.currentTimeMillis()-getSharedPreferences("kik_home",0).getLong("updated",0);
-   if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<15*60_000||cacheAge>=0&&cacheAge<15*60_000)){recommendLater(preferences,cached,gen,profile);return;}
+   if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
    });}:null,preferences);
@@ -292,7 +287,7 @@ public final class HomeActivity extends Activity {
   }
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty())first.accept(out[0]);
   for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
  }
  private void saveCache(List<Row> rows){
   JSONArray a=new JSONArray();
@@ -315,12 +310,10 @@ public final class HomeActivity extends Activity {
   main.removeCallbacks(detailTask);
   if(i.description!=null)return;
   detailTask=()->new Thread(()->{
-   try{Site.Film f=Site.film(i.link);String d=f.description==null?"":DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT);mergeTranslations(TitleTranslate.resolve(f.genres.isEmpty()?Collections.<String>emptySet():Collections.singleton(f.genres.get(0)),Ui.TRANSLATE_WAIT));
+   try{Site.Film f=FreeSources.metadata(i.link);RecommendationMetadata.remember(this,f);String d=f.description==null?"":f.description;
     final String[] g=new String[]{d,f.poster,f.rating,f.year,f.genres.isEmpty()?null:f.genres.get(0),f.age,f.duration};DETAILS.put(norm(i.link),g);
     main.post(()->{i.description=g[0];if(g[1]!=null&&!i.wideArt)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];if(g[5]!=null)i.age=g[5];if(g[6]!=null)i.duration=g[6];
      if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(facts(i));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null&&!i.wideArt)Images.crossfade(i.wide,heroImage);}});
-    String translated=DescTranslate.tr(f.description);Map<String,String> got=TitleTranslate.resolve(Collections.singleton(g[4]));
-    main.post(()->{if(destroyed)return;mergeTranslations(got);g[0]=translated;i.description=translated;if(hero==i){heroText.setText(translated);heroMeta.setText(facts(i));}});
    }catch(Exception e){Log.w("KIK","Hero details: "+e);}
   },"kik-hero").start();
   main.postDelayed(detailTask,600);

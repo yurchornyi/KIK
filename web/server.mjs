@@ -127,9 +127,9 @@ async function api(request,env,ctx){
   if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
   if(params.studio&&!env.TMDB_READ_TOKEN)fail('Фільтр студій тимчасово недоступний. Спробуйте пізніше.',503);
   const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5");
-  return edgeCached(ctx,key,180,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
+  return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),180,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
   const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:catalogue}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()));return r;}

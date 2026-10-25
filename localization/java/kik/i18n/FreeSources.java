@@ -2,12 +2,22 @@ package kik.i18n;
 import java.io.*;import java.net.*;import java.util.*;import org.json.*;
 /** Bounded public data requests to KIK's fixed metadata service; no user credentials. */
 final class FreeSources {
- static boolean rezka(String link){return link!=null&&link.matches("^https://(hdrezka\\.sh|hdrezka\\.website|rezka\\.ag|hdrezka\\.ag)/(films|series|cartoons|animation)/[a-z0-9-]+/[0-9]+-[^/?#]+\\.html$");}
+ static boolean rezka(String link){return link!=null&&link.matches("^https://(hdrezka\\.sh|hdrezka\\.website|rezka\\.ag|hdrezka\\.ag)/(films|series|cartoons|animation|documentary)/[a-z0-9-]+/[0-9]+-[^/?#]+\\.html$");}
  static boolean ua(String link){return link!=null&&link.matches("^https://uaserials\\.com/[0-9]+-[a-z0-9-]+\\.html");}
  static String canonical(String key){return key.startsWith("uaserials/")?"https://uaserials.com/"+key.substring(10):"https://hdrezka.sh/"+key;}
  static JSONObject get(String path)throws IOException{return get(path,6500);}
  static JSONObject get(String path,int timeout)throws IOException{HttpURLConnection c=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+path).openConnection();CloudSync.authorize(c);c.setConnectTimeout(4500);c.setReadTimeout(timeout);c.setInstanceFollowRedirects(false);try{if(c.getResponseCode()!=200)throw new IOException("Public source unavailable");try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>2*1024*1024)throw new IOException("Public data limit");out.write(b,0,n);}return new JSONObject(out.toString("UTF-8"));}}catch(JSONException e){throw new IOException(e);}finally{c.disconnect();}}
  static String enc(String v){try{return URLEncoder.encode(v,"UTF-8");}catch(Exception e){return "";}}
+ /** Cached public film facts for background UI. Stream URLs still come from Site after the viewer starts playback. */
+ static Site.Film metadata(String link)throws IOException{
+  if(!rezka(link))throw new IOException("Source link");JSONObject d=get("/api/film?link="+enc(link),20000);
+  Site.Film f=new Site.Film();f.link=link;f.id=d.optString("id",null);f.title=d.optString("sourceTitle",d.optString("title",null));f.original=d.optString("original",null);f.poster=d.optString("poster",null);f.description=d.optString("description",null);f.year=d.optString("year",null);f.country=d.optString("country",null);f.duration=d.optString("duration",null);f.age=d.optString("age",null);f.rating=d.optString("rating",null);f.imdb=d.optString("imdb",null);f.series=d.optBoolean("series");
+  if(f.title==null||f.title.isEmpty())throw new IOException("Film metadata unavailable");
+  JSONArray genres=d.optJSONArray("genres");for(int i=0;genres!=null&&i<genres.length();i++)f.genres.add(genres.optString(i));
+  JSONArray episodes=d.optJSONArray("episodes");for(int i=0;episodes!=null&&i<episodes.length();i++){JSONObject x=episodes.optJSONObject(i);if(x==null)continue;Site.Episode e=new Site.Episode();e.season=x.optString("season");e.episode=x.optString("episode");e.title=x.optString("title",null);if(!e.season.isEmpty()&&!e.episode.isEmpty()){f.episodes.add(e);if(!f.seasons.contains(e.season))f.seasons.add(e.season);}}
+  JSONArray related=d.optJSONArray("related");for(int i=0;related!=null&&i<related.length();i++){JSONObject x=related.optJSONObject(i);if(x==null||!rezka(x.optString("link")))continue;Site.Card c=new Site.Card();c.link=x.optString("link");c.title=x.optString("sourceTitle",x.optString("title"));c.poster=x.optString("poster",null);c.info=x.optString("sourceInfo",x.optString("info",null));f.related.add(c);}
+  return f;
+ }
  static List<Site.Card> cards(String query)throws IOException{JSONArray a=get("/api/catalogue?source=uaserials"+(query==null?"":"&query="+enc(query))).optJSONArray("items");List<Site.Card> out=new ArrayList<>();if(a!=null)for(int i=0;i<a.length();i++){JSONObject d=a.optJSONObject(i);// A title also on HDRezka arrives as that playable card under its Ukrainian name.
    if(d==null)continue;boolean twin=rezka(d.optString("link"));if(!twin)continue;Site.Card c=new Site.Card();c.link=d.optString("link");c.title=d.optString("title");c.poster=d.optString("poster",null);c.info=twin?d.optString("info",null):"Українською • UASerials";c.type=twin?d.optString("type",null):"UASerials";out.add(c);}return out;}
  static Site.Film film(String link)throws IOException{if(!ua(link))throw new IOException("Source link");JSONObject d=get("/api/film?link="+enc(link));

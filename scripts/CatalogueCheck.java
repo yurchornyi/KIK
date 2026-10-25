@@ -45,8 +45,8 @@ public final class CatalogueCheck {
   require(Site.blocked(new java.io.IOException(new java.io.IOException(Site.IP_BLOCKED)))&&!Site.blocked(new java.io.IOException("HTTP 500")),"A ban survives the film loader's exception wrapping");
   require(Site.pauseReason(403,"Нами была обнаружена подозрительная активность с вашего IP-адреса").equals(Site.IP_BLOCKED)
    &&Site.pauseReason(429,"Too many requests").equals(Site.ACCESS_PAUSED)
-   &&Site.pauseReason(403,"anubis_challenge") == null
-   &&Site.pauseReason(200,table)==null,"Access refusals pause all mirrors without mistaking a bot challenge for a ban");
+   &&Site.pauseReason(200,"anubis_challenge").equals(Site.ACCESS_PAUSED)
+   &&Site.pauseReason(200,table)==null,"Access refusals and bot challenges pause all mirrors");
   require(Site.retryAfterMs("120")==120000&&Site.retryAfterMs("86401")==24*60*60_000L&&Site.retryAfterMs("-10")==0,"Retry-After seconds are bounded");
   System.out.println("Catalogue checks passed: 21");
  }

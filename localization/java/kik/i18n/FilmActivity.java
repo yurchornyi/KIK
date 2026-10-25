@@ -68,7 +68,7 @@ public final class FilmActivity extends Activity {
   later.requestFocus();Ui.enter(name,0);Ui.enter(buttons,70);
   load();
  }
- @Override protected void onResume(){super.onResume();paintTaste();if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();warm();}}
+ @Override protected void onResume(){super.onResume();paintTaste();if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();}}
 
  private int loadGeneration;
  private void load(){
@@ -120,7 +120,6 @@ public final class FilmActivity extends Activity {
   pickVoice();buildVoices();
   if(f.series){season=null;Progress.Entry e=Progress.get(this,link);if(e!=null&&e.season!=null&&f.seasons.contains(e.season))season=e.season;if(season==null&&!f.seasons.isEmpty())season=f.seasons.get(0);showEpisodes();}
   watch.setEnabled(voice!=null&&f.sourceUrl==null);paintWatch();if(f.sourceUrl!=null)watch.setText("Перегляд у KIK недоступний");if(voice!=null&&later.hasFocus())watch.requestFocus();
-  warm();
   if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(f.series?getIntent().getStringExtra("season"):null,f.series?getIntent().getStringExtra("episode"):null);}
   if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
  }
@@ -196,7 +195,7 @@ public final class FilmActivity extends Activity {
  }
  /** A language keeps the studio row open on the new language; a studio closes the row. */
  private void choose(final Site.Voice v,boolean language){
-  voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);buildVoices();warm();
+  voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);buildVoices();
   if(language){int at=Arrays.asList("uk","ru","en").indexOf(PlaybackPolicy.lang(v.name));if(at>=0)voices.getChildAt(at).requestFocus();}
   else{voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();}
   if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});
@@ -275,7 +274,6 @@ public final class FilmActivity extends Activity {
   String[] t=target(s,e);KikPlayerActivity.open(this,film,voice,t[0],t[1],name.getText().toString(),poster);
  }
  /** Fetches the stream OK would play now, while the viewer reads the page. */
- private void warm(){if(film!=null&&voice!=null&&film.sourceUrl==null&&!isFinishing()){String[] t=target(null,null);KikPlayerActivity.prefetch(this,film,voice,t[0],t[1]);}}
  private String[] target(String s,String e){
   if(film.series&&s==null){
    Progress.Entry last=Progress.get(this,link);

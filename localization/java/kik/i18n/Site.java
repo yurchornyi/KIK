@@ -3,7 +3,6 @@ import android.content.*;
 import android.util.Log;
 import java.io.*;
 import java.net.*;
-import java.security.MessageDigest;
 import java.util.*;
 import java.util.regex.*;
 import java.util.concurrent.*;
@@ -11,8 +10,8 @@ import java.util.zip.GZIPInputStream;
 import org.json.*;
 
 /**
- * KIK's own client for the catalogue site: passes the Anubis proof-of-work check, keeps its cookies,
- * and parses catalogue, search, film pages and stream links. Call only off the main thread.
+ * KIK's own client for the catalogue site: keeps its cookies and parses catalogue,
+ * search, film pages and stream links. Call only off the main thread.
  */
 public final class Site {
  static final String UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
@@ -70,7 +69,7 @@ public final class Site {
  /** True for the error {@link #page} and {@link #film} throw while the catalogue bans this network. */
  public static boolean blocked(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&e.getMessage().contains(IP_BLOCKED))return true;return false;}
  public static boolean paused(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&(e.getMessage().contains(IP_BLOCKED)||e.getMessage().contains(ACCESS_PAUSED)))return true;return false;}
- static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;if((code==403||code==429)&&(html==null||!html.contains("anubis_challenge")))return ACCESS_PAUSED;return null;}
+ static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;if(code==403||code==429||html!=null&&html.contains("anubis_challenge"))return ACCESS_PAUSED;return null;}
  private static synchronized void ban(String reason,long retryMs){
   blockedReason=reason;blockedUntil=System.currentTimeMillis()+Math.max(BAN_PAUSE_MS,Math.min(retryMs,24*60*60_000L));
   Log.w("KIK","Catalogue refused requests; pausing until "+blockedUntil);
@@ -127,7 +126,7 @@ public final class Site {
   ByteArrayOutputStream o=new ByteArrayOutputStream();byte[] buf=new byte[16384];int n;while((n=s.read(buf))>0)o.write(buf,0,n);s.close();return o.toString("UTF-8");
  }
 
- /** Page fetch that solves the bot check when it appears and tries other mirrors on network failure. */
+ /** Page fetch that stops on a source refusal and tries other mirrors only on network failure. */
  public static String page(String path)throws IOException{
   load();IOException last=null;
   if(path.startsWith("http")){URL u=new URL(path);if(Arrays.asList(HOSTS).contains(u.getHost()))path=u.getFile();}
@@ -137,8 +136,6 @@ public final class Site {
    String url=abs(path),tried=new URL(url).getHost();
    try{
     String h=send(url,null,false);
-    if(h.contains("anubis_challenge")){h=solve(h,url);}
-    if(h.contains("anubis_challenge"))throw new IOException("bot check not passed");
     if(mirror){Integer code=PAGE_CODE.get();if(code!=null&&(code==403||code==451))SiteReport.failed("http",tried,tried+" HTTP "+code);else SiteReport.ok(tried,Doh.used(tried));}
     return h;
    }catch(IOException e){
@@ -153,20 +150,6 @@ public final class Site {
   if(mirror&&!cancelled&&status!=null)SiteReport.failed(status,host,detail.toString());
   throw last;
  }
- private static String solve(String html,String url)throws IOException{
-  try{
-   Matcher m=Pattern.compile("id=\"anubis_challenge\"[^>]*>(.*?)</script>",Pattern.DOTALL).matcher(html);if(!m.find())return html;
-   JSONObject ch=new JSONObject(m.group(1));JSONObject c=ch.getJSONObject("challenge");int d=ch.getJSONObject("rules").optInt("difficulty",2);
-   String data=c.getString("randomData"),prefix=new String(new char[d]).replace('\0','0');
-   MessageDigest sha=MessageDigest.getInstance("SHA-256");long t=System.currentTimeMillis();String hash=null;int nonce=0;
-   for(;;nonce++){byte[] h=sha.digest((data+nonce).getBytes("UTF-8"));String hex=hex(h);if(hex.startsWith(prefix)){hash=hex;break;}}
-   long el=System.currentTimeMillis()-t+500;
-   String q="id="+URLEncoder.encode(c.getString("id"),"UTF-8")+"&response="+hash+"&nonce="+nonce+"&redir="+URLEncoder.encode(url,"UTF-8")+"&elapsedTime="+el;
-   Log.d("KIK","Site check solved with difficulty "+d);
-   return send("https://"+new URL(url).getHost()+"/.within.website/x/cmd/anubis/api/pass-challenge?"+q,null,false);
-  }catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}
- }
- private static String hex(byte[] b){StringBuilder s=new StringBuilder();for(byte x:b)s.append(String.format("%02x",x));return s.toString();}
  static String text(String html){if(html==null)return null;return unescape(html.replaceAll("(?s)<br\\s*/?>","\n").replaceAll("(?s)<[^>]+>","")).replaceAll("[ \\t\\x0B\\f\\r]+"," ").trim();}
  static String unescape(String s){return s.replace("&nbsp;"," ").replace("&quot;","\"").replace("&#039;","'").replace("&laquo;","«").replace("&raquo;","»").replace("&mdash;","—").replace("&ndash;","–").replace("&hellip;","…").replace("&lt;","<").replace("&gt;",">").replace("&amp;","&");}
  private static String find(String s,String re){Matcher m=Pattern.compile(re,Pattern.DOTALL).matcher(s);return m.find()?m.group(1):null;}
@@ -196,7 +179,20 @@ public final class Site {
  private static final ThreadLocal<Integer> RAW=new ThreadLocal<Integer>();
  /** Titles on the last parsed page of this thread before the country filter; 0 means the source has no more pages. */
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
- public static List<Card> list(String category,String genre,String filter,int page)throws IOException{return cards(listPage(listPath(category,genre,filter,page)));}
+ /** Shared KIK edge cache supplies browsing data; the TV contacts the source only for an opened title or playback. */
+ private static List<Card> serviceCards(String path)throws IOException{
+  JSONArray items=FreeSources.get(path,20000).optJSONArray("items");if(items==null)throw new IOException("Catalogue response unavailable");
+  List<Card> out=new ArrayList<Card>();int raw=0;
+  for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;
+   String link=x.optString("link"),title=x.optString("sourceTitle",x.optString("title"));if(!FreeSources.rezka(link)||title.isEmpty())continue;
+   Card c=new Card();c.link=link;c.title=title;c.poster=x.optString("poster",null);c.info=x.optString("sourceInfo",x.optString("info",null));c.type=x.optString("type",null);c.studio=x.optString("studio",null);raw++;
+   if(!CountryFilter.blocked(c.info))out.add(c);
+  }
+  RAW.set(raw);return out;
+ }
+ public static List<Card> list(String category,String genre,String filter,int page)throws IOException{
+  return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);
+ }
  private static final long LIST_TTL_MS=30*60_000L;
  /** Catalogue lists change slowly: reopening the home screen reads them from disk for half an hour instead of asking the site again. */
  private static String listPage(String path)throws IOException{
@@ -220,12 +216,10 @@ public final class Site {
  public static List<Card> search(String query,int page,boolean fix)throws IOException{
   // Ukrainian names come from KIK's own service; ask it while the source search runs instead of after it.
   FutureTask<List<Card>> ua=null;if(page==1){ua=new FutureTask<List<Card>>(()->FreeSources.cards(query));Thread t=new Thread(ua,"kik-search-ua");t.setDaemon(true);t.start();}
-  List<Card> out=new ArrayList<Card>();try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(query,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(paused(e)||page>1)throw e;}
-  // The source spells titles in Russian: retry Ukrainian letters with their closest Russian forms, then other names.
-  String alt=searchForm(query);if(out.isEmpty()&&lastRaw()==0&&!alt.equals(query.toLowerCase(Locale.ROOT).trim()))try{out.addAll(cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alt,"UTF-8")+(page>1?"&page="+page:""))));}catch(IOException e){if(paused(e)||page>1)throw e;}
+  List<Card> out=serviceCards("/api/catalogue?query="+FreeSources.enc(query)+"&page="+page);
   out=new ArrayList<Card>(relevant(query,out));
   // A typo, the wrong keyboard layout or a name in another language: KIK's service names the titles it most likely meant, and those go first.
-  if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,cards(page("/search/?do=search&subaction=search&q="+URLEncoder.encode(alias,"UTF-8")))));}catch(IOException e){if(paused(e))throw e;}if(!fixed.isEmpty())break;}
+  if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,serviceCards("/api/catalogue?query="+FreeSources.enc(alias)+"&page=1")));}catch(IOException ignored){}if(!fixed.isEmpty())break;}
    if(!fixed.isEmpty()){fixed.addAll(out);out=fixed;}}
   // One card per title: a UASerials twin of an HDRezka result replaces it in place with the Ukrainian name.
   if(page==1)try{LinkedHashMap<String,Card> unique=new LinkedHashMap<String,Card>();for(Card c:out)unique.putIfAbsent(Progress.norm(c.link),c);
@@ -260,9 +254,8 @@ public final class Site {
   List<String> words=new ArrayList<String>();for(String w:q.split(" "))if(w.length()>1)words.add(w);if(words.isEmpty())return 0;String[] title=t.split(" ");int found=0;for(String w:words)if(wordHit(w,title))found++;if(found==words.size())return .7;
   String a=q.replace(" ",""),b=t.replace(" ","");if(a.length()>5&&distance(a,b.substring(0,Math.min(b.length(),a.length())),slack(a))<=slack(a))return .6;return .5*found/words.size();}
  public static List<Genre> genres(String category)throws IOException{
-  String html=page(listPath(category,null,"last",1));List<Genre> out=new ArrayList<Genre>();Set<String> seen=new HashSet<String>();
-  Matcher m=Pattern.compile("href=\"(?:https?://[^/]+)?/"+Pattern.quote(category)+"/([a-z0-9\\-]+)/\"[^>]*>([^<]+)</a>").matcher(html);
-  while(m.find()){if("page".equals(m.group(1))||!seen.add(m.group(1)))continue;Genre g=new Genre();g.slug=m.group(1);g.name=unescape(m.group(2)).trim();out.add(g);}
+  JSONArray items=FreeSources.get("/api/genres?category="+FreeSources.enc(category),20000).optJSONArray("items");if(items==null)throw new IOException("Genres unavailable");
+  List<Genre> out=new ArrayList<Genre>();for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;String slug=x.optString("slug"),name=x.optString("sourceName",x.optString("name"));if(!slug.matches("[a-z0-9-]{1,60}")||name.isEmpty())continue;Genre g=new Genre();g.slug=slug;g.name=name;out.add(g);}
   return out;
  }
 
@@ -276,7 +269,7 @@ public final class Site {
   String key=Progress.norm(link);FilmPage cached;FutureTask<FilmPage> task;boolean owner=false;
   synchronized(FILM_PAGES){
    cached=force?null:FILM_PAGES.get(key);
-   if(cached!=null&&System.nanoTime()-cached.at>120_000_000_000L)cached=null;
+   if(cached!=null&&System.nanoTime()-cached.at>600_000_000_000L)cached=null;
    task=force?null:FILM_PENDING.get(key);
    if(cached==null&&task==null){task=new FutureTask<FilmPage>(()->new FilmPage(page(link),PAGE_HOST.get()));if(!force)FILM_PENDING.put(key,task);owner=true;}
   }
@@ -380,7 +373,7 @@ public final class Site {
   long deadline=System.nanoTime()+25_000_000_000L;
   for(int attempt=0;attempt<HOSTS.length&&System.nanoTime()<deadline;attempt++){
    String mirror=HOSTS[(start+attempt+(rotate?1:0))%HOSTS.length];
-   try{if(attempt>0||rotate){String url="https://"+mirror+"/"+Progress.norm(f.link);String html=send(url,null,false);if(html.contains("anubis_challenge"))html=solve(html,url);Film fresh=parseFilm(f.link,html);if(fresh.id==null||!fresh.id.equals(f.id))throw new IOException("Title mismatch");f.favs=fresh.favs;f.origin=mirror;}
+   try{if(attempt>0||rotate){String url="https://"+mirror+"/"+Progress.norm(f.link);String html=send(url,null,false);Film fresh=parseFilm(f.link,html);if(fresh.id==null||!fresh.id.equals(f.id))throw new IOException("Title mismatch");f.favs=fresh.favs;f.origin=mirror;}
     return requestStream(f,v,season,episode);
    }catch(IOException e){if(paused(e))throw e;last=e;}
   }throw last==null?new IOException("Mirrors unavailable"):last;
