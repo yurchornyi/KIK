@@ -4,6 +4,7 @@ import android.content.*;
 import android.graphics.*;
 import android.graphics.drawable.Drawable;
 import android.os.*;
+import android.net.Uri;
 import android.text.TextUtils;
 import android.view.*;
 import android.widget.*;
@@ -12,7 +13,7 @@ import java.util.*;
 /** Film / series page: backdrop, Ukrainian title and description, voice choice, seasons and episodes. */
 public final class FilmActivity extends Activity {
  static Site.Film current;
- private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
+ private boolean autoplayed;private String link,title,poster,profile,fallbackOriginal;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
  private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo,studioLabel;private Button watch,later;private ImageView backdrop;
  private LinearLayout body,voices,seasons,episodes,similar;private View similarHeader;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
@@ -54,7 +55,7 @@ public final class FilmActivity extends Activity {
   dislikeChip=thumb(true);LinearLayout.LayoutParams dislikeLp=new LinearLayout.LayoutParams(dp(56),dp(48));dislikeLp.setMargins(dp(12),0,0,0);buttons.addView(dislikeChip,dislikeLp);dislikeChip.setOnClickListener(v->rate(-1));paintTaste();
   voicesBox=new HorizontalScrollView(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(0,dp(14),0,0);body.addView(status);
-  status.setBackground(Ui.states(Ui.shape(0,dp(4),0,0),Ui.shape(Ui.CARD,dp(4),dp(2),Color.WHITE)));status.setOnClickListener(v->{status.setFocusable(false);status.setText("Завантаження…");load();});status.setFocusable(false);
+  status.setBackground(Ui.states(Ui.shape(0,dp(4),0,0),Ui.shape(Ui.CARD,dp(4),dp(2),Color.WHITE)));status.setOnClickListener(v->{if(!Site.retryNow()){status.setText("Зачекайте дві хвилини перед повторною перевіркою.");return;}status.setFocusable(false);status.setText("Завантаження…");load();});status.setFocusable(false);
   epHeader=Ui.bold(this,"Серії",20);epHeader.setPadding(0,dp(20),0,dp(8));epHeader.setVisibility(View.GONE);body.addView(epHeader);
   HorizontalScrollView sb=new HorizontalScrollView(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
   HorizontalScrollView eb=new HorizontalScrollView(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
@@ -68,15 +69,16 @@ public final class FilmActivity extends Activity {
   later.requestFocus();Ui.enter(name,0);Ui.enter(buttons,70);
   load();
  }
- @Override protected void onResume(){super.onResume();paintTaste();if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();warm();}}
+ @Override protected void onResume(){super.onResume();paintTaste();if(film!=null&&film.sourceUrl==null&&Site.accessPaused()){fallbackOriginal=film.original;film=null;status.setText("Шукаємо на UASerials…");status.setVisibility(View.VISIBLE);watch.setEnabled(false);load();return;}if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();}}
 
  private int loadGeneration;
  private void load(){
   final long started=android.os.SystemClock.elapsedRealtime();
   final int generation=++loadGeneration;
   Ui.bg(()->{
+   boolean attemptedAlternative=false;
    try{
-    final Site.Film f=Site.film(link);
+    final Site.Film f;if(Site.accessPaused()&&FreeSources.rezka(link)){attemptedAlternative=true;Site.Film alternative=FreeSources.alternative(title,fallbackOriginal,getIntent().getStringExtra("year"),link);if(alternative==null)throw new java.io.IOException(Site.ACCESS_PAUSED);f=alternative;}else f=Site.film(link);
     // Finished series read «2011–2019», running ones «2026»: the page itself names only the premiere.
     String hint=getIntent().getStringExtra("year");if(hint!=null&&hint.matches("\\d{4}\\s*-.*"))f.year=hint;
     List<String> words=new ArrayList<String>();words.add(f.title);words.addAll(f.genres);if(f.country!=null)words.addAll(Arrays.asList(f.country.split(",\\s*")));if(f.duration!=null)words.add(f.duration);
@@ -94,13 +96,19 @@ public final class FilmActivity extends Activity {
     final String d=DescTranslate.tr(f.description);
     String span=run(f,null);if(span!=null)f.year=span;
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
-   }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText("Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
+   }catch(Exception e){
+    boolean alternativeUnavailable=attemptedAlternative&&!Site.paused(e);
+    if(!attemptedAlternative&&Site.paused(e)&&FreeSources.rezka(link))try{final Site.Film alternative=FreeSources.alternative(title,fallbackOriginal,getIntent().getStringExtra("year"),link);if(alternative!=null){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;show(alternative,alternative.description);watch.requestFocus();});return;}}catch(Exception unavailable){alternativeUnavailable=true;}
+    final boolean unavailable=alternativeUnavailable;
+    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText(unavailable?"HDRezka тимчасово недоступна. UASerials теж не відповідає. Спробуйте пізніше.":Site.blocked(e)?"HDRezka заблокував цю мережу. Точного збігу на UASerials не знайдено. Зачекайте й повторіть перевірку пізніше.":Site.paused(e)?"HDRezka тимчасово відхиляє запити. Точного збігу на UASerials не знайдено. Спробуйте пізніше.":"Не вдалося відкрити сторінку. Натисніть OK, щоб повторити.");status.setFocusable(true);status.requestFocus();});}
   });
  }
  /** «Вам може сподобатися»: titles like this one KIK can play (from KIK's service), else the page's own «see also». */
  private void loadSimilar(final Site.Film f,final int generation){
   List<Site.Card> list=FreeSources.similar(f.link);final boolean named=!list.isEmpty();if(!named)list=f.related;
-  final List<Site.Card> items=new ArrayList<Site.Card>();for(Site.Card c:list)if(!Progress.norm(c.link).equals(Progress.norm(f.link))&&items.size()<12)items.add(c);if(items.isEmpty())return;
+  // Titles marked «Не подобається» or «Не цікавить» never come back as suggestions.
+  Set<String> disliked=new HashSet<String>();for(RatingStore.Rating r:RatingStore.list(this,profile))if(r.value<0)disliked.add(RecommendationRanker.key(r.link));
+  final List<Site.Card> items=new ArrayList<Site.Card>();for(Site.Card c:list)if(!Progress.norm(c.link).equals(Progress.norm(f.link))&&!disliked.contains(RecommendationRanker.key(c.link))&&items.size()<12)items.add(c);if(items.isEmpty())return;
   // The service already sends Ukrainian names; the page's own list still needs translating.
   List<String> words=new ArrayList<String>();for(Site.Card c:items){if(!named)words.add(c.title);if(c.genre()!=null)words.add(c.genre());}final Map<String,String> got=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
   Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(got);similar.removeAllViews();
@@ -111,14 +119,13 @@ public final class FilmActivity extends Activity {
  private void show(Site.Film f,String description){
   // A UASerials title may open as its HDRezka twin: history, list and voices follow the playable link.
   if(f.sourceUrl==null&&!Progress.norm(f.link).equals(Progress.norm(link)))link=f.link;
-  film=f;current=f;status.setVisibility(View.GONE);
+  film=f;current=f;if(f.sourceUrl==null)fallbackOriginal=f.original;status.setVisibility(View.GONE);
   showText(f,description);loadStudio(f);
   if(f.poster!=null){poster=poster==null?f.poster:poster;HomeActivity.Images.crossfade(f.poster,backdrop);}
   for(View v:new View[]{name,meta,desc}){v.setAlpha(0.3f);v.animate().alpha(1f).setDuration(260).start();}
   pickVoice();buildVoices();
   if(f.series){season=null;Progress.Entry e=Progress.get(this,link);if(e!=null&&e.season!=null&&f.seasons.contains(e.season))season=e.season;if(season==null&&!f.seasons.isEmpty())season=f.seasons.get(0);showEpisodes();}
-  watch.setEnabled(voice!=null&&f.sourceUrl==null);paintWatch();if(f.sourceUrl!=null)watch.setText("Перегляд у KIK недоступний");if(voice!=null&&later.hasFocus())watch.requestFocus();
-  warm();
+  watch.setEnabled(voice!=null||FreeSources.ua(f.sourceUrl));paintWatch();if((voice!=null||f.sourceUrl!=null)&&later.hasFocus())watch.requestFocus();
   if(voice!=null&&getIntent().getBooleanExtra("play",false)&&!autoplayed){autoplayed=true;play(f.series?getIntent().getStringExtra("season"):null,f.series?getIntent().getStringExtra("episode"):null);}
   if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
  }
@@ -140,7 +147,7 @@ public final class FilmActivity extends Activity {
   List<String> g=new ArrayList<String>();for(String x:f.genres)g.add(tr(x));
   String country=null;if(f.country!=null){StringBuilder b=new StringBuilder();for(String c:f.country.split(",\\s*")){if(b.length()>0)b.append(", ");b.append(tr(c));}country=b.toString();}
   meta.setMaxLines(2);meta.setEllipsize(TextUtils.TruncateAt.END);meta.setText(Ui.facts(this,f.year,f.age,f.rating==null?null:f.rating+" "+f.ratingName,Ui.minutes(f.duration,tr(f.duration)),country,TextUtils.join(", ",g.subList(0,Math.min(2,g.size())))));
-  fitDescription(f,description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Немає доступного потоку для перегляду у KIK.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
+  fitDescription(f,description);String info=Ui.join(f.nextEpisode,f.metadataCredit==null?null:"Дані: "+f.metadataCredit,f.sourceUrl==null?null:"Сторінка UASerials відкриється в браузері. Роботу відео там KIK не перевіряв; прогрес не синхронізується.");sourceInfo.setText(info);sourceInfo.setVisibility(info.isEmpty()?View.GONE:View.VISIBLE);
  }
  private void pickVoice(){
   voice=null;Progress.Entry e=Progress.get(this,link);String chosen=Progress.voice(this,link);
@@ -194,7 +201,7 @@ public final class FilmActivity extends Activity {
  }
  /** A language keeps the studio row open on the new language; a studio closes the row. */
  private void choose(final Site.Voice v,boolean language){
-  voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);buildVoices();warm();
+  voice=v;preferred=v;Progress.chooseVoice(this,link,v.id);buildVoices();
   if(language){int at=Arrays.asList("uk","ru","en").indexOf(PlaybackPolicy.lang(v.name));if(at>=0)voices.getChildAt(at).requestFocus();}
   else{voicesBox.setVisibility(View.GONE);voiceChip.requestFocus();}
   if(film.series)Ui.bg(()->{try{Site.covered(film,v.id);}catch(Exception ignored){}Ui.MAIN.post(()->{if(!film.seasons.contains(season))season=film.seasons.isEmpty()?null:film.seasons.get(0);showEpisodes();});});
@@ -235,7 +242,7 @@ public final class FilmActivity extends Activity {
   box.post(()->box.scrollTo(Math.max(0,v.getLeft()-dp(8)),0));
  }
  private void paintWatch(){
-  if(film==null)return;if(film.sourceUrl!=null){watch.setText("Перегляд у KIK недоступний");return;}Progress.Entry e=Progress.get(this,link);
+  if(film==null)return;if(film.sourceUrl!=null){watch.setText("↗  Сторінка UASerials");return;}Progress.Entry e=Progress.get(this,link);
   if(e!=null&&!e.finished())watch.setText(film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити з "+Ui.time(e.pos));
   else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");
   else watch.setText("▶  Дивитися");
@@ -269,11 +276,12 @@ public final class FilmActivity extends Activity {
 
  /** Starts the KIK player; with no episode given, resumes the last one or starts from the first. */
  private void play(String s,String e){
-  if(film==null||voice==null)return;
+  if(film==null)return;
+  if(film.sourceUrl!=null){if(!FreeSources.ua(film.sourceUrl))return;try{Intent open=new Intent(Intent.ACTION_VIEW,Uri.parse(film.sourceUrl));open.addCategory(Intent.CATEGORY_BROWSABLE);startActivity(open);}catch(ActivityNotFoundException x){Ui.toast(this,"Немає браузера для відкриття UASerials");}return;}
+  if(voice==null)return;
   String[] t=target(s,e);KikPlayerActivity.open(this,film,voice,t[0],t[1],name.getText().toString(),poster);
  }
  /** Fetches the stream OK would play now, while the viewer reads the page. */
- private void warm(){if(film!=null&&voice!=null&&film.sourceUrl==null&&!isFinishing()){String[] t=target(null,null);KikPlayerActivity.prefetch(this,film,voice,t[0],t[1]);}}
  private String[] target(String s,String e){
   if(film.series&&s==null){
    Progress.Entry last=Progress.get(this,link);
