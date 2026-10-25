@@ -219,7 +219,7 @@ public final class KikPlayerActivity extends Activity {
      play();
      ads=null;hints=null;showHint(-1);if(CloudSync.adSkip(this,profileId)&&PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
     });
-   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(Site.paused(e)){sourcePaused=true;Ui.toast(this,"HDRezka відхилила запит. Шукаємо інше джерело.");finish();return;}if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
+   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(Site.paused(e)){sourcePaused=true;failure(Site.blocked(e)?"HDRezka заблокував адресу вашої мережі.\nЗачекайте, потім натисніть OK для перевірки.":"HDRezka тимчасово відхиляє запити.\nЗачекайте, потім натисніть OK для перевірки.",false);return;}if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
   });
  }
  /** Shows the problem; unless the viewer has to choose, retries by itself every 20 s for 10 minutes. */

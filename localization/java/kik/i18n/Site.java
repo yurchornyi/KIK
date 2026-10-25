@@ -69,14 +69,13 @@ public final class Site {
  /** True for the error {@link #page} and {@link #film} throw while the catalogue bans this network. */
  public static boolean blocked(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&e.getMessage().contains(IP_BLOCKED))return true;return false;}
  public static boolean paused(Throwable e){for(;e!=null;e=e.getCause())if(e.getMessage()!=null&&(e.getMessage().contains(IP_BLOCKED)||e.getMessage().contains(ACCESS_PAUSED)))return true;return false;}
- static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;if(code==403||code==429||html!=null&&html.contains("anubis_challenge"))return ACCESS_PAUSED;return null;}
+ static String pauseReason(int code,String html){if(blocked(html))return IP_BLOCKED;// The routine bot check is solved in send(); only a ban, a rate limit or a plain 403 pauses the catalogue.
+  boolean challenge=html!=null&&html.contains("anubis_challenge");if(code==429||code==403&&!challenge)return ACCESS_PAUSED;return null;}
  private static synchronized void ban(String reason,long retryMs){
   blockedReason=reason;blockedUntil=System.currentTimeMillis()+Math.max(BAN_PAUSE_MS,Math.min(retryMs,24*60*60_000L));
   Log.w("KIK","Catalogue refused requests; pausing until "+blockedUntil);
   if(UiRuntime.app!=null)prefs().edit().putLong("blocked_until",blockedUntil).putString("blocked_reason",reason).apply();
  }
- public static boolean accessPaused(){load();return System.currentTimeMillis()<blockedUntil;}
- static void publicRefusal(){ban(ACCESS_PAUSED,0);}
  /** A deliberate retry is allowed at most once every two minutes while access is paused. */
  public static synchronized boolean retryNow(){
   load();long now=System.currentTimeMillis();if(now>=blockedUntil)return true;if(now<nextProbeAt)return false;
@@ -98,10 +97,27 @@ public final class Site {
    if(wait>0)try{Thread.sleep(wait);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Request cancelled");}
    if(System.currentTimeMillis()<blockedUntil)throw new IOException(blockedReason);
    String body=transfer(url,form,xhr);
+   if(body.contains("anubis_challenge")&&!blocked(body))body=solve(body,url);
+   if(body.contains("anubis_challenge"))throw new IOException("bot check not passed");
    Integer code=PAGE_CODE.get();String reason=mirror(PAGE_HOST.get())?pauseReason(code==null?0:code,body):null;
    if(reason!=null){Long retry=PAGE_RETRY_MS.get();ban(reason,retry==null?0:retry);throw new IOException(reason);}
    return body;
   }finally{SLOTS.release();}
+ }
+ /** HDRezka's routine bot check (Anubis): a small SHA-256 proof of work, as a browser would do. */
+ private static String solve(String html,String url)throws IOException{
+  try{
+   Matcher m=Pattern.compile("id=\"anubis_challenge\"[^>]*>(.*?)</script>",Pattern.DOTALL).matcher(html);if(!m.find())return html;
+   JSONObject ch=new JSONObject(m.group(1));JSONObject c=ch.getJSONObject("challenge");int d=ch.getJSONObject("rules").optInt("difficulty",2);
+   if(d>5)throw new IOException("bot check too hard: "+d);
+   String data=c.getString("randomData"),prefix=new String(new char[d]).replace('\0','0');
+   java.security.MessageDigest sha=java.security.MessageDigest.getInstance("SHA-256");long t=System.currentTimeMillis();String hash=null;int nonce=0;
+   for(;nonce<5_000_000;nonce++){StringBuilder hex=new StringBuilder();for(byte x:sha.digest((data+nonce).getBytes("UTF-8")))hex.append(String.format("%02x",x));if(hex.indexOf(prefix)==0){hash=hex.toString();break;}}
+   if(hash==null)throw new IOException("bot check timeout");
+   String q="id="+URLEncoder.encode(c.getString("id"),"UTF-8")+"&response="+hash+"&nonce="+nonce+"&redir="+URLEncoder.encode(url,"UTF-8")+"&elapsedTime="+(System.currentTimeMillis()-t+500);
+   Log.d("KIK","Site check solved with difficulty "+d);
+   return transfer("https://"+new URL(url).getHost()+"/.within.website/x/cmd/anubis/api/pass-challenge?"+q,null,false);
+  }catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}
  }
  private static String transfer(String url,String form,boolean xhr)throws IOException{
   for(int hop=0;hop<6;hop++){
@@ -193,8 +209,7 @@ public final class Site {
   RAW.set(raw);return out;
  }
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{
-  if(accessPaused()){if(genre!=null)throw new IOException(ACCESS_PAUSED);List<Card> alt=FreeSources.independentCards(category,null,page);RAW.set(alt.size());return alt;}
-  try{return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);}catch(IOException e){if(!accessPaused()||genre!=null)throw e;List<Card> alt=FreeSources.independentCards(category,null,page);RAW.set(alt.size());return alt;}
+  return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);
  }
  private static final long LIST_TTL_MS=30*60_000L;
  /** Catalogue lists change slowly: reopening the home screen reads them from disk for half an hour instead of asking the site again. */
@@ -209,7 +224,6 @@ public final class Site {
   return html;
  }
  public static List<Card> studioList(String category,String genre,String filter,String studio,int page)throws IOException{
-  if(accessPaused())throw new IOException(ACCESS_PAUSED);
   JSONObject result=FreeSources.get("/api/catalogue?category="+FreeSources.enc(category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter)+"&studio="+FreeSources.enc(studio)+"&page="+page,60000);
   List<Card> out=new ArrayList<Card>();JSONArray items=result.optJSONArray("items");if(items==null)throw new IOException("Studio catalogue unavailable");
   for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null||!FreeSources.rezka(item.optString("link")))continue;Card c=new Card();c.link=item.optString("link");c.title=item.optString("title");c.poster=item.optString("poster",null);c.info=item.optString("sourceInfo",item.optString("info",null));c.type=item.optString("type",null);c.studio=Studios.id(item.optJSONArray("studios"));if(!CountryFilter.blocked(c.info))out.add(c);}
@@ -218,10 +232,9 @@ public final class Site {
  public static List<Card> search(String query,int page)throws IOException{return search(query,page,true);}
  /** fix=false for lookups by a known name (title pages, deep links): other names only when nothing was found, as before. */
  public static List<Card> search(String query,int page,boolean fix)throws IOException{
-  if(accessPaused()){List<Card> alt=FreeSources.independentCards("",query,page);RAW.set(alt.size());return relevant(query,alt);}
-  List<Card> out;try{out=serviceCards("/api/catalogue?query="+FreeSources.enc(query)+"&page="+page);}catch(IOException e){if(!accessPaused())throw e;List<Card> alt=FreeSources.independentCards("",query,page);RAW.set(alt.size());return relevant(query,alt);}
-  // Only enrich a successful source search; a refusal must not start twin lookups in parallel.
+  // Ukrainian names come from KIK's own service; ask it while the source search runs instead of after it.
   FutureTask<List<Card>> ua=null;if(page==1){ua=new FutureTask<List<Card>>(()->FreeSources.cards(query));Thread t=new Thread(ua,"kik-search-ua");t.setDaemon(true);t.start();}
+  List<Card> out=serviceCards("/api/catalogue?query="+FreeSources.enc(query)+"&page="+page);
   out=new ArrayList<Card>(relevant(query,out));
   // A typo, the wrong keyboard layout or a name in another language: KIK's service names the titles it most likely meant, and those go first.
   if(page==1&&(fix?!matches(query,out):out.isEmpty())){List<Card> fixed=new ArrayList<Card>();for(String alias:FreeSources.aliases(query)){try{fixed.addAll(relevant(alias,serviceCards("/api/catalogue?query="+FreeSources.enc(alias)+"&page=1")));}catch(IOException ignored){}if(!fixed.isEmpty())break;}
