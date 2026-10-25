@@ -6,7 +6,7 @@ const RESCAN=7*86400_000,QUEUE_MAX=300,BATCH=5;
 /** Frame check for clips no other signal can confirm: Sentra's vision role first (all frames of a call in one request);
  *  the fallback is Cloudflare's decision model, one small JPEG per call (about one Neuron).
  *  The daily cap keeps it well inside the free 10,000 Neurons, next to the synopses. */
-export const AD_MODEL='@cf/cloudflare/clef-flash',AD_FRAMES_DAILY=3000,AD_FRAMES_PER_CALL=16;
+export const AD_FRAMES_DAILY=3000,AD_FRAMES_PER_CALL=16;
 const AD_QUESTIONS={
  ad:{type:'noul',instructions:'Is this frame from an inserted TV commercial (a betting, casino or app advertisement such as 1XBET), rather than a scene of the drama series itself?',criteria:{true:'An advertisement: product shots, phones with betting apps, brand logos or slogans filling the picture, staged commercial scenes.',false:'A normal scene of the series, even if a small channel or sponsor logo sits in a corner.'}},
  overlay:{type:'noul',instructions:'Is a scene of the drama series still visible behind or around advertising graphics laid over it (a banner, logo or animation on top of the film)?',criteria:{true:'Advertising graphics are drawn over a film scene that stays visible.',false:'No film scene is visible: the whole picture is the commercial or the film without graphics.'}}};
@@ -28,7 +28,7 @@ async function viaSentraFrames(env,frames){
  }
  const messages=[{role:'user',content:[{type:'text',text:AD_PROMPT(frames.length)},...frames.map(url=>({type:'image_url',image_url:{url}}))]}];
  const accept=raw=>{const text=String(raw),list=JSON.parse(text.slice(text.indexOf('{'),text.lastIndexOf('}')+1))?.frames;if(!Array.isArray(list)||list.length!==frames.length)return null;const pairs=list.map(f=>[share(f?.ad),share(f?.overlay)]);return pairs.every(([a,o])=>a!==null&&o!==null)?pairs:null;};
- return (await complete(env,{skill:'kik-ad-frames',role:'vision',messages,maxTokens:40+30*frames.length,temperature:0,json:true,timeout:25000},[],accept,'ad frames'))?.value??null;
+ return (await complete(env,{skill:'kik-ad-frames',role:'vision',messages,maxTokens:40+30*frames.length,temperature:0,json:true,timeout:25000},accept,'ad frames'))?.value??null;
 }
 /** AI hints within the same limits, minus anything a confirmed break already covers. */
 const hints=(list,breaks,duration)=>cleanBreaks(list||[],duration).filter(([s,e])=>!breaks.some(([a,b])=>s<b&&a<e));
@@ -73,11 +73,11 @@ export async function adScanner(request,db,env,path,readBody,now=Date.now()){
  if(path==='/api/ad-breaks/classify'&&request.method==='POST'){
   const b=await readBody(request,2*1024*1024),frames=b.frames;
   if(!Array.isArray(frames)||!frames.length||frames.length>AD_FRAMES_PER_CALL||frames.some(f=>typeof f!=='string'||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(f)||f.length>200_000))fail('Некоректні кадри');
-  if(!env.AI&&!sentraReady(env))fail('ШІ недоступний',503);
+  if(!sentraReady(env))fail('ШІ недоступний',503);
   const day='adscan:'+new Date(now).toISOString().slice(0,10),reserved=await db.prepare('INSERT INTO ai_daily_budget(day,calls) VALUES(?,?) ON CONFLICT(day) DO UPDATE SET calls=calls+excluded.calls WHERE calls+excluded.calls<=? RETURNING calls').bind(day,frames.length,AD_FRAMES_DAILY).first();
   if(!reserved)fail('Денний ліміт ШІ вичерпано',429);
-  // Workers AI's decision model, a frame a call, is the fallback when Sentra is unavailable or answers unusably.
-  const answers=await viaSentraFrames(env,frames)??await Promise.all(frames.map(async f=>{if(!env.AI)return null;try{const r=await env.AI.run(AD_MODEL,{model:'clef-flash',state:'One frame from a TV series episode. Some episodes have betting commercials spliced into them or laid over the film.',images:[f],questions:AD_QUESTIONS});const p=r?.answers?.ad?.noul,o=r?.answers?.overlay?.noul;return typeof p==='number'&&typeof o==='number'?[p,o]:null;}catch{return null;}}));
+  // Only Sentra classifies (SENTRA.md: no AI of KIK's own): no usable answer leaves the frames unknown, the scanner tries later.
+  const answers=await viaSentraFrames(env,frames)??frames.map(()=>null);
   return {ad:answers.map(a=>a?a[0]:null),overlay:answers.map(a=>a?a[1]:null)};
  }
  fail('Не знайдено',404);
