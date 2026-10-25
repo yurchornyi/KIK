@@ -22,10 +22,15 @@ export async function handle(request,env,ctx,{cache=caches.default,fetcher=fetch
  if(!["/v1/update.json","/download"].includes(url.pathname))return json({error:"not_found"},404);
  const key=new Request(url.origin+"/v1/update.json");let response=await cache.match(key);
  if(!response){
-  try{
+  // GitHub sometimes fails a request from Cloudflare: try twice, then serve the last release this location verified.
+  const lastGood=new Request(url.origin+"/v1/update.json?last-good");
+  for(let attempt=0;attempt<2&&!response;attempt++)try{
    const upstream=await fetcher(`https://github.com/${repo}/releases/latest/download/update.json`,{headers:{"User-Agent":"KIK-Updates/1","Accept":"application/json"},signal:AbortSignal.timeout(10000),redirect:"follow"});
-   const release=validateRelease(await limitedJson(upstream),repo,env.SIGNER_SHA256);response=json(release,200,300);ctx.waitUntil(cache.put(key,response.clone()));
-  }catch{return json({error:"release_temporarily_unavailable"},503);}
+   const release=validateRelease(await limitedJson(upstream),repo,env.SIGNER_SHA256);response=json(release,200,300);
+   ctx.waitUntil(Promise.all([cache.put(key,response.clone()),cache.put(lastGood,json(release,200,7*86400))]));
+  }catch{}
+  if(!response){const stale=await cache.match(lastGood);if(!stale)return json({error:"release_temporarily_unavailable"},503);
+   try{response=json(validateRelease(await stale.json(),repo,env.SIGNER_SHA256),200,60);}catch{return json({error:"release_temporarily_unavailable"},503);}}
  }
  if(url.pathname==="/download"){const release=await response.json();return Response.redirect(release.apk_url,302);}
  return request.method==="HEAD"?new Response(null,{status:response.status,headers:response.headers}):response;

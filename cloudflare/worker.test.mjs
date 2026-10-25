@@ -38,3 +38,10 @@ test("metadata signed by another key is never published",async()=>{
  const cache={match:async()=>null,put:async()=>assert.fail("must not cache")},ctx={waitUntil:()=>{}};
  for(const e of [env,{REPOSITORY:repo}]){const r=await handle(new Request("https://updates.test/v1/update.json"),e,ctx,{cache,fetcher:async()=>Response.json(e===env?{...fixture,signer_sha256:"c".repeat(64)}:fixture)});assert.equal(r.status,503);}
 });
+test("when GitHub fails, the last release verified here is served again",async()=>{
+ const store=new Map(),cache={match:async k=>store.get(k.url)?.clone(),put:async(k,r)=>{store.set(k.url,r);}},waits=[],ctx={waitUntil:p=>waits.push(p)};
+ await handle(new Request("https://updates.test/v1/update.json"),env,ctx,{cache,fetcher:async()=>Response.json(fixture)});await Promise.all(waits);
+ store.delete("https://updates.test/v1/update.json");let calls=0;
+ const r=await handle(new Request("https://updates.test/v1/update.json"),env,ctx,{cache,fetcher:async()=>{calls++;throw Error("offline");}});
+ assert.equal(calls,2);assert.equal(r.status,200);assert.deepEqual(await r.json(),fixture);
+});
