@@ -92,13 +92,18 @@ test('AI hints are stored apart from breaks and the frame check is behind the se
  const req=(path,body)=>new Request('https://kik.example'+path,{method:'POST',headers:{Authorization:'Bearer '+env.AD_SCANNER_TOKEN},body:JSON.stringify(body)}),read=async r=>r.json();
  await adScanner(req('/api/ad-breaks/report',{items:[{link,voice:'35',season:'1',episode:'3',duration:2687.7,breaks:[[900.3,918.1]],suggested:[[1735.1,1765.3],[905,915],[10,12]]}]}),d,env,'/api/ad-breaks/report',read);
  assert.deepEqual(await adBreaks(d,{link,voice:'35',season:'1',episode:'3'}),{duration:2687.7,breaks:[[900.3,918.1]],suggested:[[1735.1,1765.3]]});
- let used=0;const ai={run:async(model,input)=>{used++;assert.equal(model,'@cf/cloudflare/clef-flash');assert.ok(input.images[0].startsWith('data:image/jpeg;base64,'));return {answers:{ad:{type:'noul',noul:0.9},overlay:{type:'noul',noul:0.1}}};}};
+ // Only Sentra classifies the frames: without it the check says AI is unavailable, a Workers AI binding left behind or not.
  const frame='data:image/jpeg;base64,/9j/AAAA';
- d.budget=0;const r=await adScanner(req('/api/ad-breaks/classify',{frames:[frame,frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read);assert.deepEqual(r,{ad:[0.9,0.9],overlay:[0.1,0.1]});assert.equal(used,2);
- d.budget=AD_FRAMES_DAILY;await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:[frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),e=>e.status===429);assert.equal(used,2);
- await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:['https://evil.example/x.jpg']}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),e=>e.status===400);
+ await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:[frame]}),d,{...env,AI:{run:async()=>({})}},'/api/ad-breaks/classify',read),e=>e.status===503);
+ const original=globalThis.fetch;let used=0;globalThis.fetch=async()=>{used++;return Response.json({choices:[{message:{content:'{"frames":[{"ad":0.9,"overlay":0.1},{"ad":0.9,"overlay":0.1}]}'}}]});};
+ const sentra={...env,SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'};
+ try{
+  d.budget=0;const r=await adScanner(req('/api/ad-breaks/classify',{frames:[frame,frame]}),d,sentra,'/api/ad-breaks/classify',read);assert.deepEqual(r,{ad:[0.9,0.9],overlay:[0.1,0.1]});assert.equal(used,1);
+  d.budget=AD_FRAMES_DAILY;await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:[frame]}),d,sentra,'/api/ad-breaks/classify',read),e=>e.status===429);assert.equal(used,1);
+  await assert.rejects(()=>adScanner(req('/api/ad-breaks/classify',{frames:['https://evil.example/x.jpg']}),d,sentra,'/api/ad-breaks/classify',read),e=>e.status===400);
+ }finally{globalThis.fetch=original;}
 });
-test('the frame check asks Sentra first, all frames in one request, and Workers AI only when Sentra answers unusably',async()=>{
+test('the frame check asks Sentra, all frames in one request; an unusable answer leaves the frames unknown',async()=>{
  const d=db(),env={AD_SCANNER_TOKEN:'s'.repeat(40),SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},original=globalThis.fetch,sent=[];
  const req=body=>new Request('https://kik.example/api/ad-breaks/classify',{method:'POST',headers:{Authorization:'Bearer '+env.AD_SCANNER_TOKEN},body:JSON.stringify(body)}),read=async r=>r.json();
  const frame='data:image/jpeg;base64,/9j/AAAA';let used=0,answer='{"frames":[{"ad":0.8,"overlay":0},{"ad":0.1,"overlay":0.6}]}';
@@ -109,7 +114,7 @@ test('the frame check asks Sentra first, all frames in one request, and Workers 
   assert.equal(used,0);assert.equal(sent.length,1);assert.equal(sent[0].headers['x-sentra-skill'],'kik-ad-frames');assert.equal(sent[0].body.model,'role:vision');
   assert.equal(sent[0].body.messages[0].content.filter(p=>p.type==='image_url').length,2);
   answer='{"frames":[{"ad":0.8,"overlay":0}]}';
-  assert.deepEqual(await adScanner(req({frames:[frame,frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),{ad:[0.5,0.5],overlay:[0.5,0.5]});assert.equal(used,2);
+  assert.deepEqual(await adScanner(req({frames:[frame,frame]}),d,{...env,AI:ai},'/api/ad-breaks/classify',read),{ad:[null,null],overlay:[null,null]});assert.equal(used,0);
   answer='{"frames":[{"ad":1,"overlay":0}]}';
   assert.deepEqual(await adScanner(req({frames:[frame]}),d,env,'/api/ad-breaks/classify',read),{ad:[1],overlay:[0]});
  }finally{globalThis.fetch=original;}

@@ -21,19 +21,22 @@ test('model answers become at most three plain titles',()=>{
 });
 function fakeDb(limit=10){let calls=0;return {calls:()=>calls,prepare:()=>({bind:()=>({first:async()=>++calls<=limit?{calls}:null})})};}
 const memoryCache=()=>{const m=new Map();return {match:async r=>m.get(r.url)?.clone(),put:async(r,res)=>{m.set(r.url,res);}};};
-test('corrections ask the model once per query and respect the daily budget',async()=>{
- let runs=0;const env={AI:{run:async()=>{runs++;return {response:'{"titles":["Во все тяжкие","Breaking Bad"]}'};}}},cache=memoryCache();
+/** Sentra stubbed for one test, answering every request with `titles`; KIK has no AI of its own. */
+async function withSentra(titles,run){const original=globalThis.fetch;let runs=0;globalThis.fetch=async()=>{runs++;return Response.json({choices:[{message:{content:JSON.stringify({titles})}}]});};try{return await run({SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},()=>runs);}finally{globalThis.fetch=original;}}
+test('corrections ask the model once per query and respect the daily budget',()=>withSentra(['Во все тяжкие','Breaking Bad'],async(env,runs)=>{
+ const cache=memoryCache();
  assert.deepEqual(await corrections(fakeDb(),env,'брейкінг бед',cache),['Во все тяжкие','Breaking Bad']);
- assert.deepEqual(await corrections(fakeDb(),env,'Брейкінг  бед',cache),['Во все тяжкие','Breaking Bad']);assert.equal(runs,1);
- assert.deepEqual(await corrections(fakeDb(0),env,'zzzz qqqq',memoryCache()),[]);assert.equal(runs,1);
+ assert.deepEqual(await corrections(fakeDb(),env,'Брейкінг  бед',cache),['Во все тяжкие','Breaking Bad']);assert.equal(runs(),1);
+ assert.deepEqual(await corrections(fakeDb(0),env,'zzzz qqqq',memoryCache()),[]);assert.equal(runs(),1);
  assert.deepEqual(await corrections(fakeDb(),{},'без моделі'),[]);
-});
-test('alternatives prefer exact Wikidata names, then swapped layout, then the model',async()=>{
- const env={AI:{run:async()=>({response:'{"titles":["Интерстеллар"]}'})}};
+ // A Workers AI binding left behind is never asked: only Sentra answers.
+ assert.deepEqual(await corrections(fakeDb(),{AI:{run:async()=>({response:'{"titles":["X"]}'})}},'без сентри',memoryCache()),[]);
+}));
+test('alternatives prefer exact Wikidata names, then swapped layout, then the model',()=>withSentra(['Интерстеллар'],async(env)=>{
  assert.deepEqual(await searchAlternatives(fakeDb(),env,'breaking bad',async q=>q==='breaking bad'?['Во все тяжкие']:[]),['Во все тяжкие']);
  assert.deepEqual(await searchAlternatives(fakeDb(),env,'vfnhbwf',async q=>q==='матрица'?['The Matrix']:[]),['матрица','The Matrix']);
  assert.deepEqual(await searchAlternatives(fakeDb(),env,'интерстелар фильм',async()=>[]),['Интерстеллар']);
-});
+}));
 import {similar,sameWork} from './similar.mjs';
 test('similar titles: TMDB recommendations found on the catalogue first, then the source «see also»',async()=>{
  const page={link:'https://hdrezka.sh/series/thriller/646-vo-vse-tyazhkie-2008.html',imdb:'tt0903747',series:true,related:[{link:'https://hdrezka.sh/films/drama/1-war-and-peace-2016.html',title:'Война и мир',info:'2016, Великобритания, Драмы'},{link:'https://hdrezka.sh/series/thriller/646-vo-vse-tyazhkie-2008.html',title:'Во все тяжкие',info:'2008'}]};
@@ -45,7 +48,7 @@ test('similar titles: TMDB recommendations found on the catalogue first, then th
  assert.deepEqual((await similar(page.link,{token:'',load:async()=>page,search:async()=>[]})).map(i=>i.title),['Война и мир']);
  assert.equal(sameWork({name:'Озарк',first_air_date:'2017',media_type:'tv'},{link:'https://hdrezka.sh/films/drama/9-ozark-2017.html',title:'Озарк',info:'2017'}),false);
 });
-test('search fixes come from Sentra first; its «not sure» is an answer, not a reason to ask Workers AI',async()=>{
+test('search fixes come from Sentra; its «not sure» is an answer, and Workers AI is never asked',async()=>{
  const original=globalThis.fetch,sent=[];let reply='{"titles":["Интерстеллар"]}';
  globalThis.fetch=async(url,opts)=>{sent.push(opts);return Response.json({choices:[{message:{content:reply}}]});};
  try{

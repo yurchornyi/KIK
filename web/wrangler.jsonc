@@ -13,6 +13,5 @@
     { "name": "MEDIA_LIMIT", "namespace_id": "2303", "simple": { "limit": 600, "period": 60 } },
     { "name": "LOGIN_LIMIT", "namespace_id": "2304", "simple": { "limit": 10, "period": 60 } }
   ],
-  "ai": {"binding":"AI"},
   "observability": { "enabled": true }
 }
