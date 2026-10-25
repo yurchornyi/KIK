@@ -437,7 +437,7 @@ public final class Site {
   }catch(JSONException e){throw new IOException(e);}
  }
  /** Media from KIK's own service needs this TV's sign-in on every request. */
- static boolean serviceMedia(String url){return url!=null&&url.startsWith(UpdateConfig.WEB_ORIGIN+"/");}
+ static boolean serviceMedia(String url){String o=UpdateConfig.WEB_ORIGIN;return url!=null&&url.startsWith(o)&&url.length()>o.length()&&url.charAt(o.length())=='/';}
  private static String filmEndpoint(Film f){return "https://"+(f.origin==null?host():f.origin)+"/ajax/get_cdn_series/?t="+System.currentTimeMillis();}
  private static Stream requestStream(Film f,Voice v,String season,String episode)throws IOException{
   String form="id="+f.id+"&translator_id="+v.id+"&favs="+enc(f.favs)+(f.series?"&season="+season+"&episode="+episode+"&action=get_stream":"&is_camrip="+(v.camrip?1:0)+"&is_ads="+(v.ads?1:0)+"&is_director="+(v.director?1:0)+"&action=get_movie");
