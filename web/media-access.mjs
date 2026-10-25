@@ -22,9 +22,16 @@ function target(value, origins) {
   return url;
 }
 
+// A manifest seals every segment: importing the key once per isolate keeps that inside the Worker's CPU limit.
+let keyHex = null, keyPromise = null;
 async function key(env) {
   if (!/^[a-f0-9]{64}$/.test(env.MEDIA_TOKEN_KEY || '')) fail('Захист відео не налаштовано', 503);
-  return crypto.subtle.importKey('raw', Buffer.from(env.MEDIA_TOKEN_KEY, 'hex'), 'AES-GCM', false, ['encrypt', 'decrypt']);
+  if (keyHex !== env.MEDIA_TOKEN_KEY) {
+    keyHex = env.MEDIA_TOKEN_KEY;
+    keyPromise = crypto.subtle.importKey('raw', Buffer.from(keyHex, 'hex'), 'AES-GCM', false, ['encrypt', 'decrypt']);
+    keyPromise.catch(() => { keyHex = null; });
+  }
+  return keyPromise;
 }
 
 async function seal(payload, sessionHash, origin, env) {
@@ -135,6 +142,7 @@ export async function serveMedia(request, env, {fetcher = fetch, now = Date.now(
     target(upstream, payload.origins);
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
     try { response = await fetcher(upstream, {method: request.method, headers, redirect: 'manual', signal: controller.signal}); }
+    catch (error) { if (controller.signal.aborted) fail('Потік тимчасово недоступний', 504); throw error; }
     finally { clearTimeout(timer); }
     if (![301, 302, 303, 307, 308].includes(response.status)) break;
     const location = response.headers.get('Location'); await response.body?.cancel();
@@ -157,5 +165,8 @@ export async function serveMedia(request, env, {fetcher = fetch, now = Date.now(
   }
   out.set('Content-Type', payload.extension === 'ts' ? 'video/mp2t' : type || 'application/octet-stream');
   if (response.headers.has('Content-Length')) out.set('Content-Length', response.headers.get('Content-Length'));
-  return new Response(request.method === 'HEAD' ? null : revocableBody(response.body, env.DB, sessionHash), {status: response.status, headers: out});
+  // A whole MP4 is one long transfer, rechecked while it streams. HLS segments are short and each one passes the
+  // sign-in check on its own request, so they stream straight through: piping them through JS exceeds the CPU limit.
+  const body = request.method === 'HEAD' ? null : payload.video ? revocableBody(response.body, env.DB, sessionHash) : response.body;
+  return new Response(body, {status: response.status, headers: out});
 }
