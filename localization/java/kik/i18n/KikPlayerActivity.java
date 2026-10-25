@@ -49,7 +49,7 @@ public final class KikPlayerActivity extends Activity {
  /** «Як вам?» at the credits (PlaybackPolicy.askRating): playback goes on, it hides by itself, each title is asked once. */
  private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
- private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt;
+ private boolean prepared,seeking,failed,destroyed,active=true,playWhenReady=true,offline;private int generation,subGeneration,playGeneration;private long resumeAt,startWanted=-1;
  private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,settings,options;private HorizontalScrollView optionsBox;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1,playIndex=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
@@ -240,7 +240,7 @@ public final class KikPlayerActivity extends Activity {
   DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,Doh.media(http));
   MediaItem item=MediaItem.fromUri(url);MediaSource source=hls(url)?new HlsMediaSource.Factory(data).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(retries).createMediaSource(item):new ProgressiveMediaSource.Factory(data).setLoadErrorHandlingPolicy(retries).setContinueLoadingCheckIntervalBytes(512*1024).createMediaSource(item);
   Log.d("KIK.Player","Play quality="+quality+" hls="+hls(url)+" at="+resumeAt+" alternatives="+stream.alternatives.get(quality));
-  player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
+  startWanted=resumeAt;player.setPlaybackSpeed(speed);player.setMediaSource(source,resumeAt);player.setPlayWhenReady(wanted());player.prepare();paintSub();
  }
  /**
   * Up to 8 in-place retries with growing pauses: a short CDN hiccup resumes from the same byte, unseen by the viewer.
@@ -259,6 +259,9 @@ public final class KikPlayerActivity extends Activity {
   if(destroyed)return;long now=SystemClock.elapsedRealtime();
   if(state==Player.STATE_READY){
    if(!prepared&&truncated())return;
+   // A new voice or quality must go on from the same moment: if the stream ignored the start position, seek there once.
+   if(!prepared&&startWanted>5000){long at=pos(),d=dur();long want=startWanted;startWanted=-1;if(Math.abs(at-want)>5000&&(d<=0||want<d-ENDED_SLACK_MS)){Log.w("KIK.Player","Started at "+at+" instead of "+want+", seeking");seekAt=now;player.seekTo(want);}}
+   startWanted=-1;
    boolean first=!prepared;prepared=true;failed=false;offline=false;h.removeCallbacks(retry);seeking=false;bufferingSince=0;autoRetry=0;waiting(false);lastMovement=now;lastPosition=pos();
    if(first){if(!active)player.setPlayWhenReady(false);show(true);TvChannels.played(this,profileId);Log.d("KIK.Player","Prepared quality="+quality+" playing="+player.isPlaying()+" speed="+speed+" after "+(now-recoveryStarted)+" ms");}
    update();
