@@ -143,3 +143,21 @@ test('revoking a session also interrupts an ongoing transfer at the next session
     assert.equal(cancelled,true);
   } finally {Date.now=originalNow;}
 });
+
+test('on Workers an MP4 is piped natively, rechecked by a side task, and a revoked session ends it without an uncaught error', {timeout:3000}, async () => {
+  const url=(await protectPlayback(playback(source),request(),env)).qualities[0].url;
+  const originalTimeout=globalThis.setTimeout;let active=true,cancelled=false;const tasks=[];
+  globalThis.IdentityTransformStream=class extends TransformStream{};
+  globalThis.setTimeout=(fn,ms,...args)=>originalTimeout(fn,ms===10000?5:ms,...args);
+  try {
+    const DB={prepare(){return {bind(){return {async first(){return active?{active:1}:null;}};}};}};
+    const ok=await serveMedia(request(url),{...env,DB},{waitUntil:p=>tasks.push(p),fetcher:async()=>new Response('video',{headers:{'Content-Type':'video/mp4'}})});
+    assert.equal(await ok.text(),'video');await Promise.all(tasks);
+    const body=new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('initial bytes'));},cancel(){cancelled=true;}});
+    const response=await serveMedia(request(url),{...env,DB},{waitUntil:p=>tasks.push(p),fetcher:async()=>new Response(body,{headers:{'Content-Type':'video/mp4'}})});
+    const reader=response.body.getReader();assert.equal(new TextDecoder().decode((await reader.read()).value),'initial bytes');
+    active=false;
+    let more=0;for(;;){const r=await reader.read();if(r.done)break;more+=r.value.byteLength;}
+    assert.equal(more,0);await Promise.all(tasks);assert.equal(cancelled,true);
+  } finally {delete globalThis.IdentityTransformStream;globalThis.setTimeout=originalTimeout;}
+});

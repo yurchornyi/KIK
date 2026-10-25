@@ -133,9 +133,9 @@ async function api(request,env,ctx){
  if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
-  const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:catalogue}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()));return r;}
+  const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:catalogue}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
- if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env);}
+ if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env,{waitUntil:p=>ctx.waitUntil(p)});}
  if(path==="/api/diagnostics/site"&&request.method==="POST")return json(await siteReport(db,user,await body(request,2048)));
  if(path==="/api/recommendations"&&request.method==="POST"){const b=await body(request,65536),p=await owned(db,user,b.profile_id);return json(await recommendations(db,p,b.items,env));}
  if(path==="/api/auth/logout-others"&&request.method==="POST")return json(await logoutOtherSessions(db,user,requestToken(request)));

@@ -100,9 +100,11 @@ export async function rewriteManifest(text, payload, sessionHash, origin, env) {
       // This gateway names MPEG-TS chunks .mp4; clients that check extensions need the HLS format.
       extension: fallback === 'ts' && extension === 'mp4' ? 'ts' : extension || fallback}, sessionHash, origin, env);
   }
+  // Decided once per playlist: scanning the whole text again for every segment line costs more CPU than the sealing.
+  const segment = text.includes('#EXT-X-MAP:') ? 'm4s' : 'ts';
   return (await Promise.all(text.split(/\r?\n/).map(async line => {
     if (!line.trim()) return line;
-    if (!line.startsWith('#')) return child(line.trim(), text.includes('#EXT-X-MAP:') ? 'm4s' : 'ts');
+    if (!line.startsWith('#')) return child(line.trim(), segment);
     const matches = [...line.matchAll(/\bURI="([^"]*)"/g)];
     if (/\bURI=/.test(line) && !matches.length) fail('Некоректний список відео', 502);
     for (const match of matches) line = line.replace(match[0], 'URI="' + await child(match[1],
@@ -111,7 +113,35 @@ export async function rewriteManifest(text, payload, sessionHash, origin, env) {
   }))).join('\n');
 }
 
-// Recheck a long MP4 transfer as well as each subsequent Range/HLS request.
+const sessionActive = (db, sessionHash) =>
+  db.prepare('SELECT 1 AS active FROM sessions WHERE token_hash=? AND expires_at>?').bind(sessionHash, Date.now()).first();
+
+// On Workers a whole MP4 is piped natively (IdentityTransformStream): no JavaScript runs per chunk, so a film-long
+// transfer stays inside the CPU limit. A side task rechecks the session every 10 s; when it is gone the source is
+// cancelled and the player's stream simply ends there. Erroring the response stream instead would be an uncaught
+// exception in the Worker, so every pipe and check failure is caught here.
+function nativeRevocableBody(body, db, sessionHash, waitUntil) {
+  const {readable, writable} = new IdentityTransformStream(), stop = new AbortController();
+  let finished = false;
+  const pipe = body.pipeTo(writable, {signal: stop.signal, preventAbort: true}).catch(async () => {
+    if (!stop.signal.aborted) return;
+    await body.cancel().catch(() => {}); await writable.close().catch(() => {});
+  }).finally(() => { finished = true; });
+  const watch = (async () => {
+    while (!finished) {
+      let timer;
+      await Promise.race([pipe, new Promise(resolve => { timer = setTimeout(resolve, 10000); })]).finally(() => clearTimeout(timer));
+      if (finished) return;
+      let active = null;
+      try { active = await sessionActive(db, sessionHash); } catch {}
+      if (!active) { stop.abort(Error('Session revoked')); return; }
+    }
+  })();
+  waitUntil(Promise.all([pipe, watch]));
+  return readable;
+}
+
+// Recheck a long MP4 transfer as well as each subsequent Range/HLS request (JavaScript fallback outside Workers).
 function revocableBody(body, db, sessionHash) {
   if (!body) return null;
   const reader = body.getReader(); let checkAt = Date.now() + 10000;
@@ -119,7 +149,7 @@ function revocableBody(body, db, sessionHash) {
     async pull(controller) {
       try {
         if (Date.now() >= checkAt) {
-          const active = await db.prepare('SELECT 1 AS active FROM sessions WHERE token_hash=? AND expires_at>?').bind(sessionHash, Date.now()).first();
+          const active = await sessionActive(db, sessionHash);
           if (!active) { await reader.cancel(); controller.error(Error('Session revoked')); return; }
           checkAt = Date.now() + 10000;
         }
@@ -130,7 +160,7 @@ function revocableBody(body, db, sessionHash) {
   });
 }
 
-export async function serveMedia(request, env, {fetcher = fetch, now = Date.now()} = {}) {
+export async function serveMedia(request, env, {fetcher = fetch, now = Date.now(), waitUntil = null} = {}) {
   const sessionHash = await hash(requestToken(request)), payload = await open(request, env, sessionHash, now);
   const range = request.headers.get('Range');
   if (range && !/^bytes=(?:\d{1,16}-\d{0,16}|-\d{1,16})$/.test(range)) fail('Некоректний діапазон', 416);
@@ -167,6 +197,8 @@ export async function serveMedia(request, env, {fetcher = fetch, now = Date.now(
   if (response.headers.has('Content-Length')) out.set('Content-Length', response.headers.get('Content-Length'));
   // A whole MP4 is one long transfer, rechecked while it streams. HLS segments are short and each one passes the
   // sign-in check on its own request, so they stream straight through: piping them through JS exceeds the CPU limit.
-  const body = request.method === 'HEAD' ? null : payload.video ? revocableBody(response.body, env.DB, sessionHash) : response.body;
+  const native = waitUntil && typeof globalThis.IdentityTransformStream === 'function' && response.body;
+  const body = request.method === 'HEAD' ? null : !payload.video ? response.body :
+    native ? nativeRevocableBody(response.body, env.DB, sessionHash, waitUntil) : revocableBody(response.body, env.DB, sessionHash);
   return new Response(body, {status: response.status, headers: out});
 }
