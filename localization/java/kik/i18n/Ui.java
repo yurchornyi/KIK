@@ -58,11 +58,12 @@ public final class Ui {
   t.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.WHITE,chosen?Color.WHITE:0xffb3b3b3}));
   t.setBackground(states(shape(0,dp(c,12),0,0),shape(0x33ffffff,dp(c,12),0,0)));return t;
  }
- /** The button that opens such a dropdown: black with a thin white edge, white when focused. */
+ /** The button that opens such a dropdown: black with a thin white edge, white when focused, a red edge while its filter is on. */
  public static TextView dropButton(Context c,String label){
   TextView t=new TextView(c);t.setText(label+"  ▾");t.setTextSize(16);t.setSingleLine(true);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(c,16),0,dp(c,14),0);
   t.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{0xff141414,Color.WHITE}));
-  t.setBackground(states(shape(0xcc000000,dp(c,22),dp(c,1),0xb3ffffff),shape(Color.WHITE,dp(c,22),dp(c,1),Color.WHITE)));return t;
+  StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},shape(Color.WHITE,dp(c,22),dp(c,1),Color.WHITE));s.addState(new int[]{android.R.attr.state_selected},shape(0xcc000000,dp(c,22),dp(c,2),RED));s.addState(new int[]{},shape(0xcc000000,dp(c,22),dp(c,1),0xb3ffffff));
+  t.setBackground(s);return t;
  }
  public static StateListDrawable states(Drawable normal,Drawable focused){StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},focused);s.addState(new int[]{},normal);return s;}
  public static android.content.res.ColorStateList buttonText(boolean primary){return new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_selected},new int[]{}},new int[]{GREY,Color.BLACK,Color.WHITE,primary?Color.BLACK:Color.WHITE});}
@@ -122,6 +123,13 @@ public final class Ui {
   return t;
  }
  public static void select(TextView chip,boolean on){chip.setSelected(on);}
+ /** What went wrong while loading, in words a viewer can act on: no network, a slow answer, or anything else. */
+ public static String loadError(Throwable e,String what){
+  for(Throwable t=e;t!=null;t=t.getCause()){
+   if(t instanceof java.net.UnknownHostException||t instanceof java.net.ConnectException||t instanceof java.net.NoRouteToHostException)return "Немає з’єднання з інтернетом. Перевірте мережу і натисніть «Спробувати ще».";
+   if(t instanceof java.net.SocketTimeoutException)return "Сервер KIK відповідає надто довго. Натисніть «Спробувати ще».";}
+  return "Не вдалося завантажити "+what+". Натисніть «Спробувати ще».";
+ }
  public static LinearLayout.LayoutParams wrap(Context c,int right){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,0,dp(c,right),0);return lp;}
 
  /** Poster card: focus grows it slightly and shows a red ring; title and a subtitle line below. */

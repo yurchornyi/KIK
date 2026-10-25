@@ -85,8 +85,10 @@ public final class BrowseActivity extends Activity {
    orderButton=dropButton(orderName(filter));orderButton.setOnClickListener(v->orderMenu(v));
    LinearLayout.LayoutParams gl=new LinearLayout.LayoutParams(-2,dp(44));gl.leftMargin=dp(10);head.addView(genreButton,gl);
    LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(10);head.addView(orderButton,ol);
-   studioButton=Ui.chip(this,"");studioButton.setContentDescription("Студія / платформа");studioButton.setPadding(dp(14),0,dp(14),0);Studios.FilterIcon filterIcon=new Studios.FilterIcon(dp(20));filterIcon.setBounds(0,0,dp(20),dp(20));studioButton.setCompoundDrawables(filterIcon,null,null,null);LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(dp(48),dp(44));sl.leftMargin=dp(10);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
-   studioChip=Ui.chip(this,"");studioChip.setVisibility(View.GONE);head.addView(studioChip,Ui.wrap(this,10));studioChip.setOnClickListener(v->{studio="";paintStudio();reload();studioButton.requestFocus();});paintStudio();
+   // The studio filter looks like its three neighbours: the same dark outlined button, the icon turns dark on the white focus.
+   studioButton=dropButton("");studioButton.setText("");studioButton.setContentDescription("Студія / платформа");studioButton.setPadding(dp(14),0,dp(14),0);final Studios.FilterIcon filterIcon=new Studios.FilterIcon(dp(20));filterIcon.setBounds(0,0,dp(20),dp(20));studioButton.setCompoundDrawables(filterIcon,null,null,null);
+   studioButton.setOnFocusChangeListener((v,f)->{filterIcon.setColorFilter(f?new android.graphics.PorterDuffColorFilter(0xff141414,android.graphics.PorterDuff.Mode.SRC_IN):null);v.invalidate();});LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(dp(48),dp(44));sl.leftMargin=dp(10);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
+   studioChip=dropButton("");studioChip.setVisibility(View.GONE);LinearLayout.LayoutParams cl=new LinearLayout.LayoutParams(-2,dp(44));cl.leftMargin=dp(10);head.addView(studioChip,cl);studioChip.setOnClickListener(v->{studio="";paintStudio();reload();studioButton.requestFocus();});paintStudio();
    head.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
   }
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(dp(8),dp(16),0,dp(6));content.addView(status);
@@ -199,8 +201,8 @@ public final class BrowseActivity extends Activity {
  private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if("history".equals(mode)||"later".equals(mode))shownList=listSignature();if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
  /** The count and the next-page button under the posters. */
  private void updateMore(){
-  if(loadMore==null)return;boolean show=paged()&&page>0&&(!end||failed)&&!seen.isEmpty();
-  loadMore.setVisibility(show?View.VISIBLE:View.GONE);loadMore.setEnabled(!loading);loadMore.setText(loading?"Завантаження…":failed?"Спробувати ще":"Показати ще");
+  if(loadMore==null)return;boolean show=paged()&&(failed||page>0&&!end)&&(failed&&seen.isEmpty()||!seen.isEmpty());
+  loadMore.setVisibility(show?View.VISIBLE:View.GONE);loadMore.setEnabled(!loading);loadMore.setText(loading?"Завантаження…":failed?"↻  Спробувати ще":"Показати ще");
   String text=!paged()||seen.isEmpty()?"":failed?"Не вдалося завантажити наступну сторінку. Список збережено.":"Показано: "+cards.size()+(end?" · це всі результати":"");
   summary.setText(text);summary.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);
  }
@@ -216,7 +218,8 @@ public final class BrowseActivity extends Activity {
    List<G> items=new ArrayList<G>();String error=null;
    try{
     // A page can be fully hidden by the country filter: keep paging while the source still has titles.
-    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;tries<(requestedStudio.isEmpty()?5:2)&&items.isEmpty();tries++){
+    // A studio page holds only the few titles the source matched: keep asking until a row is full or ~25 s have passed.
+    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;requestedStudio.isEmpty()?tries<5&&items.isEmpty():tries<8&&items.size()<columns&&(items.isEmpty()||android.os.SystemClock.elapsedRealtime()-started<25000);tries++){
      if("search".equals(mode)&&(q==null||q.length()<2))break;reached[0]=next+tries;
      for(Site.Card c:"catalog".equals(mode)?(requestedStudio.isEmpty()?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.studioList(requestedCategory,requestedGenre,requestedFilter,requestedStudio,reached[0])):Site.search(q,reached[0]))items.add(of(c));
      studioMore[0]=Site.lastRaw()>0;if(Site.lastRaw()==0)break;}
@@ -226,12 +229,12 @@ public final class BrowseActivity extends Activity {
     Set<String> words=new HashSet<String>();for(G g:items){g.sourceTitle=g.title;words.add(g.title);if(g.genre!=null)words.add(g.genre);}
     Map<String,String> uk=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
     for(G g:items){String t=uk.get(g.title);g.title=t!=null?t:TitleTranslate.shown(g.title);if(g.genre!=null){String gn=uk.get(g.genre);g.sub=Ui.join(g.year,gn==null?TitleTranslate.shown(g.genre):gn);}}
-   }catch(Exception e){error="Не вдалося завантажити. Перевірте інтернет і спробуйте ще раз.";}
+   }catch(Exception e){android.util.Log.w("KIK","Browse "+mode+" page "+next+": "+e);error=Ui.loadError(e,"catalog".equals(mode)?"каталог":"список");}
    final List<G> got=items;final String err=error;
    Ui.MAIN.post(()->{
     if(gen!=generation||isFinishing()||isDestroyed())return;loading=false;
     // A failed page keeps the cards and the page number: OK on the message (first page) or the button asks it again.
-    if(err!=null){failed=true;if(seen.isEmpty()){status.setText(err+"  Натисніть OK, щоб повторити.");status.setVisibility(View.VISIBLE);status.setFocusable(true);status.requestFocus();updateMore();}
+    if(err!=null){failed=true;if(seen.isEmpty()){status.setText(err);status.setVisibility(View.VISIBLE);updateMore();loadMore.requestFocus();}
      else{updateMore();loadMore.requestFocus();Ui.toast(this,"Не вдалося завантажити наступну сторінку. Список збережено.");}return;}
     failed=false;page=reached[0];status.setFocusable(false);
     List<G> fresh=got;if(paged()){fresh=new ArrayList<G>();for(G g:got)if(seen.add(Progress.norm(g.link)))fresh.add(g);}

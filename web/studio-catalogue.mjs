@@ -43,7 +43,8 @@ export function createStudioCatalogue({fetcher=globalThis.fetch,search,genres,fi
   if(kind==='tv'&&studio.networks.length)q.set('with_networks',studio.networks.join('|'));
   else{const ids=await companies(studio,token);if(!ids.length)return {items:[],hasMore:kinds.length>1&&kind===kinds[0],page};q.set('with_companies',ids.join('|'));}
   q.set(kind==='tv'?'first_air_date.lte':'primary_release_date.lte',new Date(now()).toISOString().slice(0,10));
-  if(category==='cartoons'||category==='animation')q.set('with_genres','16');
+  // The source keeps animated titles under «Мультфільми» and «Аніме»: in films and series they would never match.
+  if(category==='cartoons'||category==='animation')q.set('with_genres','16');else q.set('without_genres','16');
   const data=await cached('discover:'+studio.id+':'+category+':'+q,()=>request('/discover/'+kind+'?'+q,token));
   if(!Array.isArray(data.results))throw Error('Некоректна відповідь студії');
   const candidates=data.results.slice(offset,offset+SIZE),items=[];

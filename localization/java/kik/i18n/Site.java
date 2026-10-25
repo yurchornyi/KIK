@@ -201,7 +201,7 @@ public final class Site {
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
  /** Shared KIK edge cache supplies browsing data; the TV contacts the source only for an opened title or playback. */
  private static List<Card> serviceCards(String path)throws IOException{
-  JSONArray items=FreeSources.get(path,20000).optJSONArray("items");if(items==null)throw new IOException("Catalogue response unavailable");
+  JSONArray items=FreeSources.get(path,30000).optJSONArray("items");if(items==null)throw new IOException("Catalogue response unavailable");
   List<Card> out=new ArrayList<Card>();int raw=0;
   for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;
    String link=x.optString("link"),title=x.optString("sourceTitle",x.optString("title"));if(!FreeSources.rezka(link)||title.isEmpty())continue;
