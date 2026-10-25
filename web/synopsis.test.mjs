@@ -33,3 +33,8 @@ test('synopsis is written by Sentra as its own skill; a non-Ukrainian answer is 
   assert.equal((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,null);
  });
 });
+test('the logline prompt keeps the model to the description: no made-up roles, names as written',async()=>{
+ const original=globalThis.fetch;let system='';globalThis.fetch=async(url,opts)=>{system=JSON.parse(opts.body).messages[0].content;return Response.json({choices:[{message:{content:good}}]});};
+ try{await synopsis(fakeDb(),{SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},link,async()=>page,async(d,f)=>f);}finally{globalThis.fetch=original;}
+ assert.match(system,/Пиши лише те, що є в описі/);assert.doesNotMatch(system,/загальновідомі факти/);
+});
