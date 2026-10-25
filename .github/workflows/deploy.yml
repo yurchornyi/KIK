@@ -1,0 +1,45 @@
+name: Deploy
+
+# A commit merged into main passes the overlay checks and then deploys the web
+# Worker from the owner's Mac (self-hosted runner kik-mac), with the Cloudflare
+# login wrangler already holds there - the same `cd web && npm run deploy` the
+# owner runs by hand (account in web/wrangler.jsonc).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kik-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yml
+
+  deploy:
+    needs: checks
+    runs-on: [self-hosted, kik-mac]
+    timeout-minutes: 15
+    steps:
+      - name: Keep the Mac awake
+        run: nohup caffeinate -ims >/dev/null 2>&1 &
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Deploy only the current main tip
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix web --no-audit --no-fund
+      - name: Deploy main@${{ github.sha }}
+        working-directory: web
+        run: npm run deploy
