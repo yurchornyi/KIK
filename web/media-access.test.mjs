@@ -21,6 +21,14 @@ async function fixture() {
   return {active, env: {...env, DB}};
 }
 
+test('CDN addresses go only to an app that asks for them, next to the sealed relay', async () => {
+  const plain = await protectPlayback(playback(source), request(), env);
+  assert.equal(plain.qualities[0].direct, undefined);
+  const app = await protectPlayback(playback(source), request(), env, Date.now(), {direct: true});
+  assert.equal(app.qualities[0].direct[0], source);
+  assert.ok(app.qualities[0].url.startsWith(origin + '/api/media/'));
+});
+
 test('media tickets hide upstream credentials, retain quality selection, and bind to the issuing session', async () => {
   const protectedResult = await protectPlayback(playback(source), request(), env);
   const url = protectedResult.qualities[0].url;

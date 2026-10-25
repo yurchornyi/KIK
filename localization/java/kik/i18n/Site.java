@@ -426,15 +426,31 @@ public final class Site {
  /** Stream links through KIK's service: they come back as its own /api/media addresses, played with this TV's sign-in. */
  private static Stream serviceStream(Film f,Voice v,String season,String episode,boolean rotate)throws IOException{
   try{
-   JSONObject body=new JSONObject().put("link",f.link).put("voice",v.id).put("recovery_attempt",rotate?1:0);if(f.series)body.put("season",season).put("episode",episode);
+   JSONObject body=new JSONObject().put("link",f.link).put("voice",v.id).put("recovery_attempt",rotate?1:0).put("direct",true);if(f.series)body.put("season",season).put("episode",episode);
    JSONArray q=FreeSources.post("/api/stream",body,40000).optJSONArray("qualities");Stream s=new Stream();
    if(q!=null)for(int i=0;i<q.length();i++){JSONObject x=q.optJSONObject(i);if(x==null)continue;String label=x.optString("label"),url=x.optString("url");if(label.isEmpty()||url.isEmpty())continue;
     List<String> alts=new ArrayList<String>();JSONArray a=x.optJSONArray("alternatives");if(a!=null)for(int j=0;j<a.length();j++)if(!alts.contains(a.optString(j)))alts.add(a.optString(j));if(alts.isEmpty())alts.add(url);
+    // The CDN usually still serves this network even while the catalogue bans it: straight from there is far faster than the relay.
+    List<String> direct=new ArrayList<String>();JSONArray d=x.optJSONArray("direct");if(d!=null)for(int j=0;j<d.length();j++){String u=d.optString(j);if(RecoveryPolicy.media(u)&&!direct.contains(u))direct.add(u);}
+    direct.sort((p,q2)->Boolean.compare(!KikPlayerActivity.hls(p),!KikPlayerActivity.hls(q2)));
+    if(!direct.isEmpty()&&cdnReachable(direct.get(0))){alts.addAll(0,direct);url=direct.get(0);}
     s.qualities.put(label,url);s.alternatives.put(label,alts);}
    if(s.qualities.isEmpty())throw new IOException("No direct media");
    List<String> labels=new ArrayList<String>(s.qualities.keySet());Collections.sort(labels,(x,y)->Integer.compare(quality(y),quality(x)));LinkedHashMap<String,String> sorted=new LinkedHashMap<String,String>();for(String l:labels)sorted.put(l,s.qualities.get(l));s.qualities=sorted;
    return s;
   }catch(JSONException e){throw new IOException(e);}
+ }
+ private static volatile long cdnCheckedAt;private static volatile boolean cdnOk;
+ /** One tiny request, remembered for ten minutes: does the CDN answer this network? */
+ static boolean cdnReachable(String url){
+  long now=System.currentTimeMillis();if(now-cdnCheckedAt<600_000L)return cdnOk;boolean ok=false;String at=url;
+  for(int hop=0;hop<4&&!ok;hop++){HttpURLConnection c=null;
+   try{c=Doh.open(at);c.setInstanceFollowRedirects(false);c.setConnectTimeout(4000);c.setReadTimeout(4000);c.setRequestProperty("User-Agent",UA);c.setRequestProperty("Range","bytes=0-0");
+    int code=c.getResponseCode();String next=c.getHeaderField("Location");
+    if(code>=300&&code<400&&next!=null){at=new URL(new URL(at),next).toString();if(!RecoveryPolicy.media(at))break;continue;}
+    ok=code==200||code==206;break;
+   }catch(Exception e){break;}finally{if(c!=null)c.disconnect();}}
+  cdnOk=ok;cdnCheckedAt=now;Log.d("KIK","CDN direct "+(ok?"reachable":"refused; using KIK's relay"));return ok;
  }
  /** Media from KIK's own service needs this TV's sign-in on every request. */
  static boolean serviceMedia(String url){String o=UpdateConfig.WEB_ORIGIN;return url!=null&&url.startsWith(o)&&url.length()>o.length()&&url.charAt(o.length())=='/';}
