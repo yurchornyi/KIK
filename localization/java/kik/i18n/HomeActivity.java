@@ -66,7 +66,9 @@ public final class HomeActivity extends Activity {
   LinearLayout.LayoutParams trackLp=new LinearLayout.LayoutParams(dp(120),dp(4));trackLp.setMargins(0,0,dp(12),0);heroResume.addView(track,trackLp);heroResume.addView(heroSub);
   info.addView(heroResume);space(info,8);
   info.addView(heroText,new LinearLayout.LayoutParams(Ui.contentWidth(this,500,80),-2));space(info,14);
-  LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);info.addView(Ui.horizontal(this,buttons),new LinearLayout.LayoutParams(-1,-2));
+  LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);
+  // The row's padding leaves room for the focus ring and zoom; pulled back by it, the buttons start where the title does, as on the film page.
+  LinearLayout.LayoutParams buttonsLp=new LinearLayout.LayoutParams(-1,-2);buttonsLp.setMargins(-dp(8),0,-dp(8),0);info.addView(Ui.horizontal(this,buttons),buttonsLp);
   watch=action("Дивитися",HeroActions.PLAY,true);buttons.addView(watch,new LinearLayout.LayoutParams(-2,dp(48)));
   later=action("Мій список",HeroActions.ADD,false);LinearLayout.LayoutParams lp0=new LinearLayout.LayoutParams(-2,dp(48));lp0.setMargins(dp(10),0,0,0);buttons.addView(later,lp0);
   later.setOnClickListener(v->toggleLater(hero));
