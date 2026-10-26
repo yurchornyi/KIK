@@ -50,7 +50,7 @@ public final class BrowseActivity extends Activity {
   FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-  LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);content.addView(head);
+  LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);head.setClipChildren(false);head.setClipToPadding(false);content.addView(head);
   View logo=Brand.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
   String titleText=getIntent().getStringExtra(TITLE);heading=Ui.bold(this,titleText==null?"Каталог":titleText,30);heading.setIncludeFontPadding(false);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
   Ui.enter(head,0);
@@ -83,12 +83,12 @@ public final class BrowseActivity extends Activity {
    String given=getIntent().getStringExtra(TITLE);
    genreButton=dropButton(genre!=null&&given!=null?given:"Усі жанри");genreButton.setOnClickListener(v->genreMenu(v));
    orderButton=dropButton(orderName(filter));orderButton.setOnClickListener(v->orderMenu(v));
-   LinearLayout.LayoutParams gl=new LinearLayout.LayoutParams(-2,dp(44));gl.leftMargin=dp(10);head.addView(genreButton,gl);
-   LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(10);head.addView(orderButton,ol);
-   // The studio filter looks like its three neighbours: the same dark outlined button, the icon turns dark on the white focus.
-   studioButton=dropButton("");studioButton.setText("");studioButton.setContentDescription("Студія / платформа");studioButton.setPadding(dp(14),0,dp(14),0);final Studios.FilterIcon filterIcon=new Studios.FilterIcon(dp(20));filterIcon.setBounds(0,0,dp(20),dp(20));studioButton.setCompoundDrawables(filterIcon,null,null,null);
-   studioButton.setOnFocusChangeListener((v,f)->{filterIcon.setColorFilter(f?new android.graphics.PorterDuffColorFilter(0xff141414,android.graphics.PorterDuff.Mode.SRC_IN):null);v.invalidate();});LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(dp(48),dp(44));sl.leftMargin=dp(10);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
-   studioChip=dropButton("");studioChip.setVisibility(View.GONE);LinearLayout.LayoutParams cl=new LinearLayout.LayoutParams(-2,dp(44));cl.leftMargin=dp(10);head.addView(studioChip,cl);studioChip.setOnClickListener(v->{studio="";paintStudio();reload();studioButton.requestFocus();});paintStudio();
+   LinearLayout.LayoutParams gl=new LinearLayout.LayoutParams(-2,dp(44));gl.leftMargin=dp(4);head.addView(genreButton,gl);
+   LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(4);head.addView(orderButton,ol);
+   // The studio filter reads like its neighbours: the filter icon and the chosen studios as plain text; «Скинути» clears them all.
+   studioButton=dropButton("Студії");studioButton.setCompoundDrawablePadding(dp(10));final Studios.FilterIcon filterIcon=new Studios.FilterIcon(dp(20));filterIcon.setBounds(0,0,dp(20),dp(20));studioButton.setCompoundDrawables(filterIcon,null,null,null);
+   studioButton.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);filterIcon.setColorFilter(f?new android.graphics.PorterDuffColorFilter(Color.BLACK,android.graphics.PorterDuff.Mode.SRC_IN):null);v.invalidate();});LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(-2,dp(44));sl.leftMargin=dp(4);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
+   studioChip=dropButton("");studioChip.setText("Скинути  ✕");studioChip.setContentDescription("Скинути фільтр студій");studioChip.setVisibility(View.GONE);LinearLayout.LayoutParams cl=new LinearLayout.LayoutParams(-2,dp(44));cl.leftMargin=dp(4);head.addView(studioChip,cl);studioChip.setOnClickListener(v->{studio="";paintStudio();reload();studioButton.requestFocus();});paintStudio();
    head.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
   }
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(dp(8),dp(16),0,dp(6));content.addView(status);
@@ -123,12 +123,27 @@ public final class BrowseActivity extends Activity {
  }
  private TextView option(String label,boolean chosen){return Ui.menuItem(this,label,chosen);}
  private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(dp(8),dp(8),dp(8),dp(8));return l;}
- private void paintStudio(){if(!studio.isEmpty()&&"watching".equals(filter))filter="popular";orderButton.setText(orderName(filter)+"  ▾");studioChip.setText(Studios.name(studio)+" ×");studioChip.setVisibility(studio.isEmpty()?View.GONE:View.VISIBLE);studioChip.setContentDescription("Скинути фільтр "+Studios.name(studio));studioButton.setContentDescription("Студія / платформа"+(studio.isEmpty()?"":": "+Studios.name(studio)));Ui.select(studioButton,!studio.isEmpty());}
- private void studioMenu(View anchor){
-  LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
-  for(final String[] x:Studios.ALL){TextView o=option(x[1],x[0].equals(studio));list.addView(o,new LinearLayout.LayoutParams(dp(220),-2));if(x[0].equals(studio))chosen=o;o.setOnClickListener(v->{popup.dismiss();if(!studio.equals(x[0])){studio=x[0];paintStudio();reload();}studioButton.requestFocus();});}
-  if(chosen!=null)chosen.requestFocus();
+ /** The chosen studios in the menu's order, joined for the request (the server takes «netflix,hbo»). */
+ private List<String> studios(){List<String> out=new ArrayList<String>();for(String id:studio.split(","))if(!id.isEmpty()&&!Studios.name(id).isEmpty())out.add(id);return out;}
+ private void paintStudio(){
+  if(!studio.isEmpty()&&"watching".equals(filter))filter="popular";orderButton.setText(orderName(filter)+"  ▾");
+  List<String> on=studios();StringBuilder names=new StringBuilder();for(String id:on){if(names.length()>0)names.append(", ");names.append(Studios.name(id));}
+  String label=on.isEmpty()?"Студії":on.size()<=2?names.toString():Studios.name(on.get(0))+" +"+(on.size()-1);
+  studioButton.setText(label+"  ▾");studioButton.setContentDescription("Студія / платформа"+(on.isEmpty()?"":": "+names));studioChip.setVisibility(on.isEmpty()?View.GONE:View.VISIBLE);
  }
+ /** Several studios at once: OK ticks one on or off and the menu stays open; the list reloads when it closes. «Усі студії» clears them. */
+ private void studioMenu(View anchor){
+  LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);final String before=studio;final Set<String> on=new LinkedHashSet<String>(studios());
+  final List<TextView> items=new ArrayList<TextView>();
+  for(final String[] x:Studios.ALL){final boolean all=x[0].isEmpty();final TextView o=option(x[1],all?on.isEmpty():on.contains(x[0]));items.add(o);list.addView(o,new LinearLayout.LayoutParams(dp(240),-2));
+   if(all)o.setPadding(o.getPaddingLeft()+dp(30),o.getPaddingTop(),o.getPaddingRight(),o.getPaddingBottom());else tick(o,on.contains(x[0]));
+   o.setOnClickListener(v->{if(all){on.clear();popup.dismiss();return;}if(!on.remove(x[0]))on.add(x[0]);tick(o,on.contains(x[0]));});}
+  popup.setOnDismissListener(()->{StringBuilder b=new StringBuilder();for(String[] x:Studios.ALL)if(on.contains(x[0])){if(b.length()>0)b.append(',');b.append(x[0]);}
+   studio=b.toString();paintStudio();if(!studio.equals(before))reload();studioButton.requestFocus();});
+  items.get(0).requestFocus();
+ }
+ private void tick(TextView o,boolean on){android.graphics.drawable.Drawable d=new Studios.CheckIcon(dp(18),on);d.setBounds(0,0,dp(18),dp(18));o.setCompoundDrawables(d,null,null,null);o.setCompoundDrawablePadding(dp(12));o.setTypeface(on?android.graphics.Typeface.DEFAULT_BOLD:android.graphics.Typeface.DEFAULT);
+  o.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.WHITE,on?Color.WHITE:0xffb3b3b3}));}
  private void categoryMenu(View anchor){
   LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
   for(final String[] x:SECTIONS){TextView o=option(x[1],x[0].equals(category));list.addView(o,new LinearLayout.LayoutParams(dp(200),-2));if(x[0].equals(category))chosen=o;o.setOnClickListener(v->{popup.dismiss();selectCategory(x[0],x[1]);});}

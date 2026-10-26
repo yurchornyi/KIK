@@ -58,12 +58,11 @@ public final class Ui {
   t.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.WHITE,chosen?Color.WHITE:0xffb3b3b3}));
   t.setBackground(states(shape(0,dp(c,12),0,0),shape(0x33ffffff,dp(c,12),0,0)));return t;
  }
- /** The button that opens such a dropdown: black with a thin white edge, white when focused, a red edge while its filter is on. */
+ /** The button that opens such a dropdown: plain white text like the home screen's top menu, the same white focus pill with the red edge. */
  public static TextView dropButton(Context c,String label){
-  TextView t=new TextView(c);t.setText(label+"  ▾");t.setTextSize(16);t.setSingleLine(true);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(c,16),0,dp(c,14),0);
-  t.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{0xff141414,Color.WHITE}));
-  StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},shape(Color.WHITE,dp(c,22),dp(c,1),Color.WHITE));s.addState(new int[]{android.R.attr.state_selected},shape(0xcc000000,dp(c,22),dp(c,2),RED));s.addState(new int[]{},shape(0xcc000000,dp(c,22),dp(c,1),0xb3ffffff));
-  t.setBackground(s);return t;
+  TextView t=new TextView(c);t.setText(label+"  ▾");t.setTextSize(16);t.setSingleLine(true);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(c,14),0,dp(c,14),0);
+  t.setTextColor(buttonText(false));t.setBackground(states(shape(0,dp(c,24),0,0),shape(Color.WHITE,dp(c,24),dp(c,2),RED)));
+  t.setOnFocusChangeListener((v,f)->focus(v,f,1.04f));return t;
  }
  public static StateListDrawable states(Drawable normal,Drawable focused){StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},focused);s.addState(new int[]{},normal);return s;}
  public static android.content.res.ColorStateList buttonText(boolean primary){return new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{android.R.attr.state_focused},new int[]{android.R.attr.state_selected},new int[]{}},new int[]{GREY,Color.BLACK,Color.WHITE,primary?Color.BLACK:Color.WHITE});}

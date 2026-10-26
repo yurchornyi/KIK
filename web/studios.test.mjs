@@ -71,3 +71,14 @@ test('artwork can return a confirmed studio even when there is no suitable poste
  const {createArtworkService}=await import('./tmdb.mjs');const fetcher=async url=>Response.json(url.includes('/search/')?{results:[titles[0]]}:{networks:[{id:49}],images:{posters:[],backdrops:[]}});
  const result=await createArtworkService({fetcher}).lookup({...card(1),year:'2024'},{token});assert.deepEqual(result.artwork.studios,['hbo']);assert.equal(result.artwork.poster,undefined);
 });
+test('a genre narrows the brand discovery itself, so documentaries are found instead of filtered out of popular titles',async()=>{
+ const {api,calls}=service({results:[]});await api.lookup({studio:'netflix',category:'films',genre:'documentary'},{token}).catch(()=>{});
+ const discover=calls.find(u=>u.pathname.includes('/discover/'));assert.equal(discover.searchParams.get('with_genres'),'99');assert.equal(discover.searchParams.get('without_genres'),'16');
+});
+test('several studios search any of their networks at once and leave the badge to each title',async()=>{
+ const {api,calls}=service();const result=await api.lookup({studio:'hbo,netflix',category:'series',page:1},{token});
+ assert.equal(calls.find(u=>u.pathname.includes('/discover/')).searchParams.get('with_networks'),'49|3186|213');assert.deepEqual(result.items[0].studios,[]);
+ const films=service({results:[]});await films.api.lookup({studio:'netflix,hbo',category:'films'},{token});
+ assert.equal(films.calls.find(u=>u.pathname.includes('/discover/')).searchParams.get('with_companies'),'22');
+ await assert.rejects(api.lookup({studio:'hbo,evil',category:'series'},{token}));
+});
