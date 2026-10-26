@@ -87,7 +87,7 @@ public final class BrowseActivity extends Activity {
    LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(4);head.addView(orderButton,ol);
    // The studio filter reads like its neighbours: the filter icon and the chosen studios as plain text; «Скинути» clears them all.
    studioButton=dropButton("Студії");studioButton.setCompoundDrawablePadding(dp(10));final Studios.FilterIcon filterIcon=new Studios.FilterIcon(dp(20));filterIcon.setBounds(0,0,dp(20),dp(20));studioButton.setCompoundDrawables(filterIcon,null,null,null);
-   studioButton.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);filterIcon.setColorFilter(f?new android.graphics.PorterDuffColorFilter(Color.BLACK,android.graphics.PorterDuff.Mode.SRC_IN):null);v.invalidate();});LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(-2,dp(44));sl.leftMargin=dp(4);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
+   studioButton.setOnFocusChangeListener((v,f)->{filterIcon.setColorFilter(f?new android.graphics.PorterDuffColorFilter(Color.BLACK,android.graphics.PorterDuff.Mode.SRC_IN):null);v.invalidate();});LinearLayout.LayoutParams sl=new LinearLayout.LayoutParams(-2,dp(44));sl.leftMargin=dp(4);head.addView(studioButton,sl);studioButton.setOnClickListener(v->studioMenu(v));
    studioChip=dropButton("");studioChip.setText("Скинути  ✕");studioChip.setContentDescription("Скинути фільтр студій");studioChip.setVisibility(View.GONE);LinearLayout.LayoutParams cl=new LinearLayout.LayoutParams(-2,dp(44));cl.leftMargin=dp(4);head.addView(studioChip,cl);studioChip.setOnClickListener(v->{studio="";paintStudio();reload();studioButton.requestFocus();});paintStudio();
    head.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
   }
@@ -137,12 +137,13 @@ public final class BrowseActivity extends Activity {
   final List<TextView> items=new ArrayList<TextView>();
   for(final String[] x:Studios.ALL){final boolean all=x[0].isEmpty();final TextView o=option(x[1],all?on.isEmpty():on.contains(x[0]));items.add(o);list.addView(o,new LinearLayout.LayoutParams(dp(240),-2));
    if(all)o.setPadding(o.getPaddingLeft()+dp(30),o.getPaddingTop(),o.getPaddingRight(),o.getPaddingBottom());else tick(o,on.contains(x[0]));
-   o.setOnClickListener(v->{if(all){on.clear();popup.dismiss();return;}if(!on.remove(x[0]))on.add(x[0]);tick(o,on.contains(x[0]));});}
+   o.setOnClickListener(v->{if(all){on.clear();popup.dismiss();return;}if(!on.remove(x[0]))on.add(x[0]);tick(o,on.contains(x[0]));chosenLook(items.get(0),on.isEmpty());});}
   popup.setOnDismissListener(()->{StringBuilder b=new StringBuilder();for(String[] x:Studios.ALL)if(on.contains(x[0])){if(b.length()>0)b.append(',');b.append(x[0]);}
    studio=b.toString();paintStudio();if(!studio.equals(before))reload();studioButton.requestFocus();});
   items.get(0).requestFocus();
  }
- private void tick(TextView o,boolean on){android.graphics.drawable.Drawable d=new Studios.CheckIcon(dp(18),on);d.setBounds(0,0,dp(18),dp(18));o.setCompoundDrawables(d,null,null,null);o.setCompoundDrawablePadding(dp(12));o.setTypeface(on?android.graphics.Typeface.DEFAULT_BOLD:android.graphics.Typeface.DEFAULT);
+ private void tick(TextView o,boolean on){android.graphics.drawable.Drawable d=new Studios.CheckIcon(dp(18),on);d.setBounds(0,0,dp(18),dp(18));o.setCompoundDrawables(d,null,null,null);o.setCompoundDrawablePadding(dp(12));chosenLook(o,on);}
+ private void chosenLook(TextView o,boolean on){o.setTypeface(on?android.graphics.Typeface.DEFAULT_BOLD:android.graphics.Typeface.DEFAULT);
   o.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{Color.WHITE,on?Color.WHITE:0xffb3b3b3}));}
  private void categoryMenu(View anchor){
   LinearLayout list=column();final PopupWindow popup=dropdown(anchor,list);View chosen=null;
