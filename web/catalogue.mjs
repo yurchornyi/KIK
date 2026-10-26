@@ -8,9 +8,10 @@ const one=(h,re)=>h.match(re)?.[1]??null;
 export function sourceRefusal(status,html){return /подозрительная активность с вашего IP/i.test(html)?'ip':status===429||status===403&&!html.includes('anubis_challenge')?'refused':null;}
 function retryDelay(value){if(!value)return 0;const seconds=Number(value);if(Number.isFinite(seconds))return Math.min(86400000,Math.max(0,seconds)*1000);const date=Date.parse(value);return Number.isFinite(date)?Math.min(86400000,Math.max(0,date-Date.now())):0;}
 function busy(){return Error('Catalogue busy: time budget spent in the queue');}
-function paused(){return Object.assign(Error('Catalogue temporarily refusing requests'),{sourcePaused:true});}
+/** HDRezka refused KIK (ban, 429, or a full queue): the web and TV show this message as is. */
+function paused(){return Object.assign(Error('Джерело фільмів тимчасово недоступне. Спробуйте пізніше.'),{sourcePaused:true,status:503});}
 async function sourceSlot(task,until=Infinity){
- if(++queued>16){queued--;throw Object.assign(Error('Catalogue request queue full'),{sourcePaused:true});}
+ if(++queued>16){queued--;throw paused();}
  let release;const previous=sourceQueue;sourceQueue=new Promise(resolve=>{release=resolve;});
  try{await previous;if(Date.now()<pausedUntil)throw paused();const delay=Math.max(0,nextRequestAt-Date.now());if(delay)await new Promise(resolve=>setTimeout(resolve,delay));if(Date.now()<pausedUntil)throw paused();if(Date.now()>until-1500)throw busy();nextRequestAt=Date.now()+1000;return await task();}
  finally{queued--;release();}
