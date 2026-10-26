@@ -85,4 +85,14 @@ private static int glyphOf(String id){return "netflix".equals(id)?0:"apple".equa
   public void draw(Canvas canvas){canvas.save();canvas.scale(size/24f,size/24f);pen.setStrokeWidth(1.5f);for(int y:new int[]{6,12,18})canvas.drawLine(3,y,21,y,pen);canvas.drawLine(8,3,8,9,pen);canvas.drawLine(16,9,16,15,pen);canvas.drawLine(9,15,9,21,pen);canvas.restore();}
   public void setAlpha(int alpha){pen.setAlpha(alpha);}public void setColorFilter(ColorFilter filter){pen.setColorFilter(filter);}public int getOpacity(){return PixelFormat.TRANSLUCENT;}public int getIntrinsicWidth(){return size;}public int getIntrinsicHeight(){return size;}
  }
+ /** A menu checkbox: an empty rounded square, or a white one with a dark tick once the studio is chosen. */
+ static final class CheckIcon extends Drawable {
+  private final Paint pen=new Paint(Paint.ANTI_ALIAS_FLAG);private final RectF box=new RectF();private final Path tick=new Path();private final boolean on;
+  CheckIcon(int size,boolean on){this.on=on;pen.setStrokeCap(Paint.Cap.ROUND);pen.setStrokeJoin(Paint.Join.ROUND);}
+  public void draw(Canvas canvas){Rect b=getBounds();canvas.save();canvas.translate(b.left,b.top);canvas.scale(b.width()/24f,b.height()/24f);box.set(2,2,22,22);
+   if(on){pen.setStyle(Paint.Style.FILL);pen.setColor(Color.WHITE);canvas.drawRoundRect(box,5,5,pen);pen.setStyle(Paint.Style.STROKE);pen.setStrokeWidth(2.8f);pen.setColor(0xff141414);tick.reset();tick.moveTo(6.5f,12.5f);tick.lineTo(10.5f,16.5f);tick.lineTo(17.5f,8);canvas.drawPath(tick,pen);}
+   else{pen.setStyle(Paint.Style.STROKE);pen.setStrokeWidth(1.8f);pen.setColor(0x99ffffff);box.inset(.9f,.9f);canvas.drawRoundRect(box,4.5f,4.5f,pen);}
+   canvas.restore();}
+  public void setAlpha(int alpha){pen.setAlpha(alpha);}public void setColorFilter(ColorFilter filter){pen.setColorFilter(filter);}public int getOpacity(){return PixelFormat.TRANSLUCENT;}
+ }
 }
