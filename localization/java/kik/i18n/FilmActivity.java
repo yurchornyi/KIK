@@ -240,9 +240,11 @@ public final class FilmActivity extends Activity {
  }
  private void paintWatch(){
   if(film==null)return;if(film.sourceUrl!=null){watch.setText("Перегляд у KIK недоступний");return;}Progress.Entry e=Progress.get(this,link);
-  if(e!=null&&!e.finished())watch.setText(film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити з "+Ui.time(e.pos));
+  long left=e!=null&&e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
+  if(e!=null&&!e.finished())watch.setText((film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити")+(left>0?" · ще "+Ui.minutes(left):" з "+Ui.time(e.pos)));
   else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");
   else watch.setText("▶  Дивитися");
+  Ui.watched(watch,e!=null&&!e.finished()&&e.dur>0?(float)e.pos/e.dur:0);
  }
  private void paintLater(boolean on){later.setText(on?"✓  У списку":"＋  Мій список");}
  private TextView thumb(boolean down){TextView button=Ui.chip(this,"");button.setPadding(dp(16),0,dp(16),0);ThumbIcon icon=new ThumbIcon(dp(24),down);icon.setBounds(0,0,dp(24),dp(24));button.setCompoundDrawables(icon,null,null,null);button.setContentDescription(down?"Не подобається":"Подобається");return button;}

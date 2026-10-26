@@ -23,7 +23,7 @@ import org.json.*;
 public final class HomeActivity extends Activity {
  static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
 
- static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description;boolean resume,wideArt;float progress;}
+ static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description;boolean resume,wideArt;float progress;long left;}
  static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
@@ -262,7 +262,7 @@ public final class HomeActivity extends Activity {
    Item i=new Item();i.link=e.link;i.title=e.title;i.poster=e.poster;i.resume=true;
    i.progress=e.dur>0?Math.min(1f,(float)e.pos/e.dur):0;
    i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"наступна серія":"з "+Ui.time(e.pos));
-   long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
+   long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;i.left=e.finished()?0:left;
    i.heroLine=join(e.season!=null&&!"0".equals(e.season)?"Сезон "+e.season+" · Серія "+e.episode:null,e.finished()?"далі наступна серія":left>0?"ще "+left+" хв":"з "+Ui.time(e.pos));
    String[] d=DETAILS.get(norm(e.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.year=d[3];i.genre=d[4];i.age=d[5];i.duration=d[6];}
    resume.items.add(i);if(resume.items.size()>=20)break;
@@ -503,7 +503,9 @@ public final class HomeActivity extends Activity {
   heroTitle.setText(tr(i.title));
   heroMeta.setText(facts(i));
   heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.INVISIBLE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();
-  HeroActions.label(watch,i.resume?"Продовжити":"Дивитися",HeroActions.PLAY);
+  // Continue fills up to where the title was left and says how much is left, like the launcher's Now Playing card.
+  HeroActions.label(watch,i.resume?(i.left>0?"Продовжити · ще "+Ui.minutes(i.left):"Продовжити"):"Дивитися",HeroActions.PLAY);
+  Ui.watched(watch,i.resume&&i.left>0?i.progress:0);
   paintLater();
   heroText.setText(i.description==null?"":i.description);details(i);
   Images.crossfade(i.wide!=null?i.wide:i.poster,heroImage);if(!i.wideArt&&!candidates.contains(i))wideArt(java.util.Collections.singletonList(i));

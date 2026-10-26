@@ -109,6 +109,8 @@ public final class KikPlayerActivity extends Activity {
   player=createPlayer();player.setVideoSurfaceView(surface);
   watchNetwork();
   startSession();
+  open=new java.lang.ref.WeakReference<KikPlayerActivity>(this);
+  resumeReceiver=LauncherReport.listen(this,()->{if(!destroyed&&active&&prepared&&player!=null&&!playWhenReady){LauncherReport.forget();toggle();}});
   h.post(tick);h.postDelayed(saver,5000);
   playIntro();
   start(true);
@@ -138,13 +140,28 @@ public final class KikPlayerActivity extends Activity {
   try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);network=new ConnectivityManager.NetworkCallback(){@Override public void onAvailable(Network n){h.post(()->{if(destroyed||!offline)return;offline=false;Log.d("KIK.Player","Network back, resuming");sameAttempt=0;if(stream==null)retryNow();else retrySame();});}};cm.registerDefaultNetworkCallback(network);}catch(Exception e){Log.w("KIK","Network callback",e);network=null;}
  }
  private boolean online(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);NetworkInfo n=cm.getActiveNetworkInfo();return n!=null&&n.isConnected();}catch(Exception e){return true;}}
- @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}}
- @Override protected void onPause(){super.onPause();active=false;endIntro();save();CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
+ @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}
+  // Back from the launcher's Continue watching: the film goes on rather than waiting for OK.
+  if(LauncherReport.askedLately()&&prepared&&player!=null&&!playWhenReady){LauncherReport.forget();toggle();}}
+ @Override protected void onPause(){super.onPause();active=false;endIntro();save();
+  if(prepared&&film!=null)LauncherReport.playing(this,film.link,title,film.original,film.year,film.series&&season!=null&&episode!=null?"Сезон "+season+" · Серія "+episode:"",poster,profileId,film.series?season:null,film.series?episode:null,pos(),dur());CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
  /**
   * A media session, so the play/pause button on headphones (Bluetooth or wired) and any other media remote reaches
   * this player: Android sends such buttons to the session that last played, not to the screen in front.
   */
  private android.media.session.MediaSession session;private int sessionState=-1;
+ /** The player open now, for the launcher's Continue watching (OpenTitleActivity); null when there is none. */
+ private static java.lang.ref.WeakReference<KikPlayerActivity> open;
+ static boolean showing(String link){KikPlayerActivity p=open==null?null:open.get();return p!=null&&!p.destroyed&&p.film!=null&&Progress.norm(p.film.link).equals(Progress.norm(link));}
+ /** The task this player is on top of, brought to the front; false when none is found. */
+ static boolean toFront(Context c){
+  try{for(android.app.ActivityManager.AppTask t:((android.app.ActivityManager)c.getSystemService(ACTIVITY_SERVICE)).getAppTasks()){
+   android.content.ComponentName top=t.getTaskInfo().topActivity;if(top!=null&&KikPlayerActivity.class.getName().equals(top.getClassName())){t.moveToFront();return true;}}}
+  catch(Exception e){Log.w("KIK","Player to front",e);}
+  return false;
+ }
+ /** The launcher's Continue watching (LauncherReport.RESUME) while this player is open. */
+ private android.content.BroadcastReceiver resumeReceiver;
  private void startSession(){
   try{session=new android.media.session.MediaSession(this,"KIK player");
    session.setCallback(new android.media.session.MediaSession.Callback(){
@@ -176,7 +193,7 @@ public final class KikPlayerActivity extends Activity {
   long actions=android.media.session.PlaybackState.ACTION_PLAY|android.media.session.PlaybackState.ACTION_PAUSE|android.media.session.PlaybackState.ACTION_PLAY_PAUSE|android.media.session.PlaybackState.ACTION_STOP;
   session.setPlaybackState(new android.media.session.PlaybackState.Builder().setActions(actions).setState(state,pos(),state==android.media.session.PlaybackState.STATE_PLAYING?speed:0f).build());
  }
- @Override protected void onDestroy(){if(session!=null){try{session.setActive(false);session.release();}catch(Exception ignored){}session=null;}destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
+ @Override protected void onDestroy(){if(resumeReceiver!=null){try{unregisterReceiver(resumeReceiver);}catch(Exception ignored){}resumeReceiver=null;}if(film!=null&&voice!=null)LauncherReport.stopped(this);if(session!=null){try{session.setActive(false);session.release();}catch(Exception ignored){}session=null;}destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
 
  private long pos(){return player==null?0:Math.max(0,player.getCurrentPosition());}
  /** For the device audits: position, duration and whether frames are advancing right now. */

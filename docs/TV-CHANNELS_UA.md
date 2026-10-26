@@ -40,3 +40,15 @@ adb shell cmd jobscheduler run -f rezkatv.web.app.uk 1263094529
 ```
 
 Перевірка з боку лаунчера (`adb logcat -s TvHome.ChannelFeed` → `rezkatv.web.app.uk: N programs`) потребує TV Home 2.47+.
+
+## Картка «Зараз грає» в TV Home
+
+Коли плеєр іде на задній план (Home на пульті), KIK сам повідомляє лаунчеру TV Home, що грає: broadcast `com.gathin.tvhome.action.NOW_PLAYING`, лише для пакета `com.gathin.tvhome`. У ньому назва, оригінальна назва й рік, «Сезон N · Серія M», постер, 16:9 кадр з TMDB, позиція, тривалість і `open`, тобто intent повернення. Коли плеєр закривають, KIK надсилає `state=stopped`. На TV з малою пам'яттю (TCL) Android не показує лаунчеру медіасесії, тож картка там тримається тільки на цьому повідомленні.
+
+Кнопка «Продовжити» в лаунчері запускає `open` (`OpenTitleActivity` з `kik.continue`):
+- якщо плеєр цієї назви ще відкритий, його задача виходить наперед, і відео грає далі без OK;
+- якщо Android уже закрив KIK, назва відкривається з `kik.play` і грає з місця, де зупинилась.
+
+Код: `LauncherReport.java`, `KikPlayerActivity.java` (`onPause`, `onDestroy`), `OpenTitleActivity.java`.
+
+Кнопка «Продовжити» на сторінці фільму й у слайдах головної теж заповнюється до переглянутого місця і пише, скільки лишилось («Продовжити · ще 47 хв»), див. `Ui.watched`.

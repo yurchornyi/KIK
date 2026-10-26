@@ -115,6 +115,28 @@ public final class Ui {
   b.setOnFocusChangeListener((v,f)->focus(v,f,1.04f));
   return b;
  }
+ /**
+  * A Continue button filled, from its left end, as far as the title was watched: a shade over its own face, swept in
+  * as it appears (only the button redraws, so the weak GPU is spared). 0 takes the fill away.
+  */
+ static void watched(View b,float fraction){
+  Object tag=b.getTag(R_WATCHED);ClipDrawable fill;
+  if(tag instanceof ClipDrawable)fill=(ClipDrawable)tag;
+  else{Context c=b.getContext();fill=new ClipDrawable(shape(0x2e000000,dp(c,19),0,0),Gravity.START,ClipDrawable.HORIZONTAL);
+   LayerDrawable layers=new LayerDrawable(new Drawable[]{b.getBackground(),fill});int inset=dp(c,3);layers.setLayerInset(1,inset,inset,inset,inset);
+   b.setBackground(layers);b.setTag(R_WATCHED,fill);}
+  int level=Math.round(Math.max(0f,Math.min(1f,fraction))*10000);
+  // Painted again with the same place (the page refreshes): the sweep already shown, or under way, stays.
+  if(Integer.valueOf(level).equals(b.getTag(R_WATCHED_LEVEL)))return;b.setTag(R_WATCHED_LEVEL,level);
+  Object old=b.getTag(R_WATCHED_ANIM);if(old instanceof android.animation.Animator)((android.animation.Animator)old).cancel();
+  if(level==0){fill.setLevel(0);return;}
+  android.animation.ValueAnimator a=android.animation.ValueAnimator.ofInt(0,level);a.setDuration(1100);a.setStartDelay(250);a.setInterpolator(new DecelerateInterpolator(1.6f));
+  final ClipDrawable f=fill;a.addUpdateListener(x->f.setLevel((int)x.getAnimatedValue()));f.setLevel(0);b.setTag(R_WATCHED_ANIM,a);a.start();
+ }
+ /** Time left as the buttons say it: «47 хв», «1 год 20 хв». */
+ static String minutes(long m){return m>=60?m/60+" год "+m%60+" хв":m+" хв";}
+ /** View tags for watched(): ids of KIK's own, beyond any resource id. */
+ private static final int R_WATCHED=0x7e4b0001,R_WATCHED_ANIM=0x7e4b0002,R_WATCHED_LEVEL=0x7e4b0003;
  /** Small selectable chip (filters, seasons, voices). */
  public static TextView chip(Context c,String label){
   TextView t=text(c,label,16,Color.WHITE);t.setSingleLine(true);t.setTypeface(Typeface.DEFAULT_BOLD);t.setMinHeight(dp(c,44));t.setFocusable(true);t.setClickable(true);t.setGravity(Gravity.CENTER);t.setPadding(dp(c,18),dp(c,8),dp(c,18),dp(c,8));

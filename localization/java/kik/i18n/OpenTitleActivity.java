@@ -35,6 +35,13 @@ public final class OpenTitleActivity extends Activity {
   String link=clean(in.getStringExtra(LINK));
   // Android's search (SearchProvider): the chosen title's link as the data, its name as the extra data.
   String chosen=null;if(link.isEmpty()&&in.getData()!=null){link=clean(in.getDataString());chosen=in.getStringExtra(SearchManager.EXTRA_DATA_KEY);}
+  // The launcher's Continue watching: the player still open for this title comes back to the front and plays on;
+  // after Android closed it (a low-RAM TV does), the title opens and plays from where it was left, as below.
+  if(in.getBooleanExtra(LauncherReport.CONTINUE,false)&&KikPlayerActivity.showing(link)){
+   // This activity keeps a task of its own (kik.app.open): the player's task is brought forward as it is.
+   LauncherReport.ask();if(!KikPlayerActivity.toFront(this))startActivity(new Intent(this,KikPlayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+   overridePendingTransition(0,0);finish();return;
+  }
   if(RecoveryPolicy.title(link)){
    ProfileStore.use(this,in.getStringExtra(PROFILE));
    startActivity(new Intent(this,FilmActivity.class).putExtra("link",link).putExtra("title",chosen!=null?chosen:in.getStringExtra(SearchManager.QUERY)).putExtra("poster",in.getStringExtra(POSTER))
