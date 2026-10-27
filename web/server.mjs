@@ -67,7 +67,7 @@ async function api(request,env,ctx){
  if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams),undefined,{queue:await signedIn()}));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
  // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
- // Signed out, only the free lookups run: no env reaches the model, so neither Sentra nor Workers AI is asked.
+ // Signed out, only the free lookups run: no env reaches the model, so Sentra is not asked.
  if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:null,query,aliases)}));}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
