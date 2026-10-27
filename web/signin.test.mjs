@@ -2,7 +2,9 @@ import {test} from 'node:test';import assert from 'node:assert/strict';import {r
 import worker from './server.mjs';
 // A minimal D1 over node:sqlite with the real migrations, so the TV sign-in runs against the actual schema.
 function d1(){const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');for(const f of readdirSync(new URL('./migrations/',import.meta.url)).sort())db.exec(readFileSync(new URL('./migrations/'+f,import.meta.url),'utf8'));
- const stmt=(sql,args=[])=>({bind:(...a)=>stmt(sql,a),first:async()=>db.prepare(sql).get(...args)??null,all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>{const r=db.prepare(sql).run(...args);return {meta:{changes:Number(r.changes)}};}});
+ // node:sqlite before Node 22.23 cannot bind numbered parameters (?1, ?2) that D1 takes: they become plain ? in their order.
+ const plain=(sql,args)=>{const order=[];return [sql.replace(/\?(\d+)/g,(_,n)=>{order.push(args[n-1]);return '?';}),order.length?order:args];};
+ const stmt=(sql,args=[])=>{const [q,a]=plain(sql,args);return {bind:(...v)=>stmt(sql,v),first:async()=>db.prepare(q).get(...a)??null,all:async()=>({results:db.prepare(q).all(...a)}),run:async()=>{const r=db.prepare(q).run(...a);return {meta:{changes:Number(r.changes)}};}};};
  return {raw:db,prepare:sql=>stmt(sql),batch:async list=>{db.exec('BEGIN');try{const out=[];for(const s of list)out.push(await s.run());db.exec('COMMIT');return out;}catch(e){db.exec('ROLLBACK');throw e;}}};}
 const env=DB=>({DB,ASSETS:{fetch:async()=>new Response('')}});
 // The admin panel adds an email to the allow-list; that alone lets the person sign up.
