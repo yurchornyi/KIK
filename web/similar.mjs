@@ -24,8 +24,9 @@ export async function similar(link,{token,load,search,fetcher=globalThis.fetch})
   if(Number.isSafeInteger(item?.id)){
    let recs=(await tmdb(`/${kind}/${item.id}/recommendations?language=ru-RU&page=1`,token,fetcher)).results||[];
    if(recs.length<6)recs=recs.concat((await tmdb(`/${kind}/${item.id}/similar?language=ru-RU&page=1`,token,fetcher).catch(()=>({}))).results||[]);
-   recs=recs.filter(r=>Number.isSafeInteger(r.id)&&!r.adult&&(r.title||r.name)).map(r=>({...r,media_type:r.media_type||kind})).slice(0,16);
-   picks=(await pool(recs,4,async r=>(await search({query:(r.title||r.name).slice(0,150)})).slice(0,10).find(c=>sameWork(r,c)))).filter(Boolean);
+   recs=recs.filter(r=>Number.isSafeInteger(r.id)&&!r.adult&&(r.title||r.name)).map(r=>({...r,media_type:r.media_type||kind})).slice(0,10);
+   // Searches run as background work on the source, two at a time, so a title someone opens goes first.
+   picks=(await pool(recs,2,async r=>(await search({query:(r.title||r.name).slice(0,150)})).slice(0,10).find(c=>sameWork(r,c)))).filter(Boolean);
   }
  }catch(e){console.warn('KIK similar: TMDB unavailable',e?.message);}
  const out=[],seen=new Set([self]);for(const c of [...picks,...(f.related||[])]){const key=titleKey(c.link);if(seen.has(key))continue;seen.add(key);out.push(c);if(out.length>=LIMIT)break;}

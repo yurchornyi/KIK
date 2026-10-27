@@ -41,7 +41,7 @@ export class CataloguePages {
    if(!Array.isArray(result?.items))throw Error('Некоректна відповідь каталогу');
    const added=[];for(const item of result.items){const key=item?.link?this.keyOf(item.link):'';if(key&&!this.keys.has(key)){this.keys.add(key);this.items.push(item);added.push(item);}}
    this.page=next;this.added=added;this.end=(typeof result.hasMore==='boolean'?!result.hasMore:!added.length)||next>=(this.studio?4000:MAX_PAGE);return true;
-  }catch(e){if(version===this.version)this.error=e?.message||'Не вдалося завантажити каталог';return false;}
+  }catch(e){if(version===this.version){this.error=e?.message||'Не вдалося завантажити каталог';this.failure=e;}return false;}
   finally{if(version===this.version){this.loading=false;if(this.controller===controller)this.controller=null;}}
  }
 }
@@ -50,9 +50,9 @@ export class CataloguePages {
  * Catalogue page inside `main`. `visible` applies the device's country filter; a page it hides completely is followed
  * by the next one (a few at most), the way the TV keeps paging while the source still has titles.
  */
-export function createCatalogueView({main,el,button,card,keyOf,api,visible=items=>items,isActive,onSelection=()=>{},skip=4}){
+export function createCatalogueView({main,el,button,card,keyOf,api,visible=items=>items,isActive,onSelection=()=>{},skip=4,oops=null}){
  const models=new Map(),genreCache=new Map();
- let model,section,list,note,more,count,genreSelect,genreRetry,sort,categories,studioButton,studioChip,studioSelect,studioControl,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null,ghosts=[],lastBatch=0;
+ let model,section,list,failure,note,more,count,genreSelect,genreRetry,sort,categories,studioButton,studioChip,studioSelect,studioControl,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null,ghosts=[],lastBatch=0;
  const fetchPage=(params,signal)=>api('/api/catalogue?'+new URLSearchParams(params),undefined,{signal,timeout:params.studio?60000:25000});
  const live=()=>!!section?.isConnected&&isActive();
  const label=category=>CATEGORIES.find(([key])=>key===category)?.[1]||'Каталог';
@@ -86,6 +86,10 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   note.classList.toggle('error',!!model.error);
   more.hidden=(model.end&&!model.error)||!model.page&&model.loading;more.disabled=model.loading;
   more.textContent=model.loading?'Завантаження…':model.error?'Спробувати ще':'Показати ще';
+  // Nothing on screen and the page failed: KIK's «Упс» screen, which loads again by itself while the cause is temporary.
+  const failed=!!(oops&&model.error&&!shown&&!model.loading);
+  if(!failed)failure.replaceChildren();else if(!failure.firstChild)failure.replaceChildren(oops({error:model.failure,retry:()=>load(true),key:'catalogue',size:'page'}));
+  note.hidden=failed;if(failed)more.hidden=true;
   if(!model.loading&&typeof requestAnimationFrame==='function')requestAnimationFrame(autoMore);
   return first;
  }
@@ -152,7 +156,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   section=el('section',{class:'grid-page catalogue-page'},
    el('div',{class:'page-head'},el('div',{},el('div',{class:'eyebrow'},'КАТАЛОГ KIK'),el('h1',{},label(model.category))),count),
    el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},dropdown(genreSelect),dropdown(sort,'',{value:o=>o.value==='last'?'Нові':o.textContent}),studioControl,studioChip,genreRetry)),
-   list,el('div',{class:'catalogue-bottom'},note,more));
+   list,failure=el('div',{class:'catalogue-failure'}),el('div',{class:'catalogue-bottom'},note,more));
   shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;main.replaceChildren(section);onSelection(selection());paintStudio();paint();loadGenres();
   watcher?.disconnect();if(typeof IntersectionObserver!=='undefined'){watcher=new IntersectionObserver(e=>{if(e.some(x=>x.isIntersecting))autoMore();},{rootMargin:'0px 0px 900px 0px'});watcher.observe(more);}
   if(!model.page&&!model.loading)load();else if(model.loading)watch(model);
