@@ -651,6 +651,8 @@ public final class HomeActivity extends Activity {
   /** Hero backdrop: keeps the current picture until the next one is ready, then crossfades. */
   static void crossfade(String url,final ImageView view){
    if(url==null||url.isEmpty())return;
+   // Not in a window yet (a page's onCreate): the fetch would find it detached and drop the picture for good.
+   if(!view.isAttachedToWindow()){view.post(()->crossfade(url,view));return;}
    // Capture this view's size now: opening Film must not change Home's in-flight artwork.
    ViewGroup.LayoutParams lp=view.getLayoutParams();
    int viewWidth=view.getWidth()>0?view.getWidth():lp!=null&&lp.width>0?lp.width:view.getResources().getDisplayMetrics().widthPixels;
@@ -670,11 +672,14 @@ public final class HomeActivity extends Activity {
    view.setImageDrawable(t);t.startTransition(320);
   }
   private static void fetch(final String u,final String key,final int width,final int height,final ImageView view,final boolean cross){
+   final long queued=android.os.SystemClock.elapsedRealtime();
    (cross?HERO_POOL:POOL).execute(()->{
     if(!key.equals(view.getTag())||!view.isAttachedToWindow())return;
     Bitmap b=null;
     try{
+     long started=android.os.SystemClock.elapsedRealtime();
      byte[] data=imageBytes(u);
+     long done=android.os.SystemClock.elapsedRealtime();if(done-queued>1000)Log.d("KIK.Load","Picture "+(done-queued)+"ms, queued "+(started-queued)+"ms, "+Uri.parse(u).getHost());
      BitmapFactory.Options o=new BitmapFactory.Options();o.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(data,0,data.length,o);
      int s=ImageDecodePolicy.sample(o.outWidth,o.outHeight,width,height>0?height:Math.max(1,width*3/2));
      o=new BitmapFactory.Options();o.inSampleSize=s;o.inPreferredConfig=Bitmap.Config.RGB_565;b=BitmapFactory.decodeByteArray(data,0,data.length,o);

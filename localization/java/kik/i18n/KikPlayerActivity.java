@@ -55,6 +55,8 @@ public final class KikPlayerActivity extends Activity {
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
  private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
  private long lastMovement,lastPosition,recoveryStarted,bufferingSince,seekAt,stableSince;private final List<Long> rebuffers=new ArrayList<Long>();
+ /** The stream let go while out of sight (onStop) and reopened on return (reopen); reopening until it is ready again. */
+ private boolean held,reopening;private long hiddenAt;
  private String menu;private int optFocus,optSelected;private List<String> optLabels=new ArrayList<String>();private List<Runnable> optActions=new ArrayList<Runnable>();
  /** Sleep timer, the round clock button at the end of the controls row: playback pauses at the deadline and the screen may go dark, or the player closes after this episode instead of starting the next. Set per viewing, as on Netflix; the time left shows in the facts line under the title. */
  static final int[] SLEEP_MINUTES={15,30,45,60,90,120};private int sleepMinutes;private long sleepAt;private boolean sleepAfterEpisode,sleepWarned,slept;private String sleepShown="";private TextView sleepIcon;
@@ -142,7 +144,24 @@ public final class KikPlayerActivity extends Activity {
  private boolean online(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);NetworkInfo n=cm.getActiveNetworkInfo();return n!=null&&n.isConnected();}catch(Exception e){return true;}}
  @Override protected void onResume(){super.onResume();active=true;CloudSync.playing(profileId,true);if(prepared&&player!=null&&!player.isPlaying()){playWhenReady=false;show(true);}
   // Back from the launcher's Continue watching: the film goes on rather than waiting for OK.
-  if(LauncherReport.askedLately()&&prepared&&player!=null&&!playWhenReady){LauncherReport.forget();toggle();}}
+  if(LauncherReport.askedLately()&&prepared&&player!=null&&!playWhenReady){LauncherReport.forget();toggle();}
+  if(held)reopen();}
+ /**
+  * Out of sight (Home, the TV asleep): Android freezes KIK soon after, and a load it cut off hangs once the TV is back,
+  * a black screen for the 30 s the stall check waits; overnight the links expire too. So the stream and its decoders
+  * go now, and the same moment reopens on return.
+  */
+ @Override protected void onStop(){super.onStop();hiddenAt=SystemClock.elapsedRealtime();
+  if(isFinishing()||destroyed||failed||player==null||stream==null||!prepared&&!reopening)return;
+  if(prepared)resumeAt=pos();else generation++;   // a reopen still under way is dropped; the next one starts over
+  prepared=false;reopening=false;held=true;playGeneration++;player.stop();Log.d("KIK.Player","Hidden at "+resumeAt+": stream let go");}
+ /** Back after onStop: the KIK waiting screen, then the picture at the same moment, playing only for Continue watching. Links older than a few minutes are fetched afresh. */
+ private void reopen(){
+  held=false;reopening=true;playWhenReady=LauncherReport.askedLately();if(playWhenReady)LauncherReport.forget();
+  long away=SystemClock.elapsedRealtime()-hiddenAt;Log.d("KIK.Player","Back after "+away/1000+" s at "+resumeAt+(away>WARM_MS?", fresh links":""));
+  if(away>WARM_MS){start(false);return;}
+  recoveryStarted=SystemClock.elapsedRealtime();loading.setText("Підготовка відео");waiting(true);play();
+ }
  @Override protected void onPause(){super.onPause();active=false;endIntro();save();
   if(prepared&&film!=null)LauncherReport.playing(this,film.link,title,film.original,film.year,film.series&&season!=null&&episode!=null?"Сезон "+season+" · Серія "+episode:"",poster,profileId,film.series?season:null,film.series?episode:null,pos(),dur());CloudSync.playing(profileId,false);CloudSync.changed(this);playWhenReady=false;if(player!=null)player.setPlayWhenReady(false);}
  /**
@@ -305,7 +324,9 @@ public final class KikPlayerActivity extends Activity {
    // A new voice or quality must go on from the same moment: if the stream ignored the start position, seek there once.
    if(!prepared&&startWanted>5000){long at=pos(),d=dur();long want=startWanted;startWanted=-1;if(Math.abs(at-want)>5000&&(d<=0||want<d-ENDED_SLACK_MS)){Log.w("KIK.Player","Started at "+at+" instead of "+want+", seeking");seekAt=now;player.seekTo(want);}}
    startWanted=-1;
-   boolean first=!prepared;prepared=true;failed=false;offline=false;hideOops();seeking=false;bufferingSince=0;autoRetry=0;waiting(false);lastMovement=now;lastPosition=pos();
+   boolean first=!prepared;prepared=true;reopening=false;failed=false;offline=false;hideOops();seeking=false;bufferingSince=0;autoRetry=0;waiting(false);lastMovement=now;lastPosition=pos();
+   // Continue watching asked while the stream was still reopening (the launcher's RESUME): it plays now.
+   if(first&&active&&!playWhenReady&&LauncherReport.askedLately()){LauncherReport.forget();playWhenReady=true;player.setPlayWhenReady(wanted());}
    if(first){if(!active)player.setPlayWhenReady(false);show(true);TvChannels.played(this,profileId);Log.d("KIK.Player","Prepared quality="+quality+" playing="+player.isPlaying()+" speed="+speed+" after "+(now-recoveryStarted)+" ms");}
    update();
   }else if(state==Player.STATE_BUFFERING){
