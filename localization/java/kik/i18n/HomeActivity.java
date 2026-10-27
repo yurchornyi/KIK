@@ -226,8 +226,8 @@ public final class HomeActivity extends Activity {
  }
  private List<Row> savedRecommendations(String profile){
   String raw=getSharedPreferences("kik_home_personal",0).getString(profile,null);if(raw==null)return null;
-  try{JSONArray a=new JSONArray(raw);List<Row> out=new ArrayList<Row>();for(int n=0;n<a.length();n++){JSONObject o=a.getJSONObject(n);Row r=new Row(o.getString("title"));r.recommendationId=o.isNull("id")?null:o.optString("id",null);r.personalized=o.optBoolean("personalized");JSONArray items=o.getJSONArray("items");
-    for(int k=0;k<items.length();k++){JSONObject x=items.getJSONObject(k);Item i=new Item();i.link=x.getString("link");i.title=x.optString("title");i.poster=x.isNull("poster")?null:x.optString("poster",null);i.wide=x.isNull("wide")?null:x.optString("wide",null);i.year=x.isNull("year")?null:x.optString("year",null);i.genre=x.isNull("genre")?null:x.optString("genre",null);i.rating=x.isNull("rating")?null:x.optString("rating",null);r.items.add(i);}
+  try{JSONArray a=new JSONArray(raw);List<Row> out=new ArrayList<Row>();for(int n=0;n<a.length();n++){JSONObject o=a.getJSONObject(n);Row r=new Row(o.getString("title"));r.recommendationId=o.isNull("id")?null:Site.opt(o,"id");r.personalized=o.optBoolean("personalized");JSONArray items=o.getJSONArray("items");
+    for(int k=0;k<items.length();k++){JSONObject x=items.getJSONObject(k);Item i=new Item();i.link=x.getString("link");i.title=x.optString("title");i.poster=x.isNull("poster")?null:Site.opt(x,"poster");i.wide=x.isNull("wide")?null:Site.opt(x,"wide");i.year=x.isNull("year")?null:Site.opt(x,"year");i.genre=x.isNull("genre")?null:Site.opt(x,"genre");i.rating=x.isNull("rating")?null:Site.opt(x,"rating");r.items.add(i);}
     if(!r.items.isEmpty())out.add(r);}return out;}catch(JSONException e){return null;}
  }
  private static String recommendationKeys(Row row){StringBuilder keys=new StringBuilder();for(Item i:row.items)keys.append(norm(i.link)).append('|');return keys.toString();}
@@ -276,7 +276,7 @@ public final class HomeActivity extends Activity {
  static final String LATER_ROW="Переглянути пізніше",RESUME_ROW="Продовжити перегляд";
  private Row laterRow(String profile){
   Row saved=new Row(LATER_ROW);JSONArray a=Progress.later(this,profile);
-  for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=o.optString("link",null);i.title=o.optString("title",null);i.poster=o.optString("poster",null);i.year=o.optString("year",null);i.genre=o.optString("genre",null);if(i.link!=null&&i.title!=null)saved.items.add(i);}
+  for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=Site.opt(o,"link");i.title=Site.opt(o,"title");i.poster=Site.opt(o,"poster");i.year=Site.opt(o,"year");i.genre=Site.opt(o,"genre");if(i.link!=null&&i.title!=null)saved.items.add(i);}
   return saved;
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
@@ -300,7 +300,7 @@ public final class HomeActivity extends Activity {
   List<Row> rows=new ArrayList<Row>();
   try{JSONArray a=new JSONArray(getSharedPreferences("kik_home",0).getString("rows","[]"));
    for(int k=0;k<a.length();k++){JSONObject o=a.getJSONObject(k);Row r=new Row(o.getString("title"));JSONArray items=o.getJSONArray("items");
-    for(int n=0;n<items.length();n++){JSONObject x=items.getJSONObject(n);Item i=new Item();i.link=x.optString("link");i.title=x.optString("title");i.poster=x.optString("poster",null);i.year=x.optString("year",null);i.genre=x.optString("genre",null);
+    for(int n=0;n<items.length();n++){JSONObject x=items.getJSONObject(n);Item i=new Item();i.link=x.optString("link");i.title=x.optString("title");i.poster=Site.opt(x,"poster");i.year=Site.opt(x,"year");i.genre=Site.opt(x,"genre");
      String[] d=DETAILS.get(norm(i.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.age=d[5];i.duration=d[6];}r.items.add(i);}
     rows.add(r);}
   }catch(JSONException ignored){}

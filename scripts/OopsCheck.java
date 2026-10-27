@@ -13,6 +13,10 @@ public final class OopsCheck {
   check(OopsPolicy.kind(new OopsPolicy.ServiceError(404,false,"gone"),true,false).equals(OopsPolicy.MISSING),"404");
   check(OopsPolicy.kind(new OopsPolicy.ServiceError(400,false,"bad"),true,false).equals(OopsPolicy.OTHER),"400");
   check(OopsPolicy.kind(null,true,false).equals(OopsPolicy.OTHER),"no error at hand");
+  // HDRezka is asked from this network only when KIK's service broke, never for a title that does not exist.
+  check(OopsPolicy.askSourceDirectly(new ConnectException("down"))&&OopsPolicy.askSourceDirectly(new IOException("Service film unreadable")),"service unreachable or unreadable");
+  check(OopsPolicy.askSourceDirectly(new OopsPolicy.ServiceError(503,true,"busy"))&&OopsPolicy.askSourceDirectly(new OopsPolicy.ServiceError(401,false,"sign-in")),"service busy or sign-in");
+  check(!OopsPolicy.askSourceDirectly(new OopsPolicy.ServiceError(404,false,"gone"))&&!OopsPolicy.askSourceDirectly(new IOException(new OopsPolicy.ServiceError(400,false,"bad"))),"no such title, bad link");
   for(String k:new String[]{OopsPolicy.OFFLINE,OopsPolicy.SOURCE,OopsPolicy.SERVER,OopsPolicy.SLOW,OopsPolicy.MISSING,OopsPolicy.OTHER,OopsPolicy.VIDEO,OopsPolicy.VOICE,"unknown"})check(OopsPolicy.copy(k)[0].startsWith("Упс, "),"heading "+k);
   check(OopsPolicy.copy(OopsPolicy.SOURCE)[1].contains("вже працюємо"),"we are on it");
   check(OopsPolicy.auto(OopsPolicy.SOURCE)&&OopsPolicy.auto(OopsPolicy.OFFLINE)&&OopsPolicy.auto(OopsPolicy.SLOW)&&OopsPolicy.auto(OopsPolicy.SERVER)&&OopsPolicy.auto(OopsPolicy.VIDEO),"temporary causes retry");

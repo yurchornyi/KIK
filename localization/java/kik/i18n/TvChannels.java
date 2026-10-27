@@ -163,10 +163,10 @@ public final class TvChannels {
   }
   // Series saved to My list and not started yet: their latest episode, opening the title page.
   JSONArray later=Progress.later(c,profile);
-  for(int i=0;i<later.length()&&out.size()<LIMIT&&checked<16;i++){JSONObject o=later.optJSONObject(i);if(o==null)continue;String link=o.optString("link",null);
+  for(int i=0;i<later.length()&&out.size()<LIMIT&&checked<16;i++){JSONObject o=later.optJSONObject(i);if(o==null)continue;String link=Site.opt(o,"link");
    if(link==null||!Progress.norm(link).startsWith("series/")||!seen.add(Progress.norm(link))||started(c,profile,link))continue;checked++;
    try{Site.Film f=FreeSources.metadata(link);if(!f.series||f.sourceUrl!=null||f.episodes.isEmpty())continue;Site.Episode n=f.episodes.get(f.episodes.size()-1);
-    Program p=new Program();p.link=link;String t=o.optString("title",null);p.title=Ua.t(t==null||t.isEmpty()?f.title:t);p.poster=o.optString("poster",f.poster);p.season=n.season;p.episode=n.episode;p.type=TvContract.PreviewPrograms.TYPE_TV_EPISODE;out.add(p);
+    Program p=new Program();p.link=link;String t=Site.opt(o,"title");p.title=Ua.t(t==null||t.isEmpty()?f.title:t);p.poster=o.optString("poster",f.poster);p.season=n.season;p.episode=n.episode;p.type=TvContract.PreviewPrograms.TYPE_TV_EPISODE;out.add(p);
    }catch(Exception x){Log.w(TAG,"Series "+link,x);}
   }return out;
  }

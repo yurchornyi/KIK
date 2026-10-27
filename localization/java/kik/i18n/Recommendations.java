@@ -33,7 +33,7 @@ final class Recommendations {
    s.signals.add(new RecommendationRanker.Signal(e.link,null,weight));count++;
   }
   JSONArray saved=Progress.later(c,profile);count=0;
-  for(int i=0;i<saved.length();i++){JSONObject o=saved.optJSONObject(i);if(o==null)continue;String link=o.optString("link","");s.excluded.add(link);if(count++<20&&!rated.contains(RecommendationRanker.key(link))){s.signals.add(new RecommendationRanker.Signal(link,o.optString("genre",null),2));s.titles.put(RecommendationRanker.key(link),o.optString("title"));}}
+  for(int i=0;i<saved.length();i++){JSONObject o=saved.optJSONObject(i);if(o==null)continue;String link=o.optString("link","");s.excluded.add(link);if(count++<20&&!rated.contains(RecommendationRanker.key(link))){s.signals.add(new RecommendationRanker.Signal(link,Site.opt(o,"genre"),2));s.titles.put(RecommendationRanker.key(link),o.optString("title"));}}
   StringBuilder stamp=new StringBuilder("v3|"+CountryFilter.signature()+"|");for(RecommendationRanker.Signal x:s.signals)stamp.append(RecommendationRanker.key(x.link)).append(':').append(x.genre).append(':').append(x.weight).append('|');s.fingerprint=stamp.toString();
   return s;
  }
@@ -41,7 +41,7 @@ final class Recommendations {
  static List<HomeActivity.Item> cached(Context c,Snapshot s){
   SharedPreferences p=prefs(c,s.profile);if(!s.fingerprint.equals(p.getString("signature","")))return Collections.emptyList();
   List<HomeActivity.Item> out=new ArrayList<HomeActivity.Item>();
-  try{JSONArray a=new JSONArray(p.getString("items","[]"));for(int i=0;i<a.length();i++){JSONObject o=a.getJSONObject(i);HomeActivity.Item x=new HomeActivity.Item();x.link=o.getString("link");x.title=o.getString("title");x.poster=o.optString("poster",null);x.year=o.optString("year",null);x.genre=o.optString("genre",null);out.add(x);}}catch(Exception e){Log.w("KIK","Recommendation cache",e);}return out;
+  try{JSONArray a=new JSONArray(p.getString("items","[]"));for(int i=0;i<a.length();i++){JSONObject o=a.getJSONObject(i);HomeActivity.Item x=new HomeActivity.Item();x.link=o.getString("link");x.title=o.getString("title");x.poster=Site.opt(o,"poster");x.year=Site.opt(o,"year");x.genre=Site.opt(o,"genre");out.add(x);}}catch(Exception e){Log.w("KIK","Recommendation cache",e);}return out;
  }
  private static Map<String,HomeActivity.Item> items(Context c,Snapshot s,List<HomeActivity.Row> catalogue){
   Map<String,HomeActivity.Item> items=new LinkedHashMap<String,HomeActivity.Item>();

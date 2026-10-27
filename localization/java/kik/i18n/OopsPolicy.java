@@ -42,6 +42,14 @@ public final class OopsPolicy {
    if(s.retry)return SOURCE;if(s.status>=500)return SERVER;if(s.status==404)return MISSING;}
   return OTHER;
  }
+ /**
+  * The TV reads HDRezka only through KIK's service; it asks HDRezka itself only when the service failed in a way
+  * HDRezka may not: down, busy, refused by HDRezka, or this TV's sign-in. Not «no such title» (404) or a bad link (400).
+  */
+ public static boolean askSourceDirectly(Throwable e){
+  for(Throwable t=e;t!=null;t=t.getCause())if(t instanceof ServiceError){int s=((ServiceError)t).status;return s!=404&&s!=400;}
+  return true;
+ }
  /** Temporary causes: the screen counts down and tries again by itself. */
  public static boolean auto(String kind){return OFFLINE.equals(kind)||SOURCE.equals(kind)||SERVER.equals(kind)||SLOW.equals(kind)||VIDEO.equals(kind);}
  /** Heading («Упс, …») and the line under it. */

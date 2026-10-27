@@ -173,6 +173,8 @@ public final class Site {
  static String text(String html){if(html==null)return null;return unescape(html.replaceAll("(?s)<br\\s*/?>","\n").replaceAll("(?s)<[^>]+>","")).replaceAll("[ \\t\\x0B\\f\\r]+"," ").trim();}
  static String unescape(String s){return s.replace("&nbsp;"," ").replace("&quot;","\"").replace("&#039;","'").replace("&laquo;","«").replace("&raquo;","»").replace("&mdash;","—").replace("&ndash;","–").replace("&hellip;","…").replace("&lt;","<").replace("&gt;",">").replace("&amp;","&");}
  private static String find(String s,String re){Matcher m=Pattern.compile(re,Pattern.DOTALL).matcher(s);return m.find()?m.group(1):null;}
+ /** A text field of KIK's service, or null when missing or JSON null (Android's optString turns that into "null"). */
+ static String opt(JSONObject o,String key){return o==null||o.isNull(key)?null:o.optString(key,null);}
 
  // ---------- catalogue ----------
  /** category: films, series, cartoons, animation or "" for everything; filter: last, popular, watching. */
@@ -205,7 +207,7 @@ public final class Site {
   List<Card> out=new ArrayList<Card>();int raw=0;
   for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;
    String link=x.optString("link"),title=x.optString("sourceTitle",x.optString("title"));if(!FreeSources.rezka(link)||title.isEmpty())continue;
-   Card c=new Card();c.link=link;c.title=title;c.poster=x.optString("poster",null);c.info=x.optString("sourceInfo",x.optString("info",null));c.type=x.optString("type",null);c.studio=x.optString("studio",null);raw++;
+   Card c=new Card();c.link=link;c.title=title;c.poster=opt(x,"poster");c.info=x.optString("sourceInfo",opt(x,"info"));c.type=opt(x,"type");c.studio=opt(x,"studio");raw++;
    if(!CountryFilter.blocked(c.info))out.add(c);
   }
   RAW.set(raw);return out;
@@ -228,7 +230,7 @@ public final class Site {
  public static List<Card> studioList(String category,String genre,String filter,String studio,int page)throws IOException{
   JSONObject result=FreeSources.get("/api/catalogue?category="+FreeSources.enc(category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter)+"&studio="+FreeSources.enc(studio)+"&page="+page,60000);
   List<Card> out=new ArrayList<Card>();JSONArray items=result.optJSONArray("items");if(items==null)throw new IOException("Studio catalogue unavailable");
-  for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null||!FreeSources.rezka(item.optString("link")))continue;Card c=new Card();c.link=item.optString("link");c.title=item.optString("title");c.poster=item.optString("poster",null);c.info=item.optString("sourceInfo",item.optString("info",null));c.type=item.optString("type",null);c.studio=Studios.id(item.optJSONArray("studios"));if(!CountryFilter.blocked(c.info))out.add(c);}
+  for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null||!FreeSources.rezka(item.optString("link")))continue;Card c=new Card();c.link=item.optString("link");c.title=item.optString("title");c.poster=opt(item,"poster");c.info=item.optString("sourceInfo",opt(item,"info"));c.type=opt(item,"type");c.studio=Studios.id(item.optJSONArray("studios"));if(!CountryFilter.blocked(c.info))out.add(c);}
   RAW.set(result.optBoolean("hasMore",false)?1:0);return out;
  }
  public static List<Card> search(String query,int page)throws IOException{return search(query,page,true);}
@@ -286,21 +288,26 @@ public final class Site {
  public static Film film(String link)throws IOException{return film(link,false);}
  private static Film film(String link,boolean force)throws IOException{
   if(FreeSources.ua(link))return FreeSources.film(link);
-  // HDRezka refuses this network: KIK's own service reads the page from its address, and playback goes through it too.
-  if(accessPaused())return serviceFilm(link);
-  try{return directFilm(link,force);}catch(IOException e){if(paused(e))return serviceFilm(link);throw e;}
+  // KIK's own service reads the page from Cloudflare, and the title's episodes and streams follow it (origin SERVICE):
+  // this home network, which HDRezka banned for its bursts (2026-10-25), no longer talks to HDRezka at all. Straight
+  // from here only when the service itself fails, and never while HDRezka refuses this network.
+  IOException service;
+  try{return serviceFilm(link);}catch(IOException e){service=e;}
+  if(!OopsPolicy.askSourceDirectly(service)||accessPaused())throw service;
+  Log.w("KIK","Service film "+link+": "+service+"; asking HDRezka directly");
+  try{return directFilm(link,force);}catch(IOException e){if(paused(e))throw service;throw e;}
  }
  static final String SERVICE="kik-service";
  /** The same title as KIK's service sees it; origin {@link #SERVICE} routes its episodes and streams through the service. */
  static Film serviceFilm(String link)throws IOException{
   JSONObject o=FreeSources.get("/api/film?link="+FreeSources.enc(link),30000);
-  Film f=new Film();f.link=o.optString("link",link);f.origin=SERVICE;f.id=o.optString("id",null);f.title=o.optString("title",null);f.original=o.optString("original",null);f.poster=o.optString("poster",null);
-  f.description=o.optString("description",null);f.year=o.optString("year",null);f.duration=o.optString("duration",null);f.series=o.optBoolean("series");f.defaultVoice=o.optString("defaultVoice",null);f.imdb=o.optString("imdb",null);
+  Film f=new Film();f.link=o.optString("link",link);f.origin=SERVICE;f.id=opt(o,"id");f.title=opt(o,"title");f.original=opt(o,"original");f.poster=opt(o,"poster");
+  f.description=opt(o,"description");f.year=opt(o,"year");f.duration=opt(o,"duration");f.series=o.optBoolean("series");f.defaultVoice=opt(o,"defaultVoice");f.imdb=opt(o,"imdb");
   String rating=o.optString("rating","");if(!rating.isEmpty()&&!"null".equals(rating)){f.rating=rating;f.ratingName="IMDb";}
   JSONArray g=o.optJSONArray("genres");if(g!=null)for(int i=0;i<g.length();i++)f.genres.add(g.optString(i));
   JSONArray v=o.optJSONArray("voices");if(v!=null)for(int i=0;i<v.length();i++){JSONObject x=v.optJSONObject(i);if(x==null)continue;Voice y=new Voice();y.id=x.optString("id");y.name=x.optString("name");y.premium=x.optBoolean("premium");y.camrip=x.optBoolean("camrip");y.ads=x.optBoolean("ads");y.director=x.optBoolean("director");if(!y.ads)f.voices.add(y);}
-  JSONArray e=o.optJSONArray("episodes");if(e!=null)for(int i=0;i<e.length();i++){JSONObject x=e.optJSONObject(i);if(x==null)continue;Episode y=new Episode();y.season=x.optString("season");y.episode=x.optString("episode");y.title=x.optString("title",null);f.episodes.add(y);if(!f.seasons.contains(y.season))f.seasons.add(y.season);}
-  JSONArray r=o.optJSONArray("related");if(r!=null)for(int i=0;i<r.length()&&f.related.size()<12;i++){JSONObject x=r.optJSONObject(i);if(x==null)continue;Card c=new Card();c.link=x.optString("link");c.title=x.optString("title");c.poster=x.optString("poster",null);c.info=x.optString("info",null);f.related.add(c);}
+  JSONArray e=o.optJSONArray("episodes");if(e!=null)for(int i=0;i<e.length();i++){JSONObject x=e.optJSONObject(i);if(x==null)continue;Episode y=new Episode();y.season=x.optString("season");y.episode=x.optString("episode");y.title=opt(x,"title");f.episodes.add(y);if(!f.seasons.contains(y.season))f.seasons.add(y.season);}
+  JSONArray r=o.optJSONArray("related");if(r!=null)for(int i=0;i<r.length()&&f.related.size()<12;i++){JSONObject x=r.optJSONObject(i);if(x==null)continue;Card c=new Card();c.link=x.optString("link");c.title=x.optString("title");c.poster=opt(x,"poster");c.info=opt(x,"info");f.related.add(c);}
   if(f.title==null||f.voices.isEmpty()&&f.id==null)throw new IOException("Service film unreadable");
   return f;
  }
@@ -405,7 +412,7 @@ public final class Site {
  public static void episodesFor(Film f,String voice)throws IOException{
   if(SERVICE.equals(f.origin)||accessPaused()){
    try{JSONArray a=FreeSources.post("/api/episodes",new JSONObject().put("link",f.link).put("voice",voice),30000).optJSONArray("episodes");if(a==null)return;f.episodes.clear();f.seasons.clear();
-    for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;Episode y=new Episode();y.season=x.optString("season");y.episode=x.optString("episode");y.title=x.optString("title",null);f.episodes.add(y);if(!f.seasons.contains(y.season))f.seasons.add(y.season);}}catch(JSONException e){throw new IOException(e);}
+    for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x==null)continue;Episode y=new Episode();y.season=x.optString("season");y.episode=x.optString("episode");y.title=opt(x,"title");f.episodes.add(y);if(!f.seasons.contains(y.season))f.seasons.add(y.season);}}catch(JSONException e){throw new IOException(e);}
    return;}
   String body=send(filmEndpoint(f),"id="+f.id+"&translator_id="+voice+"&favs="+enc(f.favs)+"&action=get_episodes",true);
   try{JSONObject o=new JSONObject(body);if(!o.optBoolean("success"))return;parseEpisodes(o.optString("seasons")+o.optString("episodes"),f);}catch(JSONException e){throw new IOException(e);}
