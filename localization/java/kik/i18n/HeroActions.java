@@ -10,7 +10,7 @@ import android.widget.Button;
 
 /** The three hero actions use a compact face, consistent vector icons and a separate TV focus ring. */
 final class HeroActions {
- static final int PLAY=0,ADD=1,CHECK=2,INFO=3,RETRY=4;
+ static final int PLAY=0,ADD=1,CHECK=2,INFO=3;
  static Button button(Context c,String label,int icon,boolean primary){
   Button b=new Button(c);b.setAllCaps(false);b.setSingleLine(true);b.setTextSize(16);b.setTypeface(primary?Typeface.DEFAULT_BOLD:Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setIncludeFontPadding(false);b.setGravity(Gravity.CENTER);b.setLetterSpacing(0.01f);
   b.setMinWidth(0);b.setMinimumWidth(0);b.setMinHeight(Ui.dp(c,48));b.setMinimumHeight(Ui.dp(c,48));b.setCompoundDrawablePadding(Ui.dp(c,9));b.setStateListAnimator(null);
@@ -49,7 +49,6 @@ final class HeroActions {
    else if(kind==ADD){c.drawLine(5,12,19,12,p);c.drawLine(12,5,12,19,p);}
    else if(kind==CHECK){Path check=new Path();check.moveTo(5,12);check.lineTo(10,17);check.lineTo(20,7);c.drawPath(check,p);}
    else if(kind==INFO){c.drawCircle(12,12,9,p);c.drawLine(12,11,12,17,p);p.setStyle(Paint.Style.FILL);c.drawCircle(12,7.5f,1.2f,p);}
-   else{c.drawArc(4,4,20,20,-35,285,false,p);Path arrow=new Path();arrow.moveTo(16,4);arrow.lineTo(20,4);arrow.lineTo(20,8);c.drawPath(arrow,p);}
    c.restore();
   }
   @Override public boolean isStateful(){return true;}

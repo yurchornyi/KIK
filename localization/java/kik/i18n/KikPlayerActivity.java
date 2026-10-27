@@ -41,7 +41,7 @@ public final class KikPlayerActivity extends Activity {
  /** Buffer: start after 1.5 s, refill to 5 s after a stall, keep up to 2 min but no more than 48 MB of heap. */
  private static final int MIN_BUFFER=30000,MAX_BUFFER=120000,START_BUFFER=1500,REBUFFER=5000,BUFFER_BYTES=48*1024*1024;
  /** Buffering longer than this, or a picture that does not move, counts as a dead stream. */
- private static final long STALL_MS=30000,FROZEN_MS=15000,RETRY_MS=20000,ENDED_SLACK_MS=90000,INTRO_HOLD_MS=2550,WARM_MS=180000,SHORT_HLS_MS=180000;
+ private static final long STALL_MS=30000,FROZEN_MS=15000,ENDED_SLACK_MS=90000,INTRO_HOLD_MS=2550,WARM_MS=180000,SHORT_HLS_MS=180000;
  private String season,episode,title,poster,profileId;private Site.Stream stream;private String quality;private float speed=1f;private boolean manualQuality;
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  /** Ad clips of the playing file (AdBreaks): confirmed ones are jumped over, AI hints get the «Пропустити рекламу» button. */
@@ -60,9 +60,9 @@ public final class KikPlayerActivity extends Activity {
  static final int[] SLEEP_MINUTES={15,30,45,60,90,120};private int sleepMinutes;private long sleepAt;private boolean sleepAfterEpisode,sleepWarned,slept;private String sleepShown="";private TextView sleepIcon;
  private List<Object[]> cues=new ArrayList<Object[]>();private int subIndex=-1;
  private ConnectivityManager.NetworkCallback network;
- private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
+ private Oops oops;private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
  private final Handler h=new Handler(Looper.getMainLooper());
- private final Runnable hide=()->{if(!visible)return;if(prepared&&!seeking&&playWhenReady)show(false);else if(playWhenReady&&!failed)h.postDelayed(this.hide,1000);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active)save();h.postDelayed(this,5000);}},retry=()->{if(!destroyed&&failed)retryNow();};
+ private final Runnable hide=()->{if(!visible)return;if(prepared&&!seeking&&playWhenReady)show(false);else if(playWhenReady&&!failed)h.postDelayed(this.hide,1000);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active)save();h.postDelayed(this,5000);}};
  private int dp(float n){return Ui.dp(this,n);}
 
  public static void open(Context c,Site.Film f,Site.Voice v,String season,String episode,String title,String poster){
@@ -206,7 +206,7 @@ public final class KikPlayerActivity extends Activity {
   start(fromHistory,false);
  }
  private void start(final boolean fromHistory,final boolean refreshEpisodes){
-  h.removeCallbacks(retry);
+  hideOops();
   if(!recovering){recovery.reset();failedVoices.clear();refreshAttempt=0;voiceAttempt=0;sameAttempt=0;earlyEnds=0;rebuffers.clear();recoveryStarted=SystemClock.elapsedRealtime();}
   lastMovement=SystemClock.elapsedRealtime();bufferingSince=0;playGeneration++;final int gen=++generation;final Site.Film selectedFilm=film;final Site.Voice selected=voice;final String ss=season,ee=episode;
   final long keep=prepared?pos():resumeAt;if(player!=null)player.setPlayWhenReady(false);if(fromHistory)playWhenReady=true;prepared=false;failed=false;loading.setText(recovering?loading.getText():"Підготовка відео");waiting(true);
@@ -227,7 +227,7 @@ public final class KikPlayerActivity extends Activity {
       // Say so only when the episode is not in the language the viewer wants (their choice, else the best one offered).
       String chosen=Progress.voice(this,selectedFilm.link),desired=null;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&(chosen==null?desired==null:v.id.equals(chosen)))desired=PlaybackPolicy.lang(v.name);
       String got=PlaybackPolicy.lang(playing.name);if(desired!=null&&!desired.equals(got))Ui.toast(this,PlaybackPolicy.label(desired)+" озвучка для цієї серії недоступна. Увімкнено: "+PlaybackPolicy.label(got).toLowerCase(Locale.ROOT)+".");}
-     recovering=false;sourcePaused=false;stream=s;if(s.qualities.isEmpty()){failure("Відео недоступне для цієї озвучки.\nВиберіть іншу озвучку або натисніть OK для повтору.",false);return;}
+     recovering=false;sourcePaused=false;stream=s;if(s.qualities.isEmpty()){failure(OopsPolicy.VOICE,false);return;}
      quality=quality!=null&&s.qualities.containsKey(quality)&&(!fromHistory||manualQuality)?quality:pickQuality(s);
      if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
      // Start after the voice studio's ident: the film begins at once, as on Netflix.
@@ -236,16 +236,39 @@ public final class KikPlayerActivity extends Activity {
      play();
      ads=null;hints=null;showHint(-1);if(CloudSync.adSkip(this,profileId)&&PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
     });
-   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;if(Site.paused(e)){sourcePaused=true;failure(Site.blocked(e)?"HDRezka заблокував адресу вашої мережі.\nЗачекайте, потім натисніть OK для перевірки.":"HDRezka тимчасово відхиляє запити.\nЗачекайте, потім натисніть OK для перевірки.",false);return;}if(!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}recover(null);});}
+   }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;
+    // The film source refusing or busy: wait for it with a countdown instead of spending the recovery budget on it.
+    String kind=Oops.kind(this,e);if(OopsPolicy.SOURCE.equals(kind)){sourcePaused=Site.paused(e);failure(kind,true);return;}if(!online()){offline=true;failure(OopsPolicy.OFFLINE,true);return;}recover(null);});}
   });
  }
- /** Shows the problem; unless the viewer has to choose, retries by itself every 20 s for 10 minutes. */
- private void failure(String message,boolean auto){
-  prepared=false;failed=true;focus=1;progressFocus=false;menu=null;rowSwap++;optionsBox.setVisibility(View.GONE);settings.setVisibility(View.VISIBLE);settings.setAlpha(1);settings.setScaleX(1);settings.setScaleY(1);loading.setText(message);waiting(true);show(true);
-  h.removeCallbacks(retry);if(auto&&autoRetry<30){autoRetry++;h.postDelayed(retry,RETRY_MS);}
+ /**
+  * KIK's «Упс» screen over the player (OopsPolicy says the words). A temporary cause counts down and tries again by itself,
+  * 10, 20, 30, then every 60 s, up to 30 times; a voice without this episode waits for the viewer. Either may pick another voice.
+  */
+ private void failure(String kind,boolean auto){
+  prepared=false;failed=true;focus=playIndex;progressFocus=false;menu=null;rowSwap++;optionsBox.setVisibility(View.GONE);settings.setVisibility(View.VISIBLE);settings.setAlpha(1);settings.setScaleX(1);settings.setScaleY(1);
+  hideOops();show(false);
+  final boolean offlineNow=OopsPolicy.OFFLINE.equals(kind),pick=(OopsPolicy.VOICE.equals(kind)||OopsPolicy.VIDEO.equals(kind))&&voiceNames().size()>1;
+  oops=new Oops(this,kind,auto&&autoRetry<30,title,"play:"+Progress.norm(film.link)+":"+season+":"+episode,pressed->{
+   if(pressed)autoRetry=0;else autoRetry++;offline=false;sameAttempt=0;
+   // The connection is back: the same address goes on from the same byte; anything else starts over.
+   if(offlineNow&&stream!=null)retrySame();else retryNow(pressed);
+  },pick?"Інша озвучка":null,pick?this::chooseVoice:null);
+  root.addView(oops,new FrameLayout.LayoutParams(-1,-1));
+  // The KIK waiting frame under it is hidden, not drawn twice; the splash itself waits for the intro to end.
+  waiting(false);
+ }
+ private void hideOops(){if(oops==null)return;root.removeView(oops);oops=null;}
+ /** From «Інша озвучка»: the controls with the voices open, over the KIK waiting frame; OK on ▶ tries the same voice again. */
+ private void chooseVoice(){
+  hideOops();loading.setText("Виберіть іншу озвучку");waiting(true);
+  for(int i=0;i<controls.size();i++)if("Озвучка".contentEquals(controls.get(i).getText()))focus=i;
+  show(true);openVoices();
  }
  /** Starts over with a fresh recovery budget at the same moment of the same episode. */
- private void retryNow(){if(sourcePaused&&!Site.retryNow()){Ui.toast(this,"Зачекайте дві хвилини перед повторною перевіркою.");return;}sourcePaused=false;h.removeCallbacks(retry);recovering=false;failed=false;start(false);}
+ private void retryNow(){retryNow(false);}
+ /** Only a press asks HDRezka itself again while it refuses this network (at most every two minutes); otherwise KIK's service plays. */
+ private void retryNow(boolean pressed){if(pressed&&sourcePaused)Site.retryNow();sourcePaused=false;recovering=false;failed=false;start(false);}
  private void play(){
   // Until the new address loads, the player still holds the old one: its events (a preview's 60 s) are not this quality's.
   switching=true;seeking=false;failed=false;final String address=stream.qualities.get(quality);recovery.used(address);lastMovement=SystemClock.elapsedRealtime();lastPosition=resumeAt;bufferingSince=0;
@@ -282,7 +305,7 @@ public final class KikPlayerActivity extends Activity {
    // A new voice or quality must go on from the same moment: if the stream ignored the start position, seek there once.
    if(!prepared&&startWanted>5000){long at=pos(),d=dur();long want=startWanted;startWanted=-1;if(Math.abs(at-want)>5000&&(d<=0||want<d-ENDED_SLACK_MS)){Log.w("KIK.Player","Started at "+at+" instead of "+want+", seeking");seekAt=now;player.seekTo(want);}}
    startWanted=-1;
-   boolean first=!prepared;prepared=true;failed=false;offline=false;h.removeCallbacks(retry);seeking=false;bufferingSince=0;autoRetry=0;waiting(false);lastMovement=now;lastPosition=pos();
+   boolean first=!prepared;prepared=true;failed=false;offline=false;hideOops();seeking=false;bufferingSince=0;autoRetry=0;waiting(false);lastMovement=now;lastPosition=pos();
    if(first){if(!active)player.setPlayWhenReady(false);show(true);TvChannels.played(this,profileId);Log.d("KIK.Player","Prepared quality="+quality+" playing="+player.isPlaying()+" speed="+speed+" after "+(now-recoveryStarted)+" ms");}
    update();
   }else if(state==Player.STATE_BUFFERING){
@@ -306,7 +329,7 @@ public final class KikPlayerActivity extends Activity {
   prepared=false;seeking=false;bufferingSince=0;recovery.interrupted();stableSince=0;
   int code=error==null?0:error.errorCode,http=httpCode(error);
   boolean io=error==null||code>=2000&&code<3000;
-  if(io&&!online()){offline=true;failure("Немає з'єднання з інтернетом.\nВідео продовжиться, щойно мережа з'явиться.",false);return;}
+  if(io&&!online()){offline=true;failure(OopsPolicy.OFFLINE,true);return;}
   // An expired or missing link will not come back: go straight for fresh links. A network blip: same address once more.
   boolean expired=http==401||http==403||http==410||http==451,missing=http==404||code==PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND;
   if(io&&!expired&&!missing&&error!=null&&sameAttempt<2){sameAttempt++;retrySame();return;}
@@ -315,12 +338,12 @@ public final class KikPlayerActivity extends Activity {
   String candidate=recovery.next(options,quality);if(candidate!=null){String[] parts=candidate.split("\n",2);quality=parts[0];stream.qualities.put(quality,parts[1]);loading.setText("Відновлюємо потік");waiting(true);play();return;}
   if(recovery.refresh()){refreshAttempt++;recovering=true;loading.setText("Шукаємо резервну адресу");waiting(true);start(false);return;}
   failedVoices.add(voice.id);if(voiceAttempt<1){String language=PlaybackPolicy.lang(voice.name);for(Site.Voice v:film.voices)if(!v.premium&&!v.ads&&!failedVoices.contains(v.id)&&PlaybackPolicy.lang(v.name).equals(language)){voice=v;voiceAttempt++;recovering=true;start(false);return;}}
-  failure("Відео тимчасово недоступне. Пробуємо ще раз автоматично…\nOK — повторити зараз або виберіть іншу мову.",true);
+  failure(OopsPolicy.VIDEO,true);
  }
  /** Re-open the same address at the same moment; ExoPlayer keeps the decoders and continues where it stopped. */
  private void retrySame(){
   if(player==null||stream==null){retryNow();return;}
-  failed=false;loading.setText("Відновлюємо з'єднання");waiting(true);bufferingSince=0;lastMovement=SystemClock.elapsedRealtime();
+  hideOops();failed=false;loading.setText("Відновлюємо з'єднання");waiting(true);bufferingSince=0;lastMovement=SystemClock.elapsedRealtime();
   Log.d("KIK.Player","Retry same address at "+resumeAt+" attempt="+sameAttempt);
   if(player.getPlayerError()!=null){player.seekTo(resumeAt);player.setPlayWhenReady(wanted());player.prepare();}else play();
  }
@@ -384,6 +407,7 @@ public final class KikPlayerActivity extends Activity {
  private void waiting(boolean on,boolean branded){waitOn=on;waitBranded=branded;paintWait();}
  /** The intro runs first; the waiting screen only takes over from it, never shows before it. */
  private void paintWait(){
+  if(oops!=null)oops.setVisibility(intro==null?View.VISIBLE:View.GONE);
   boolean on=waitOn&&intro==null;if(on&&loading.getVisibility()!=View.VISIBLE){loading.setAlpha(0f);loading.animate().alpha(1f).setDuration(350).start();}
   loading.setVisibility(on?View.VISIBLE:View.GONE);boolean show=on&&waitBranded;wait.setVisibility(show?View.VISIBLE:View.GONE);dots.setVisibility(show&&!failed?View.VISIBLE:View.GONE);
   // On the KIK screen the line reads like the credit below it (small caps, wide tracking, its grey); over the picture it needs a shadow.
@@ -415,7 +439,7 @@ public final class KikPlayerActivity extends Activity {
   long d=dur(),at=pos(),expected=expectedMs();
   if(RecoveryPolicy.endedEarly(at,d,expected)){
    if(earlyEnds++<3){Log.w("KIK.Player","Ended early at "+at+" of "+d+" (title "+expected+"), resuming");resumeAt=at;if(at<d-ENDED_SLACK_MS)retrySame();else recover(null);return;}
-   failure("Відео обірвалося раніше, ніж мало.\nПробуємо ще раз автоматично… OK — повторити зараз.",true);return;}
+   failure(OopsPolicy.VIDEO,true);return;}
   save();Site.Episode n=film.series?next(film,season,episode):null;
   boolean auto=getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true)&&!sleepAfterEpisode;
   if(sleepAfterEpisode)Log.d("KIK.Player","Sleep timer: episode over, closing");
@@ -725,6 +749,8 @@ public final class KikPlayerActivity extends Activity {
   if(!playerKey(k))return super.dispatchKeyEvent(e);
   if(intro!=null){if(e.getAction()==KeyEvent.ACTION_UP)endIntro();return true;}
   if(k==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
+  // The «Упс» screen has real buttons: the remote moves between them and OK presses them, as anywhere else in KIK.
+  if(oops!=null)return super.dispatchKeyEvent(e);
   if(e.getAction()!=KeyEvent.ACTION_DOWN)return true;
   switch(k){
    case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_HEADSETHOOK:case KeyEvent.KEYCODE_SPACE:toggle();if(!visible)pulse(playWhenReady?"▶":"❚❚");return true;
@@ -734,7 +760,7 @@ public final class KikPlayerActivity extends Activity {
    case KeyEvent.KEYCODE_MEDIA_REWIND:seek(-10000);pulse("« 10");return true;
   }
   boolean center=k==KeyEvent.KEYCODE_DPAD_CENTER||k==KeyEvent.KEYCODE_ENTER;
-  if(failed&&center&&menu==null&&focus==playIndex){autoRetry=0;offline=false;retryNow();return true;}
+  if(failed&&center&&menu==null&&focus==playIndex){autoRetry=0;offline=false;retryNow(true);return true;}
   // While «Пропустити рекламу» is on screen, OK always means it, whatever the controls have in focus.
   if(center&&hintTo>0&&menu==null&&!failed){skipHint();return true;}
   // «Як вам?» takes ◀ ▶ and OK while the controls are hidden; ▲ ▼ still open them and playback goes on.

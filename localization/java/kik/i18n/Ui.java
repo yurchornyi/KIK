@@ -145,13 +145,6 @@ public final class Ui {
   return t;
  }
  public static void select(TextView chip,boolean on){chip.setSelected(on);}
- /** What went wrong while loading, in words a viewer can act on: no network, a slow answer, or anything else. */
- public static String loadError(Throwable e,String what){
-  for(Throwable t=e;t!=null;t=t.getCause()){
-   if(t instanceof java.net.UnknownHostException||t instanceof java.net.ConnectException||t instanceof java.net.NoRouteToHostException)return "Немає з’єднання з інтернетом. Перевірте мережу і натисніть «Спробувати ще».";
-   if(t instanceof java.net.SocketTimeoutException)return "Сервер KIK відповідає надто довго. Натисніть «Спробувати ще».";}
-  return "Не вдалося завантажити "+what+". Натисніть «Спробувати ще».";
- }
  public static LinearLayout.LayoutParams wrap(Context c,int right){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,0,dp(c,right),0);return lp;}
 
  /** Poster card: focus grows it slightly and shows a red ring; title and a subtitle line below. */

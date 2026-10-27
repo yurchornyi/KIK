@@ -13,7 +13,7 @@ import java.util.*;
 public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
- private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo,studioLabel;private Button watch,later,retry;private ImageView backdrop;
+ private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo,studioLabel;private Button watch,later;private ImageView backdrop;private FrameLayout root;private ScrollView page;private Oops oops;
  private LinearLayout body,voices,seasons,episodes,similar;private View similarHeader;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
@@ -33,11 +33,11 @@ public final class FilmActivity extends Activity {
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);profile=ProfileStore.current(this);
   link=getIntent().getStringExtra("link");title=getIntent().getStringExtra("title");poster=getIntent().getStringExtra("poster");
-  FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
+  root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   int h=Math.round(getResources().getDisplayMetrics().heightPixels*0.72f);
   backdrop=new ImageView(this);backdrop.setScaleType(ImageView.ScaleType.FIT_XY);root.addView(backdrop,new FrameLayout.LayoutParams(-1,h));
-  ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
-  body=new LinearLayout(this);body.setOrientation(1);body.setClipChildren(false);body.setClipToPadding(false);body.setPadding(dp(40),dp(24),dp(40),dp(40));scroll.addView(body,new ScrollView.LayoutParams(-1,-2));
+  page=new ScrollView(this);page.setVerticalScrollBarEnabled(false);root.addView(page,new FrameLayout.LayoutParams(-1,-1));
+  body=new LinearLayout(this);body.setOrientation(1);body.setClipChildren(false);body.setClipToPadding(false);body.setPadding(dp(40),dp(24),dp(40),dp(40));page.addView(body,new ScrollView.LayoutParams(-1,-2));
   body.addView(Brand.logo(this,56,26));Ui.space(body,16);
   name=Ui.bold(this,title==null?"":title,34);name.setLetterSpacing(-0.01f);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
@@ -55,9 +55,6 @@ public final class FilmActivity extends Activity {
   voicesBox=new HorizontalScrollView(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(0,dp(14),0,0);body.addView(status);
   status.setFocusable(false);
-  // A failed page keeps the screen: one real button asks it again, no need to go back and reopen the title.
-  retry=Ui.pill(this,"↻  Спробувати ще",true);retry.setVisibility(View.GONE);LinearLayout.LayoutParams rl=new LinearLayout.LayoutParams(-2,dp(48));rl.topMargin=dp(14);body.addView(retry,rl);
-  retry.setOnClickListener(v->{if(!Site.retryNow()){status.setText("Зачекайте дві хвилини перед повторною перевіркою.");return;}retry.setVisibility(View.GONE);status.setText("Завантаження…");load();});
   epHeader=Ui.bold(this,"Серії",20);epHeader.setPadding(0,dp(20),0,dp(8));epHeader.setVisibility(View.GONE);body.addView(epHeader);
   HorizontalScrollView sb=new HorizontalScrollView(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
   HorizontalScrollView eb=new HorizontalScrollView(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
@@ -97,9 +94,21 @@ public final class FilmActivity extends Activity {
     final String d=DescTranslate.tr(f.description);
     String span=run(f,null);if(span!=null)f.year=span;
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f)return;uk.putAll(got);showText(f,d);});
-   }catch(Exception e){Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;status.setText(Site.blocked(e)?"HDRezka заблокував інтернет-адресу вашої мережі. Зачекайте або перевірте, чи змінилася адреса, потім натисніть «Спробувати ще».":Site.paused(e)?"HDRezka тимчасово відхиляє запити. Зачекайте, потім натисніть «Спробувати ще».":Ui.loadError(e,"сторінку"));retry.setVisibility(View.VISIBLE);retry.requestFocus();});}
+   }catch(Exception e){android.util.Log.w("KIK","Film page "+link+": "+e);Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=null)return;fail(e);});}
   });
  }
+ /**
+  * The page did not load: KIK's «Упс» screen takes the whole screen, with the title it was about. The page under it is
+  * hidden, not dimmed, so nothing is drawn twice. A temporary cause tries again by itself; Back still leaves.
+  */
+ private void fail(Throwable e){
+  closeOops();
+  oops=new Oops(this,Oops.kind(this,e),name.getText().toString(),"film:"+Progress.norm(link),pressed->{
+   // Only a press may ask HDRezka itself again (at most every two minutes); the countdown goes through KIK's service while it refuses.
+   if(pressed)Site.retryNow();closeOops();status.setText("Завантаження…");load();});
+  root.addView(oops,new FrameLayout.LayoutParams(-1,-1));backdrop.setVisibility(View.INVISIBLE);page.setVisibility(View.INVISIBLE);
+ }
+ private void closeOops(){if(oops==null)return;root.removeView(oops);oops=null;backdrop.setVisibility(View.VISIBLE);page.setVisibility(View.VISIBLE);later.requestFocus();}
  /** «Вам може сподобатися»: titles like this one KIK can play (from KIK's service), else the page's own «see also». */
  private void loadSimilar(final Site.Film f,final int generation){
   List<Site.Card> list=FreeSources.similar(f.link);final boolean named=!list.isEmpty();if(!named)list=f.related;

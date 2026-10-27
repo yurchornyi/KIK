@@ -30,7 +30,7 @@ public final class BrowseActivity extends Activity {
  private boolean handedOver;
  /** The search a pause in typing starts. */
  private final Runnable typed=()->reload();
- private LinearLayout grid,idle;private ScrollView scroll;private TextView status;private EditText query;
+ private LinearLayout content,grid,idle;private ScrollView scroll;private TextView status;private Oops oops;private EditText query;
  private int generation;
  private final Map<G,View> cards=new IdentityHashMap<G,View>();
  private LinearLayout openRow;private int inRow;
@@ -49,7 +49,7 @@ public final class BrowseActivity extends Activity {
   mode=getIntent().getStringExtra(MODE);category=getIntent().getStringExtra(CATEGORY);genre=getIntent().getStringExtra(GENRE);if(mode==null)mode="catalog";
   FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
-  LinearLayout content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+  content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
   LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);head.setClipChildren(false);head.setClipToPadding(false);content.addView(head);
   View logo=Brand.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
   String titleText=getIntent().getStringExtra(TITLE);heading=Ui.bold(this,titleText==null?"Каталог":titleText,30);heading.setIncludeFontPadding(false);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
@@ -214,10 +214,21 @@ public final class BrowseActivity extends Activity {
   });
  }
  private boolean paged(){return "catalog".equals(mode)||"search".equals(mode);}
- private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;if("history".equals(mode)||"later".equals(mode))shownList=listSignature();if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
+ private void reload(){Ui.MAIN.removeCallbacks(typed);if(isFinishing()||isDestroyed())return;closeOops();if("history".equals(mode)||"later".equals(mode))shownList=listSignature();if(idle!=null)showIdle(false);cards.clear();seen.clear();generation++;page=0;end=false;loading=false;failed=false;grid.removeAllViews();openRow=null;inRow=0;scroll.scrollTo(0,0);status.setFocusable(false);status.setText("Завантаження…");status.setVisibility(View.VISIBLE);updateMore();more();}
+ /**
+  * The first page did not load: KIK's «Упс» screen fills the page under the heading and filters, which stay usable. A
+  * temporary cause tries again by itself; typing a new search or choosing a filter replaces it.
+  */
+ private void fail(Throwable e,String q){
+  closeOops();status.setVisibility(View.GONE);
+  oops=new Oops(this,Oops.kind(this,e),"search".equals(mode)&&q!=null?"Пошук «"+q+"»":"","browse:"+mode,pressed->{closeOops();more();});
+  int height=(scroll.getHeight()>0?scroll.getHeight():getResources().getDisplayMetrics().heightPixels)-status.getTop()-dp(40);
+  content.addView(oops,content.indexOfChild(status)+1,new LinearLayout.LayoutParams(-1,Math.max(dp(400),height)));updateMore();
+ }
+ private void closeOops(){if(oops==null)return;content.removeView(oops);oops=null;}
  /** The count and the next-page button under the posters. */
  private void updateMore(){
-  if(loadMore==null)return;boolean show=paged()&&(failed||page>0&&!end)&&(failed&&seen.isEmpty()||!seen.isEmpty());
+  if(loadMore==null)return;boolean show=paged()&&(failed||page>0&&!end)&&!seen.isEmpty();
   loadMore.setVisibility(show?View.VISIBLE:View.GONE);loadMore.setEnabled(!loading);loadMore.setText(loading?"Завантаження…":failed?"↻  Спробувати ще":"Показати ще");
   String text=!paged()||seen.isEmpty()?"":failed?"Не вдалося завантажити наступну сторінку. Список збережено.":"Показано: "+cards.size()+(end?" · це всі результати":"");
   summary.setText(text);summary.setVisibility(text.isEmpty()?View.GONE:View.VISIBLE);
@@ -231,7 +242,7 @@ public final class BrowseActivity extends Activity {
   final String requestedCategory=category,requestedGenre=genre,requestedFilter=filter,requestedStudio=studio;
   final String q=query==null?null:query.getText().toString().trim();final int[] reached={next};final boolean[] studioMore={false};
   Ui.bg(()->{
-   List<G> items=new ArrayList<G>();String error=null;
+   List<G> items=new ArrayList<G>();Throwable error=null;
    try{
     // A page can be fully hidden by the country filter: keep paging while the source still has titles.
     // A studio page holds only the few titles the source matched: keep asking until a row is full or ~25 s have passed.
@@ -245,14 +256,14 @@ public final class BrowseActivity extends Activity {
     Set<String> words=new HashSet<String>();for(G g:items){g.sourceTitle=g.title;words.add(g.title);if(g.genre!=null)words.add(g.genre);}
     Map<String,String> uk=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
     for(G g:items){String t=uk.get(g.title);g.title=t!=null?t:TitleTranslate.shown(g.title);if(g.genre!=null){String gn=uk.get(g.genre);g.sub=Ui.join(g.year,gn==null?TitleTranslate.shown(g.genre):gn);}}
-   }catch(Exception e){android.util.Log.w("KIK","Browse "+mode+" page "+next+": "+e);error=Ui.loadError(e,"catalog".equals(mode)?"каталог":"список");}
-   final List<G> got=items;final String err=error;
+   }catch(Exception e){android.util.Log.w("KIK","Browse "+mode+" page "+next+": "+e);error=e;}
+   final List<G> got=items;final Throwable err=error;
    Ui.MAIN.post(()->{
     if(gen!=generation||isFinishing()||isDestroyed())return;loading=false;
-    // A failed page keeps the cards and the page number: OK on the message (first page) or the button asks it again.
-    if(err!=null){failed=true;if(seen.isEmpty()){status.setText(err);status.setVisibility(View.VISIBLE);updateMore();loadMore.requestFocus();}
+    // A failed first page shows KIK's «Упс» screen; a failed next page keeps the cards and the page number, and the button asks it again.
+    if(err!=null){failed=true;if(seen.isEmpty())fail(err,q);
      else{updateMore();loadMore.requestFocus();Ui.toast(this,"Не вдалося завантажити наступну сторінку. Список збережено.");}return;}
-    failed=false;page=reached[0];status.setFocusable(false);
+    failed=false;closeOops();page=reached[0];status.setFocusable(false);
     List<G> fresh=got;if(paged()){fresh=new ArrayList<G>();for(G g:got)if(seen.add(Progress.norm(g.link)))fresh.add(g);}
     // Nothing new: an empty page, or the source repeating a page it has already given.
     if(fresh.isEmpty()){end=requestedStudio.isEmpty()||!studioMore[0]||reached[0]>=4000;if(cards.isEmpty()){status.setText("history".equals(mode)?"Тут з’являться фільми, які ви почали дивитися":"later".equals(mode)?"Додайте фільми кнопкою «＋ Переглянути пізніше»":!end?"Натисніть «Показати ще», щоб знайти відповідні назви":"Нічого не знайдено");status.setVisibility(View.VISIBLE);}else status.setVisibility(View.GONE);

@@ -420,7 +420,7 @@ public final class Site {
    String mirror=HOSTS[(start+attempt+(rotate?1:0))%HOSTS.length];
    try{if(attempt>0||rotate){String url="https://"+mirror+"/"+Progress.norm(f.link);String html=send(url,null,false);Film fresh=parseFilm(f.link,html);if(fresh.id==null||!fresh.id.equals(f.id))throw new IOException("Title mismatch");f.favs=fresh.favs;f.origin=mirror;}
     return requestStream(f,v,season,episode);
-   }catch(IOException e){if(paused(e))throw e;last=e;}
+   }catch(IOException e){if(paused(e))return serviceStream(f,v,season,episode,rotate);last=e;}// Refused right now: KIK's service stands in, as for the page.
   }throw last==null?new IOException("Mirrors unavailable"):last;
  }
  /** Stream links through KIK's service: they come back as its own /api/media addresses, played with this TV's sign-in. */

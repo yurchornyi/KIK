@@ -26,7 +26,7 @@ public final class HomeActivity extends Activity {
  static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description;boolean resume,wideArt;float progress;long left;}
  static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
- private FrameLayout root;private ImageView heroImage;private LinearLayout content;private ScrollView scroll;
+ private FrameLayout root;private ImageView heroImage;private LinearLayout content,heroInfo;private ScrollView scroll;private Oops oops;private volatile Throwable rowError;
  private TextView heroTitle,heroMeta,heroSub,heroText;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
  private Item hero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
  private static final android.view.animation.Interpolator EASE=new android.view.animation.DecelerateInterpolator(1.6f);private boolean expanded,loadedOnce;
@@ -56,7 +56,7 @@ public final class HomeActivity extends Activity {
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   content.addView(topBar());
-  LinearLayout info=new LinearLayout(this);info.setOrientation(1);info.setClipChildren(false);info.setClipToPadding(false);info.setPadding(dp(40),dp(6),dp(40),dp(12));info.setMinimumHeight(dp(200));info.setGravity(Gravity.BOTTOM);
+  LinearLayout info=heroInfo=new LinearLayout(this);info.setOrientation(1);info.setClipChildren(false);info.setClipToPadding(false);info.setPadding(dp(40),dp(6),dp(40),dp(12));info.setMinimumHeight(dp(200));info.setGravity(Gravity.BOTTOM);
   heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setLetterSpacing(-0.01f);heroTitle.setShadowLayer(dp(10),0,dp(1),0x99000000);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
   heroMeta=text("",15,0xffd8d8dc);heroMeta.setTypeface(Ui.MEDIUM);heroMeta.setSingleLine(true);heroMeta.setEllipsize(TextUtils.TruncateAt.END);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
   heroText=text("",14,0xffd0d0d4);heroText.setLines(2);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
@@ -207,7 +207,7 @@ public final class HomeActivity extends Activity {
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
    });}:null,preferences);
-   if(site.isEmpty()){main.post(()->{if(valid(gen,profile)&&first.isEmpty()){heroTitle.setText("Що подивимось?");heroText.setText("Не вдалося завантажити новинки. Відкрийте каталог або спробуйте ще раз.");HeroActions.label(watch,"Спробувати ще",HeroActions.RETRY);watch.setOnClickListener(v->load());more.setVisibility(View.GONE);later.setVisibility(View.GONE);watch.requestFocus();}});return;}
+   if(site.isEmpty()){final Throwable why=rowError;main.post(()->{if(valid(gen,profile)&&first.isEmpty())fail(why);});return;}
    refreshedAt=SystemClock.elapsedRealtime();saveCache(site);
    if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(Recommendations.withoutDisliked(preferences,site.subList(1,site.size())));translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
     // The first catalogue row is already usable. Append remaining rows without replacing focus.
@@ -280,10 +280,10 @@ public final class HomeActivity extends Activity {
   return saved;
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
-  final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();
+  final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();rowError=null;
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
    try{Row r=new Row(ROWS[idx][0]);for(Site.Card c:Site.list(ROWS[idx][1],null,ROWS[idx][2],1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
-   catch(Exception e){Log.w("KIK","Home row "+ROWS[idx][0]+": "+e);}});
+   catch(Exception e){Log.w("KIK","Home row "+ROWS[idx][0]+": "+e);if(rowError==null)rowError=e;}});
    threads.add(t);t.start();
    if(k==0)try{t.join();}catch(InterruptedException ignored){} // the first request passes the bot check for the rest
   }
@@ -327,8 +327,19 @@ public final class HomeActivity extends Activity {
  /** What the rows would show; coming back to Home with the same rows keeps the screen as it is instead of rebuilding it. */
  private static String signature(List<Row> rows){StringBuilder b=new StringBuilder();for(Row r:rows){b.append(r.title).append('\n');for(Item i:r.items)b.append(i.link).append('|').append(i.sub).append('|').append(i.resume).append('|').append(Math.round(i.progress*100)).append('\n');}return b.toString();}
  private String shownSignature="";
+ /**
+  * Nothing to show and the catalogue did not load: KIK's «Упс» screen fills the page under the top bar, which stays usable
+  * (search, profile, settings). The hero is hidden rather than dimmed; a temporary cause tries again by itself.
+  */
+ private void fail(Throwable e){
+  closeOops();heroInfo.setVisibility(View.GONE);heroImage.setVisibility(View.INVISIBLE);
+  oops=new Oops(this,Oops.kind(this,e),"","home",pressed->{closeOops();heroText.setText("Завантаження…");load();});
+  View bar=content.getChildAt(0);int height=(scroll.getHeight()>0?scroll.getHeight():getResources().getDisplayMetrics().heightPixels)-bar.getHeight();
+  content.addView(oops,content.indexOfChild(heroInfo)+1,new LinearLayout.LayoutParams(-1,Math.max(dp(400),height)));
+ }
+ private void closeOops(){if(oops==null)return;content.removeView(oops);oops=null;heroInfo.setVisibility(View.VISIBLE);heroImage.setVisibility(View.VISIBLE);}
  private void show(List<Row> rows){
-  shownSignature=signature(rows);
+  closeOops();shownSignature=signature(rows);
   boolean initial=!loadedOnce;loadedOnce=true;boolean actionFocused=watch.hasFocus()||later.hasFocus()||more.hasFocus();
   recommendedLine=null;recommendedHeading=null;recommendationKeys="";
   recommendationLines.clear();recommendationSignatures.clear();rowViews.clear();shownRows=new ArrayList<Row>(rows);tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}

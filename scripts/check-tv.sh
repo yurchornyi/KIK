@@ -8,7 +8,7 @@ JAVA_HOME="${KIK_JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Con
 J=localization/java/kik/i18n
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -d "$out" $J/UpdatePolicy.java scripts/UpdatePolicyCheck.java $J/QrCode.java scripts/QrCheck.java $J/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java $J/DohPolicy.java scripts/DohCheck.java $J/ImageDecodePolicy.java scripts/ImageDecodeCheck.java $J/FocusScrollPolicy.java scripts/FocusScrollCheck.java
-for check in UpdatePolicyCheck QrCheck RecoveryPolicyCheck DohCheck kik.i18n.ImageDecodeCheck kik.i18n.FocusScrollCheck; do
+"$JAVA_HOME/bin/javac" -encoding UTF-8 -d "$out" $J/UpdatePolicy.java scripts/UpdatePolicyCheck.java $J/QrCode.java scripts/QrCheck.java $J/RecoveryPolicy.java scripts/RecoveryPolicyCheck.java $J/DohPolicy.java scripts/DohCheck.java $J/ImageDecodePolicy.java scripts/ImageDecodeCheck.java $J/FocusScrollPolicy.java scripts/FocusScrollCheck.java $J/OopsPolicy.java scripts/OopsCheck.java
+for check in UpdatePolicyCheck QrCheck RecoveryPolicyCheck DohCheck kik.i18n.ImageDecodeCheck kik.i18n.FocusScrollCheck OopsCheck; do
   "$JAVA_HOME/bin/java" -cp "$out" "$check"
 done

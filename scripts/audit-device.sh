@@ -50,6 +50,13 @@ if [ "${KIK_AUDIT_MODE:-full}" = performance ]; then
  adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity
  exit 0
 fi
+if [ "${KIK_AUDIT_MODE:-full}" = oops ]; then
+ adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.OopsAudit | tee outputs/design-audit/oops-instrumentation.txt
+ mkdir -p outputs/design-audit/oops;adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/oops-audit/. outputs/design-audit/oops/ >/dev/null
+ python3 -c 'import json; r=json.load(open("outputs/design-audit/oops/oops.json")); print({k:r[k] for k in r if k.startswith("frames_")}); assert r["passed"]'
+ adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity
+ exit 0
+fi
 AUDIT_SCREEN_ARGS=(-e noScreenshots false)
 if [ "${KIK_AUDIT_NO_SCREENSHOTS:-0}" = 1 ]; then AUDIT_SCREEN_ARGS=(-e noScreenshots true); fi
 adb -s "$DEVICE" shell am instrument -w -r "${AUDIT_SCREEN_ARGS[@]}" kik.audit/kik.qa.AuditRunner | tee outputs/design-audit/instrumentation.txt
