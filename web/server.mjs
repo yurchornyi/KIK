@@ -30,9 +30,11 @@ async function edgeCached(ctx,key,fresh,load){
  const reply=async stored=>{const r=new Response(stored.body,stored);r.headers.set("Cache-Control","public, max-age="+fresh);r.headers.delete("X-KIK-Stored");return r;};
  const store=async()=>{const r=json(await load(),200,{"Cache-Control":"public, max-age=604800","X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
  const cached=await caches.default.match(key);
+ // Gone from the source (404): the stored copy goes too, instead of answering for a week.
+ const gone=e=>{if(e.status!==404)return false;ctx.waitUntil(caches.default.delete(key).catch(()=>{}));return true;};
  // A copy older than a day is refreshed first, but still answers for up to a week while the source is down.
- if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>86400000)return reply(await store().catch(e=>{console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
- if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!refreshing.has(key.url)){const task=store().catch(()=>{}).finally(()=>refreshing.delete(key.url));refreshing.set(key.url,task);ctx.waitUntil(task);}return reply(cached);}
+ if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>86400000)return reply(await store().catch(e=>{if(gone(e))throw e;console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
+ if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!refreshing.has(key.url)){const task=store().catch(gone).finally(()=>refreshing.delete(key.url));refreshing.set(key.url,task);ctx.waitUntil(task);}return reply(cached);}
  return reply(await store());
 }
 

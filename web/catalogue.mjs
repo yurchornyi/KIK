@@ -101,7 +101,22 @@ export function parseFilm(link,h){const info=one(h,/<table class="b-post__info">
  const side=h.indexOf('class="b-sidelist"');f.related=side<0?[]:parseCards(h.slice(side).replace(/https?:\/\/[^/"]+\/(films|series|cartoons|animation|documentary)\//g,"https://hdrezka.sh/$1/")).filter(c=>titleKey(c.link)!==titleKey(link)).slice(0,12);
  f.episodes=parseEpisodes(h);return f;
 }
-export async function film(link,options={}){const key=titleKey(link),r=await page("/"+key,120000,options),f=parseFilm("https://hdrezka.sh/"+key,r.html);f.imdb=one(r.html,/imdb\.com\/title\/(tt\d+)/);f.origin=r.origin;if(!f.id||!f.title)throw Error("Не вдалося прочитати сторінку фільму");return f;}
+/** What only a title's own page has: its player, its voices, its facts table or its title block. */
+const TITLE_PAGE=/initCDN(?:Series|Movies)Events|id="translators-list"|class="b-post__(?:info|title)"/;
+/**
+ * A fetched page read as a title. HDRezka answers a title it does not have with its home page (HTTP 200, an <h1> and a
+ * stray data-id), which would read as a film named «Смотреть фильмы в HD онлайн» with no voices: that is «no such
+ * title» (404, which the web and TV show as «Упс, такого тут немає»), never a film.
+ */
+export function readFilm(link,html){
+ if(!TITLE_PAGE.test(html))throw Object.assign(Error("Такої назви немає в джерелі"),{status:404});
+ const f=parseFilm(link,html);f.imdb=one(html,/imdb\.com\/title\/(tt\d+)/);if(!f.id||!f.title)throw Error("Не вдалося прочитати сторінку фільму");return f;
+}
+export async function film(link,options={}){
+ // HDRezka's own 404 for the address means the same as its home page: no such title.
+ const key=titleKey(link),r=await page("/"+key,120000,options).catch(e=>{throw / HTTP 404 /.test(e.message)?Object.assign(Error("Такої назви немає в джерелі"),{status:404,cause:e}):e;});
+ const f=readFilm("https://hdrezka.sh/"+key,r.html);f.origin=r.origin;return f;
+}
 export async function episodes(f,voice){if(!f.voices.some(v=>v.id===voice&&!v.premium))throw Error("Озвучення недоступне");const r=await send(`https://${f.origin}/ajax/get_cdn_series/?t=${Date.now()}`,new URLSearchParams({id:f.id,translator_id:voice,favs:f.favs||"",action:"get_episodes"}).toString()),o=JSON.parse(r.html);if(!o.success)throw Error("Список серій недоступний");return parseEpisodes((o.seasons||"")+(o.episodes||""));}
 export function decode(value){if(!value.startsWith("#h"))return value;let s=value.slice(2).replaceAll("//_//","");const combos=n=>n?[...combos(n-1)].flatMap(p=>["@","#","!","^","$"].map(x=>p+x)):[""];for(const n of [2,3])for(const p of combos(n))s=s.split(Buffer.from(p).toString("base64")).join("");try{return Buffer.from(s,"base64").toString("utf8");}catch{return s;}}
 export async function stream(f,voice,season,episode){const v=f.voices.find(v=>v.id===voice&&!v.premium);if(!v)throw Error("Озвучення недоступне");if(f.series&&(!/^\d{1,4}$/.test(season)||!/^\d{1,5}$/.test(episode)))throw Error("Виберіть серію");
