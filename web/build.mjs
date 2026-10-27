@@ -22,7 +22,7 @@ async function version(name){
 }
 for(const file of ['hls.min.js','tmdb-logo.svg','logo.svg'])binary.set(file,fingerprint(await readFile('dist/'+file)));
 const closure=(name,seen=new Set())=>{for(const dep of graph.get(name)||[])if(!seen.has(dep)){seen.add(dep);closure(dep,seen);}return seen;};
-for(const page of ['index.html','sources.html']){
+for(const page of ['index.html','sources.html','404.html']){
  let html=await readFile('dist/'+page,'utf8');
  for(const [,file] of html.matchAll(/(?:href|src)="\/([\w.-]+\.(?:js|css))"/g))await version(file);
  html=html.replace(/((?:href|src)=")\/([\w.-]+\.(js|css|svg))"/g,(m,lead,file)=>versions.has(file)||binary.has(file)?`${lead}/${file}?v=${versions.get(file)||binary.get(file)}"`:m);
