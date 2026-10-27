@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {cleanSynopsis,synopsis,SYNOPSIS_MAX} from './synopsis.mjs';
-function fakeDb(){const cache=new Map(),budget=new Map();return {cache,prepare(sql){return {bind(...a){return {
- async first(){if(sql.startsWith('SELECT summary'))return cache.has(a[0])?{summary:cache.get(a[0])}:null;if(sql.startsWith('INSERT INTO ai_daily_budget')){const n=(budget.get(a[0])||0)+1;if(n>a[1])return null;budget.set(a[0],n);return {calls:n};}return null;},
- async run(){if(sql.startsWith('INSERT INTO synopsis_cache'))cache.set(a[0],a[1]);}};}};}};}
+function fakeDb(){const cache=new Map(),budget=new Map();return {cache,budget,prepare(sql){return {bind(...a){return {
+ async first(){if(sql.startsWith('SELECT summary'))return cache.get(a[0])??null;if(sql.startsWith('INSERT INTO ai_daily_budget')){const n=(budget.get(a[0])||0)+1;if(n>a[1])return null;budget.set(a[0],n);return {calls:n};}return null;},
+ async run(){if(sql.startsWith('INSERT INTO synopsis_cache'))cache.set(a[0],{summary:a[1],updated_at:a[2]});if(sql.startsWith('UPDATE ai_daily_budget'))budget.set(a[1],Math.max(0,(budget.get(a[1])||0)-a[0]));}};}};}};}
 const page={title:'Святой Паисий',series:true,genres:['Драмы'],description:'История начинается с рождения святого Паисия, в миру Арсения Эзнепидиса, в Фарасах, Каппадокия. За несколько дней до того, как жители покинули село...'};
 const link='https://hdrezka.sh/series/drama/89179-svyatoy-paisiy-ot-farasy-na-nebesa-2022.html';
 test('synopsis is cleaned, cut at a sentence and must be Ukrainian',()=>{
@@ -32,6 +32,14 @@ test('synopsis is written by Sentra as its own skill; a non-Ukrainian answer is 
   reply='Это история о монахе, который ищет веру и проходит испытания войной.';
   assert.equal((await synopsis(fakeDb(),env,link,async()=>page,async(d,f)=>f)).summary,null);
  });
+});
+test('a rejected logline is remembered for days; a 429 gives the reserved call back',async()=>{
+ const original=globalThis.fetch;let status=200,runs=0;globalThis.fetch=async()=>{runs++;return status===200?Response.json({choices:[{message:{content:'Это история о монахе, который ищет веру.'}}]}):new Response('limit',{status});};
+ const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},open=db=>synopsis(db,env,link,async()=>page,async(d,f)=>f);
+ try{const db=fakeDb();assert.equal((await open(db)).summary,null);assert.equal((await open(db)).status,'fallback');assert.equal(runs,1);
+  const key=[...db.cache.keys()][0];db.cache.get(key).updated_at-=4*86400_000;await open(db);assert.equal(runs,2);
+  status=429;const fresh=fakeDb();assert.equal((await open(fresh)).status,'daily-limit');assert.equal([...fresh.budget.values()][0],0);assert.equal(fresh.cache.size,0);
+ }finally{globalThis.fetch=original;}
 });
 test('the logline prompt keeps the model to the description: no made-up roles, names as written',async()=>{
  const original=globalThis.fetch;let system='';globalThis.fetch=async(url,opts)=>{system=JSON.parse(opts.body).messages[0].content;return Response.json({choices:[{message:{content:good}}]});};

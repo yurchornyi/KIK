@@ -55,6 +55,7 @@ function db(){const tables={ad_breaks:new Map(),ad_scan_queue:new Map()};const k
   if(sql.startsWith('INSERT INTO ad_breaks')){tables.ad_breaks.set(k(args),{duration:args[4],breaks:args[5],suggested:args[6],scanned_at:args[7]});return {};}
   if(sql.startsWith('DELETE FROM ad_scan_queue WHERE title_key')){tables.ad_scan_queue.delete(k(args));return {};}
   if(sql.startsWith('INSERT INTO ai_daily_budget')){if(api.budget+args[1]>args[2])return {first:null};api.budget+=args[1];return {first:{calls:api.budget}};}
+  if(sql.startsWith('UPDATE ai_daily_budget')){api.budget=Math.max(0,api.budget-args[0]);return {};}
   throw Error(sql);};
  const prepare=sql=>{let args=[];const s={bind(...a){args=a;return s;},async first(){return run(sql,args).first;},async all(){return run(sql,args).all;},async run(){return run(sql,args);}};return s;};
  const api={tables,prepare,budget:0,async batch(list){for(const s of list)await s.run();}};return api;}
@@ -126,4 +127,18 @@ test('more than three frames go to Sentra three at a time, in order',async()=>{
  try{d.budget=0;const r=await adScanner(req({frames:Array(12).fill('data:image/jpeg;base64,/9j/AAAA')}),d,env,'/api/ad-breaks/classify',read);
   assert.deepEqual(sizes,[3,3,3,3]);assert.deepEqual(r.ad,Array(12).fill(0.3));}
  finally{globalThis.fetch=original;}
+});
+test('frames Sentra answered are kept when another part fails; unanswered frames go back to the budget; a 429 reaches the scanner',async()=>{
+ const d=db(),env={AD_SCANNER_TOKEN:'s'.repeat(40),SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},original=globalThis.fetch;let replies=[];
+ const req=body=>new Request('https://kik.example/api/ad-breaks/classify',{method:'POST',headers:{Authorization:'Bearer '+env.AD_SCANNER_TOKEN},body:JSON.stringify(body)}),read=async r=>r.json(),frames=n=>Array(n).fill('data:image/jpeg;base64,/9j/AAAA');
+ const ok=n=>Response.json({choices:[{message:{content:JSON.stringify({frames:Array.from({length:n},()=>({ad:0.9,overlay:0}))})}}]});
+ globalThis.fetch=async()=>replies.shift()();
+ try{
+  replies=[()=>ok(3),()=>new Response('busy',{status:503})];d.budget=0;
+  assert.deepEqual((await adScanner(req({frames:frames(6)}),d,env,'/api/ad-breaks/classify',read)).ad,[0.9,0.9,0.9,null,null,null]);assert.equal(d.budget,3);
+  replies=[()=>ok(3),()=>new Response('limit',{status:429})];const r=await adScanner(req({frames:frames(6)}),d,env,'/api/ad-breaks/classify',read);
+  assert.equal(r.limited,true);assert.deepEqual(r.ad.slice(0,3),[0.9,0.9,0.9]);assert.equal(d.budget,6);
+  replies=[()=>new Response('limit',{status:429}),()=>new Response('limit',{status:429})];
+  await assert.rejects(()=>adScanner(req({frames:frames(6)}),d,env,'/api/ad-breaks/classify',read),e=>e.status===429);assert.equal(d.budget,6);
+ }finally{globalThis.fetch=original;}
 });

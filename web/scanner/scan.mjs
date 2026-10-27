@@ -31,7 +31,8 @@ function remember(e){const n=path.join(DATA,'pool',poolName(e));fs.writeFileSync
 // ---------- media: one pass of ffmpeg over the smallest quality gives 8 kHz mono audio and 12×9 thumbnails at 5 fps ----------
 /** With `samples`, also one 352-px JPEG every SAMPLE seconds (ffmpeg's fps filter takes the frame from the middle of each interval) for the AI check (top and bottom strips with channel logos cut off);
  *  the caller removes them with done(). */
-const SAMPLE=4;
+// Eight seconds still put one or two frames into the shortest clip (8 s) and halve the Sentra requests of an episode (~110 instead of ~217).
+const SAMPLE=8;
 function features(url,{audio=true,samples=false}={}){return new Promise((resolve,reject)=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'kik-scan-')),pcm=path.join(tmp,'a.pcm'),gray=path.join(tmp,'v.gray'),done=()=>fs.rmSync(tmp,{recursive:true,force:true});
  // FFmpeg accepts any TLS certificate unless told otherwise: a forged source on the network would plant fake ad breaks.
@@ -65,7 +66,12 @@ async function analyse(item,f,key,e){
  e.breaks=merge(found,e.duration);e.suggested=[];
  // Last resort for a clip seen nowhere else: the AI looks at one frame every few seconds. Its finds only get a button.
  if(AI&&TOKEN&&(process.env.KIK_SCANNER_AI==='always'||!referenced&&e.breaks.length<2)){const samples=[],todo=e.jpegs.filter(x=>x.t>=IDENT&&x.t<=e.duration-CREDITS&&!e.breaks.some(([a,b])=>x.t>=a-SAMPLE&&x.t<=b+SAMPLE));
-  try{for(let i=0;i<todo.length;i+=16){const batch=todo.slice(i,i+16),r=await call('/api/ad-breaks/classify',{frames:batch.map(x=>'data:image/jpeg;base64,'+fs.readFileSync(x.file).toString('base64'))});r.ad.forEach((p,k)=>samples.push({t:batch[k].t,p,o:r.overlay?.[k]}));}
+  // 15 frames a call are five Sentra requests. A 429, a call Sentra answered for no frame, or `limited` ends the AI for this episode:
+  // the frames looked at so far still give their hints.
+  try{for(let i=0;i<todo.length;i+=15){const batch=todo.slice(i,i+15);let r;
+    try{r=await call('/api/ad-breaks/classify',{frames:batch.map(x=>'data:image/jpeg;base64,'+fs.readFileSync(x.file).toString('base64'))});}catch(err){if(/ 429$/.test(err.message)){log('AI limit reached, rest of the episode without AI');break;}throw err;}
+    r.ad.forEach((p,k)=>samples.push({t:batch[k].t,p,o:r.overlay?.[k]}));
+    if(r.limited||r.ad.every(p=>p==null)){log('AI stopped: '+(r.limited?'Sentra limit':'no answer')+', rest of the episode without AI');break;}}
    fs.writeFileSync(path.join(DATA,'pool',poolName(e))+'.ai.json',JSON.stringify(samples));e.suggested=suggest(e,samples,e.breaks).map(r=>[r.start,r.end]);log('AI looked at',samples.length,'frames:',e.suggested.length,'hint(s)');}
   catch(err){log('AI check skipped:',err.message);}}
  const reports=[{...item,duration:e.duration,breaks:e.breaks,suggested:e.suggested}];

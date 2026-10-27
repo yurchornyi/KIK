@@ -5,17 +5,27 @@
 export const sentraReady=env=>!!(env?.SENTRA_URL&&env?.SENTRA_TOKEN);
 /** True when a model can answer: Sentra is set up. */
 export const aiReady=sentraReady;
-async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout}){
- const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim(),'x-sentra-skill':skill,'x-sentra-deadline-ms':String(timeout)},body:JSON.stringify({model:'role:'+role,messages,max_tokens:maxTokens,temperature,...(json?{response_format:{type:'json_object'}}:{})}),signal:AbortSignal.timeout(timeout+2000)});
- if(!r.ok)throw Error('Sentra '+r.status);
+/** Sentra's daily AI limit for KIK (429 project_daily_limit above it). KIK's own caps together stay under it (sentra-ai.test). */
+export const SENTRA_DAILY=600;
+/** Gives back calls reserved in KIK's own ai_daily_budget when Sentra spent nothing on them (a 429, or no answer for frames). */
+export const giveBack=(db,day,calls=1)=>db.prepare('UPDATE ai_daily_budget SET calls=MAX(0,calls-?) WHERE day=?').bind(calls,day).run();
+let warnedOff=false;
+async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache}){
+ const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim(),'x-sentra-skill':skill,'x-sentra-deadline-ms':String(timeout),...(cache?{'x-sentra-cache':String(cache)}:{})},body:JSON.stringify({model:'role:'+role,messages,max_tokens:maxTokens,temperature,...(json?{response_format:{type:'json_object'}}:{})}),signal:AbortSignal.timeout(timeout+2000)});
+ if(!r.ok)throw Object.assign(Error('Sentra '+r.status),{status:r.status});
  return String((await r.json())?.choices?.[0]?.message?.content??'');
 }
 /**
  * Sentra's answer as {value,by:'sentra'} when `accept` takes it (it returns the value, or null / throws when the answer is
- * unusable); null otherwise — the feature then keeps its plain result. A 429 (a limit, or Sentra's spend guard) is no error.
+ * unusable). Otherwise {value:null,why}: 'off' (no SENTRA_URL/TOKEN), 'limit' (a 429: a limit or Sentra's spend guard, no
+ * error — the caller gives its own budget back), 'error' (Sentra failed or timed out) or 'rejected' (an unusable answer).
+ * The feature then keeps its plain result. `cache` asks Sentra to keep the answer that many seconds (x-sentra-cache).
  */
-export async function complete(env,{skill,role='fast',messages,maxTokens,temperature=0,json=false,timeout},accept,label){
- if(!sentraReady(env))return null;
- try{const value=accept(await viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout}));if(value!=null)return {value,by:'sentra'};}catch(err){if(!/Sentra 429/.test(String(err?.message)))console.warn(label+': Sentra unavailable or unusable answer, plain result kept');}
- return null;
+export async function complete(env,{skill,role='fast',messages,maxTokens,temperature=0,json=false,timeout,cache},accept,label){
+ if(!sentraReady(env)){if(!warnedOff){warnedOff=true;console.warn('KIK AI: SENTRA_URL or SENTRA_TOKEN is missing, AI features keep their plain results');}return {value:null,why:'off'};}
+ let raw;
+ try{raw=await viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache});}
+ catch(err){if(err?.status===429)return {value:null,why:'limit'};console.warn(label+': Sentra '+(err?.status?'HTTP '+err.status:err?.name==='TimeoutError'?'timed out':'unreachable')+', plain result kept');return {value:null,why:'error'};}
+ try{const value=accept(raw);if(value!=null)return {value,by:'sentra'};}catch{}
+ console.warn(label+': Sentra answered unusably, plain result kept');return {value:null,why:'rejected'};
 }

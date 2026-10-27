@@ -57,3 +57,14 @@ test('search fixes come from Sentra; its «not sure» is an answer, and Workers 
   reply='{"titles":[]}';assert.deepEqual(await corrections(fakeDb(),env,'qqqq zzzz',memoryCache()),[]);assert.equal(runs,0);
  }finally{globalThis.fetch=original;}
 });
+test('search fixes ask Sentra to cache them; a failure is not cached as «no fixes», and a 429 gives the call back',async()=>{
+ const original=globalThis.fetch,sent=[];let status=503;
+ globalThis.fetch=async(url,opts)=>{sent.push(opts);return status===200?Response.json({choices:[{message:{content:'{"titles":["Интерстеллар"]}'}}]}):new Response('x',{status});};
+ const budget={calls:0},db={prepare:sql=>({bind:(...a)=>({first:async()=>({calls:++budget.calls}),run:async()=>{if(sql.startsWith('UPDATE ai_daily_budget'))budget.calls-=a[0];}})})};
+ try{
+  const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},cache=memoryCache();
+  assert.deepEqual(await corrections(db,env,'Сентра Збій',cache),[]);assert.equal(sent[0].headers['x-sentra-cache'],'2592000');
+  assert.equal(JSON.parse(JSON.parse(sent[0].body).messages[1].content).query,'сентра збій');assert.equal(await cache.match(new Request('https://kik.internal/search-fix/v1?q='+encodeURIComponent('сентра збии'))),undefined);assert.equal(budget.calls,1);
+  status=429;assert.deepEqual(await corrections(db,env,'ліміт сентри',cache),[]);assert.equal(budget.calls,1);
+ }finally{globalThis.fetch=original;}
+});

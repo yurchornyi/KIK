@@ -1,12 +1,12 @@
-import {titleKey} from './sync.mjs';import {equal} from './auth.mjs';import {cleanBreaks} from './public/ad-skip.js';import {complete,sentraReady} from './sentra-ai.mjs';
+import {titleKey} from './sync.mjs';import {equal} from './auth.mjs';import {cleanBreaks} from './public/ad-skip.js';import {complete,sentraReady,giveBack} from './sentra-ai.mjs';
 /** Voice tracks that splice betting ads into episodes: ColdFilm, 1win Studio, 1win Express. Only these are ever queued. */
 export const SPONSORED=new Set(['35','623','641']);
 // An episode scanned clean is retried after a week: the scanner's library of known clips keeps growing.
 const RESCAN=7*86400_000,QUEUE_MAX=300,BATCH=5;
-/** Frame check for clips no other signal can confirm: Sentra's vision role first (all frames of a call in one request);
- *  the fallback is Cloudflare's decision model, one small JPEG per call (about one Neuron).
- *  The daily cap keeps it well inside the free 10,000 Neurons, next to the synopses. */
-export const AD_FRAMES_DAILY=3000,AD_FRAMES_PER_CALL=16;
+/** Frame check for clips no other signal can confirm: only Sentra's vision role, three frames a request.
+ *  The daily cap counts frames: 840 frames are at most 315 Sentra requests (16-frame calls), next to KIK's other caps
+ *  under Sentra's daily limit (sentra-ai.mjs). Frames Sentra gave no answer for go back to the budget. */
+export const AD_FRAMES_DAILY=840,AD_FRAMES_PER_CALL=16;
 const AD_QUESTIONS={
  ad:{type:'noul',instructions:'Is this frame from an inserted TV commercial (a betting, casino or app advertisement such as 1XBET), rather than a scene of the drama series itself?',criteria:{true:'An advertisement: product shots, phones with betting apps, brand logos or slogans filling the picture, staged commercial scenes.',false:'A normal scene of the series, even if a small channel or sponsor logo sits in a corner.'}},
  overlay:{type:'noul',instructions:'Is a scene of the drama series still visible behind or around advertising graphics laid over it (a banner, logo or animation on top of the film)?',criteria:{true:'Advertising graphics are drawn over a film scene that stays visible.',false:'No film scene is visible: the whole picture is the commercial or the film without graphics.'}}};
@@ -19,16 +19,16 @@ Answer only JSON: {"frames":[{"ad":0.0,"overlay":0.0}, ...]} with exactly ${n} i
 const share=v=>typeof v==='number'&&v>=0&&v<=1?v:null;
 /** Images per Sentra request: Groq's image model (qwen3.8-27b) takes at most 3. */
 const SENTRA_FRAMES=3;
-/** Sentra first (skill kik-ad-frames, role vision), three frames a request: [ad, overlay] per frame, or null when any part is unusable. */
+/** Sentra (skill kik-ad-frames, role vision), three frames a request: [ad, overlay] per frame, null for a frame whose request
+ *  failed; `limited` when Sentra answered 429 (a limit or its spend guard). A part that answered is kept even if another failed. */
 async function viaSentraFrames(env,frames){
- if(!sentraReady(env))return null;
- if(frames.length>SENTRA_FRAMES){
-  const parts=await Promise.all(Array.from({length:Math.ceil(frames.length/SENTRA_FRAMES)},(_,i)=>viaSentraFrames(env,frames.slice(i*SENTRA_FRAMES,(i+1)*SENTRA_FRAMES))));
-  return parts.every(Boolean)?parts.flat():null;
- }
+ const parts=await Promise.all(Array.from({length:Math.ceil(frames.length/SENTRA_FRAMES)},(_,i)=>framesOnce(env,frames.slice(i*SENTRA_FRAMES,(i+1)*SENTRA_FRAMES))));
+ return {answers:parts.flatMap((p,i)=>p.value??frames.slice(i*SENTRA_FRAMES,(i+1)*SENTRA_FRAMES).map(()=>null)),limited:parts.some(p=>p.why==='limit')};
+}
+function framesOnce(env,frames){
  const messages=[{role:'user',content:[{type:'text',text:AD_PROMPT(frames.length)},...frames.map(url=>({type:'image_url',image_url:{url}}))]}];
  const accept=raw=>{const text=String(raw),list=JSON.parse(text.slice(text.indexOf('{'),text.lastIndexOf('}')+1))?.frames;if(!Array.isArray(list)||list.length!==frames.length)return null;const pairs=list.map(f=>[share(f?.ad),share(f?.overlay)]);return pairs.every(([a,o])=>a!==null&&o!==null)?pairs:null;};
- return (await complete(env,{skill:'kik-ad-frames',role:'vision',messages,maxTokens:40+30*frames.length,temperature:0,json:true,timeout:25000},accept,'ad frames'))?.value??null;
+ return complete(env,{skill:'kik-ad-frames',role:'vision',messages,maxTokens:40+30*frames.length,temperature:0,json:true,timeout:25000},accept,'ad frames');
 }
 /** AI hints within the same limits, minus anything a confirmed break already covers. */
 const hints=(list,breaks,duration)=>cleanBreaks(list||[],duration).filter(([s,e])=>!breaks.some(([a,b])=>s<b&&a<e));
@@ -77,8 +77,11 @@ export async function adScanner(request,db,env,path,readBody,now=Date.now()){
   const day='adscan:'+new Date(now).toISOString().slice(0,10),reserved=await db.prepare('INSERT INTO ai_daily_budget(day,calls) VALUES(?,?) ON CONFLICT(day) DO UPDATE SET calls=calls+excluded.calls WHERE calls+excluded.calls<=? RETURNING calls').bind(day,frames.length,AD_FRAMES_DAILY).first();
   if(!reserved)fail('Денний ліміт ШІ вичерпано',429);
   // Only Sentra classifies (SENTRA.md: no AI of KIK's own): no usable answer leaves the frames unknown, the scanner tries later.
-  const answers=await viaSentraFrames(env,frames)??frames.map(()=>null);
-  return {ad:answers.map(a=>a?a[0]:null),overlay:answers.map(a=>a?a[1]:null)};
+  const {answers,limited}=await viaSentraFrames(env,frames),unanswered=answers.filter(a=>!a).length;
+  if(unanswered)await giveBack(db,day,unanswered);
+  // A 429 with nothing answered is the scanner's signal to stop asking for this episode; a partial answer says `limited`.
+  if(limited&&unanswered===frames.length)fail('Sentra: ліміт ШІ',429);
+  return {ad:answers.map(a=>a?a[0]:null),overlay:answers.map(a=>a?a[1]:null),...limited?{limited:true}:{}};
  }
  fail('Не знайдено',404);
 }
