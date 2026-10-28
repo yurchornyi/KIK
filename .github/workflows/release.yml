@@ -1,0 +1,85 @@
+name: Release
+
+# Publishes the next KIK release by itself when a merge changes what goes into the APK (scripts/auto-release.sh),
+# on GitHub, so no particular computer is needed. What never enters Git comes from the repository's secrets and
+# its draft release «build-inputs»: the original APK (whose apktool d is decoded/) and the release key.
+
+on:
+  push:
+    branches: [main]
+    # What scripts/build.sh builds from. The release's own version commit is pushed with the workflow's token,
+    # which starts no workflow.
+    paths:
+      - localization/**
+      - scripts/localize.py
+      - scripts/simplify.py
+      - scripts/branding.py
+      - scripts/build.sh
+      - scripts/media3.sh
+      - web/kik-intro.mp4
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and check the next version, publish nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# One release at a time; merges that land meanwhile wait as one run, which builds the latest main.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-34 build-tools;34.0.0
+
+      - name: Build inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEYSTORE: ${{ secrets.KIK_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.KIK_KEY_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE" ] && [ -n "$KEY_PASSWORD" ] || { echo "KIK_KEYSTORE_B64 or KIK_KEY_PASSWORD is not set"; exit 1; }
+          mkdir -p work/tools work/signing
+          curl -sfL -o work/tools/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar
+          echo "dbf930b076c6b9be08d57c449cacefc3bdd6b71ebd59b3066fc0e1f5b14f9423  work/tools/apktool.jar" | sha256sum -c
+          # A draft release: only the repository's writers see it, the public never does.
+          ASSET=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.draft and .name == "build-inputs") | .assets[] | select(.name == "RezkaTV-1.2.0.apk") | .id')
+          [ -n "$ASSET" ] || { echo "the draft release build-inputs has no RezkaTV-1.2.0.apk"; exit 1; }
+          gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$ASSET" > RezkaTV-1.2.0.apk
+          echo "7883dc0e4dd15e726994e10f75c066b061241a3a8ef7192f5caf6595ba897442  RezkaTV-1.2.0.apk" | sha256sum -c
+          java -jar work/tools/apktool.jar d -f RezkaTV-1.2.0.apk -o decoded
+          printf '%s' "$KEYSTORE" | base64 -d > work/signing/localization.jks
+          printf '%s' "$KEY_PASSWORD" > work/signing/password
+          chmod 600 work/signing/*
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KIK_ANDROID_SDK: ${{ env.ANDROID_HOME }}
+          KIK_AUTO_RELEASE_DRY: ${{ inputs.dry_run && '1' || '' }}
+        run: |
+          export KIK_JAVA_HOME="$JAVA_HOME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash scripts/auto-release.sh
+
+      - name: Forget the key
+        if: always()
+        run: rm -rf work/signing
