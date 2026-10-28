@@ -16,3 +16,15 @@ test('complete says why there is no answer and logs the HTTP status; a 429 is no
   reply=()=>Response.json({choices:[{message:{content:'ok'}}]});assert.deepEqual(await ask(),{value:'ok',by:'sentra'});
  }finally{globalThis.fetch=original;console.warn=warn;}
 });
+test('an unusable answer is reported to Sentra as «rejected», with its sample and why',async()=>{
+ const original=globalThis.fetch,warn=console.warn,calls=[];console.warn=()=>{};
+ globalThis.fetch=async(url,init)=>{calls.push({url:String(url),body:JSON.parse(init.body)});return String(url).endsWith('/v1/feedback')?Response.json({ok:true}):Response.json({choices:[{message:{content:'[1,2,3]'}}]},{headers:{'x-sentra-sample-id':'kik-recommendations/123-abc'}});};
+ const env={SENTRA_URL:'https://sentra.test/',SENTRA_TOKEN:'t'};
+ try{
+  assert.deepEqual(await complete(env,{skill:'kik-test',messages:[],maxTokens:1,timeout:1000},()=>{throw Error('AI ranking is only the input order');},'KIK recommendations'),{value:null,why:'rejected'});
+  assert.equal(calls.at(-1).url,'https://sentra.test/v1/feedback');
+  assert.deepEqual(calls.at(-1).body,{sample:'kik-recommendations/123-abc',signal:'rejected',note:'KIK recommendations: AI ranking is only the input order'});
+  // A usable answer reports nothing.
+  calls.length=0;assert.deepEqual(await complete(env,{skill:'kik-test',messages:[],maxTokens:1,timeout:1000},raw=>raw,'test'),{value:'[1,2,3]',by:'sentra'});assert.equal(calls.length,1);
+ }finally{globalThis.fetch=original;console.warn=warn;}
+});
