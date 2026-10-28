@@ -10,6 +10,8 @@ export function layoutSwaps(query){const q=String(query||'').trim();if(!q)return
 /** Model output to at most three short title strings; anything else is dropped. */
 export function cleanFixes(raw,query){let value=raw;if(typeof value==='string'){const j=value.match(/\{[\s\S]*\}|\[[\s\S]*\]/)?.[0];try{value=JSON.parse(j||value);}catch{return [];}}const list=Array.isArray(value)?value:value?.titles;if(!Array.isArray(list))return [];const q=foldQuery(query);return [...new Set(list.filter(t=>typeof t==='string').map(t=>t.replace(/\s+/g,' ').trim()).filter(t=>t.length>1&&t.length<=100&&!/[<>{}\\]|https?:/i.test(t)&&foldQuery(t)!==q))].slice(0,3);}
 const memo=new Map(),pending=new Map();
+/** No fixes because Sentra failed, not «none»: `failed` (not enumerable, so the list stays a plain list) keeps it out of the edge cache. */
+const failedList=()=>Object.defineProperty([],'failed',{value:true});
 /** Likely real titles for a query the catalogue could not answer; cached for a month, bounded per day. */
 export async function corrections(db,env,query,cache=globalThis.caches?.default){
  query=String(query||'').replace(/\s+/g,' ').trim().slice(0,100);const key=foldQuery(query);if(key.length<3||!aiReady(env))return [];
@@ -23,11 +25,11 @@ export async function corrections(db,env,query,cache=globalThis.caches?.default)
   // Only Sentra (sentra-ai.mjs); an empty list is a real answer («not sure»), not a failure.
   const answer=await complete(env,{skill:'kik-search-fix',role:'fast',messages,maxTokens:120,temperature:0,json:true,timeout:8000,cache:SENTRA_CACHE},raw=>cleanFixes(raw,query),'KIK search fix');
   // A failure is not cached as «no fixes»: this isolate waits ten minutes before asking again; a 429 spent nothing.
-  if(answer.value==null){if(answer.why==='limit')await giveBack(db,day);return {value:[],failed:true};}
+  if(answer.value==null){if(answer.why==='limit')await giveBack(db,day);return failedList();}
   const fixes=answer.value;
   try{await cache?.put(cacheKey,new Response(JSON.stringify(fixes),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age='+(fixes.length?2592000:86400)}}));}catch{}
   return fixes;
- })().then(result=>{const failed=!!result?.failed,value=failed?result.value:result;if(memo.size>=300)memo.delete(memo.keys().next().value);memo.set(key,{value,expires:Date.now()+(failed?FAILED_FOR:3600000)});return value;},()=>[]).finally(()=>pending.delete(key));
+ })().catch(failedList).then(value=>{if(memo.size>=300)memo.delete(memo.keys().next().value);memo.set(key,{value,expires:Date.now()+(value.failed?FAILED_FOR:3600000)});return value;}).finally(()=>pending.delete(key));
  pending.set(key,task);return task;
 }
 /** Other names to search when a query found nothing useful: Wikidata names first (exact, free), then the model. */
