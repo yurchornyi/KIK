@@ -12,7 +12,7 @@ import android.widget.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/** "Who is watching" screen: pick a profile without a password; the password guards changes. */
+/** "Who is watching" screen: the profiles of every account on this TV; pick one without a password, the password guards changes. */
 public final class ProfilesActivity extends Activity {
  private LinearLayout content;
  private boolean manage;
@@ -34,12 +34,14 @@ public final class ProfilesActivity extends Activity {
   if(all.isEmpty()){createForm(true);return;}
   LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);
   HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(12),dp(12),dp(12),dp(12));row.setClipChildren(false);hs.addView(row);content.addView(hs,new LinearLayout.LayoutParams(-2,-2));
-  String current=ProfileStore.current(this);View focus=null;
+  String current=ProfileStore.current(this);View focus=null;final boolean several=Account.accounts(this).length()>1;
   for(final ProfileStore.Profile p:all){
    ImageView b=Avatars.view(this,p.avatar,150);b.setContentDescription(p.name+", "+Avatars.label(p.avatar)+(manage?", редагувати профіль":", дивитися"));
    LinearLayout tile=new LinearLayout(this);tile.setOrientation(1);tile.setClipChildren(false);tile.setClipToPadding(false);tile.setPadding(0,dp(6),0,dp(6));tile.setGravity(Gravity.CENTER_HORIZONTAL);
    tile.addView(b,new LinearLayout.LayoutParams(dp(150),dp(150)));
    TextView label=text((p.id.equals(current)?"● ":"")+p.name,19);label.setTextColor(0xffb3b3b3);label.setPadding(0,dp(10),0,0);label.setSingleLine(true);label.setEllipsize(TextUtils.TruncateAt.END);tile.addView(label,new LinearLayout.LayoutParams(-1,-2));
+   // With two accounts on the TV, two «Юра» are told apart by whose email they belong to.
+   String owner=several?Account.emailOf(this,CloudSync.token(this,p.id)):"";if(!owner.isEmpty()){TextView mail=text(owner,13);mail.setTextColor(0xff8a8592);mail.setSingleLine(true);mail.setEllipsize(TextUtils.TruncateAt.MIDDLE);tile.addView(mail,new LinearLayout.LayoutParams(-1,-2));}
    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(190),-2);lp.setMargins(dp(10),0,dp(10),0);row.addView(tile,lp);
    b.setOnClickListener(v->{if(manage)unlock(p);else ProfileStore.choose(this,p.id);});
    if(p.id.equals(current)||focus==null)focus=b;
@@ -47,13 +49,16 @@ public final class ProfilesActivity extends Activity {
   space(30);
   LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(actions,new LinearLayout.LayoutParams(-2,-2));
   if(!manage){
-   Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{if(!Account.token(this).isEmpty()){SignInActivity.addProfile(this);return;}content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
+   Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{if(!Account.token(this).isEmpty()){addSigned();return;}content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
    Button edit=button("Керувати профілями");actions.addView(edit,params(280));edit.setOnClickListener(v->{manage=true;render();});
   }else{
    Button done=button("Готово");actions.addView(done,params(200));done.setOnClickListener(v->{manage=false;render();});
   }
   if(focus!=null)focus.requestFocus();
  }
+ /** A new profile in this viewer's account, or the profiles of another account (another email) on this TV. */
+ private void addSigned(){String email=Account.email(this);
+  Ui.dialog(this).setTitle("Додати профіль").setItems(new String[]{"Новий профіль у "+(email.isEmpty()?"цьому обліковому записі":email),"Профіль з іншого облікового запису (інша пошта)"},(d,which)->{if(which==0)SignInActivity.addProfile(this);else SignInActivity.addAccount(this);}).show();}
  private void createForm(final boolean first){
   final String[] avatar={Avatars.idAt(ProfileStore.list(this).size())};
   LinearLayout avatarRow=new LinearLayout(this);avatarRow.setGravity(Gravity.CENTER);avatarRow.setClipChildren(false);avatarRow.setClipToPadding(false);

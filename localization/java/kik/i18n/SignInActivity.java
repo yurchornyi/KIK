@@ -19,25 +19,30 @@ import org.json.*;
  * allowed or whose password was reset, a new password), then a profile and its avatar when the account has none.
  * The server decides which emails may enter. «Увійти з телефону» unfolds a code and a QR code instead: the viewer confirms
  * it on a phone already signed in to the website, and the TV signs in without a password typed on the remote.
+ * {@link #addAccount} runs the same screens for a second account: its profiles join this TV's next to the first one's.
  */
 public final class SignInActivity extends Activity {
  private static final int LOADING=0,EMAIL=1,PASSWORD=2,CREATE=3,PICK=4,NAME=5,AVATAR=6;
  private final Handler main=new Handler(Looper.getMainLooper());private final ExecutorService io=Executors.newSingleThreadExecutor();
- private volatile boolean destroyed;private boolean working;private ScrollView scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding;
- private String email="",name="";private JSONArray remote=new JSONArray();
+ private volatile boolean destroyed;private boolean working;private ScrollView scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding,joining,committed;
+ // The sign-in of the account these screens work on; a joining account becomes one of the TV's only once a profile is chosen.
+ private String email="",name="",session="";private JSONArray remote=new JSONArray();
 
  /** "+ Add profile" for a signed-in TV: the same name and avatar screens, made on the account. */
  public static void addProfile(Activity a){a.startActivity(new Intent(a,SignInActivity.class).putExtra("add",true));}
+ /** «Інший обліковий запис»: signs in one more email on this TV; the accounts already here stay. */
+ public static void addAccount(Activity a){a.startActivity(new Intent(a,SignInActivity.class).putExtra("account",true));}
  private int dp(float n){return Ui.dp(this,n);}
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);
   scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setGravity(Gravity.CENTER_HORIZONTAL);content.setPadding(dp(48),dp(40),dp(48),dp(32));
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
-  email=Account.email(this);adding=getIntent().getBooleanExtra("add",false)&&!Account.token(this).isEmpty();
-  if(adding)show(NAME);else if(!Account.token(this).isEmpty())resume();else show(EMAIL);
+  joining=getIntent().getBooleanExtra("account",false)&&Account.signedIn(this);adding=!joining&&getIntent().getBooleanExtra("add",false)&&!Account.token(this).isEmpty();
+  email=joining?"":Account.email(this);
+  if(joining)show(EMAIL);else if(adding)show(NAME);else if(!Account.token(this).isEmpty())resume();else show(EMAIL);
  }
- @Override protected void onDestroy(){destroyed=true;main.removeCallbacksAndMessages(null);io.shutdownNow();super.onDestroy();}
+ @Override protected void onDestroy(){if(joining&&!committed&&!session.isEmpty()){final String unused=session;Ui.bg(()->{try{CloudSync.request("/api/auth/logout",new JSONObject(),unused);}catch(Exception ignored){}});}destroyed=true;main.removeCallbacksAndMessages(null);io.shutdownNow();super.onDestroy();}
 
  // ---------- steps ----------
  private void show(int target){
@@ -48,7 +53,7 @@ public final class SignInActivity extends Activity {
   content.addView(Brand.logo(this,96,44));space(26);
   if(step==LOADING){head("Вхід у KIK","Завантаження облікового запису…");return;}
   if(step==EMAIL){
-   head("Увійдіть у KIK","Введіть пошту, яку адміністратор додав до KIK.");
+   if(joining)head("Інший обліковий запис","Введіть пошту ще одного облікового запису KIK. Його профілі з’являться на цьому TV поруч із вашими.");else head("Увійдіть у KIK","Введіть пошту, яку адміністратор додав до KIK.");
    final EditText field=input("Пошта",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,EditorInfo.IME_ACTION_NEXT);field.setText(email);field.setSelection(field.length());
    final Button next=wide("Далі",true);next.setOnClickListener(v->checkEmail(field,next));submit(field,next);
    // Focus starts on a button, so no keyboard covers the phone option; OK on the field opens it.
@@ -77,7 +82,7 @@ public final class SignInActivity extends Activity {
    head(adding?"Новий профіль":"Створіть профіль","Як звати того, хто дивиться? У кожного профілю своя історія та «Мій список».");
    final EditText field=input("Ім’я",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_WORDS,EditorInfo.IME_ACTION_NEXT);field.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});field.setText(name);field.setSelection(field.length());
    LinearLayout row=actions();final Button next=button(row,"Далі",true);if(adding)button(row,"Скасувати",false).setOnClickListener(v->finish());
-   next.setOnClickListener(v->{String n=field.getText().toString().trim();if(n.isEmpty()){error("Введіть ім’я профілю");return;}for(ProfileStore.Profile p:ProfileStore.list(this))if(p.name.equalsIgnoreCase(n)&&!CloudSync.remoteId(this,p.id).isEmpty()){error("Профіль з таким ім’ям уже є");return;}for(int i=0;i<remote.length();i++)if(n.equalsIgnoreCase(remote.optJSONObject(i).optString("name"))){error("Профіль з таким ім’ям уже є");return;}name=n;show(AVATAR);});
+   next.setOnClickListener(v->{String n=field.getText().toString().trim();if(n.isEmpty()){error("Введіть ім’я профілю");return;}if(!joining)for(ProfileStore.Profile p:ProfileStore.list(this))if(p.name.equalsIgnoreCase(n)&&!CloudSync.remoteId(this,p.id).isEmpty()){error("Профіль з таким ім’ям уже є");return;}for(int i=0;i<remote.length();i++)if(n.equalsIgnoreCase(remote.optJSONObject(i).optString("name"))){error("Профіль з таким ім’ям уже є");return;}name=n;show(AVATAR);});
    submit(field,next);type(field);
   }else{
    head("Оберіть аватарку","Для профілю «"+name+"». Можна пропустити — KIK вибере випадкову.");
@@ -100,6 +105,7 @@ public final class SignInActivity extends Activity {
   else if(step==AVATAR)show(NAME);
   else if(step==NAME&&adding)finish();
   else if(step==NAME&&remote.length()>0)show(PICK);
+  else if(joining)finish();
   else Ui.leaveApp(this);
  }
 
@@ -131,7 +137,7 @@ public final class SignInActivity extends Activity {
  /** Asks every 3 s; an expired code is replaced by a fresh one while the card stays open. */
  private void pollPair(int gen,String secret,long until,ImageView qr,TextView code,TextView steps){
   if(destroyed||gen!=pairing)return;if(SystemClock.elapsedRealtime()>until){startPair(gen,qr,code,steps);return;}
-  io.execute(()->{try{JSONObject r=CloudSync.request("/api/pair/poll",new JSONObject().put("device_code",secret),null);if(!r.optBoolean("pending")){main.post(()->{if(!destroyed&&gen==pairing)paired(r);});return;}}
+  io.execute(()->{try{JSONObject r=CloudSync.request("/api/pair/poll",new JSONObject().put("device_code",secret).put("device_name",Account.deviceName()),null);if(!r.optBoolean("pending")){main.post(()->{if(!destroyed&&gen==pairing)paired(r);});return;}}
    catch(CloudSync.Failure e){if(e.code==410){main.post(()->{if(!destroyed&&gen==pairing)startPair(gen,qr,code,steps);});return;}}catch(Exception ignored){}
    main.postDelayed(()->pollPair(gen,secret,until,qr,code,steps),3000);});
  }
@@ -140,7 +146,7 @@ public final class SignInActivity extends Activity {
   final String token=result.optString("token");final JSONObject chosen=result.optJSONObject("profile");if(!token.matches("[a-f0-9]{64}")||chosen==null){error("Не вдалося завершити вхід. Спробуйте ще раз.");return;}
   show(LOADING);
   io.execute(()->{try{JSONObject me=request("/api/me",token);main.post(()->{if(destroyed)return;JSONObject user=me.optJSONObject("user");if(user==null){show(EMAIL);error("Вхід скасовано. Спробуйте ще раз.");return;}
-    email=user.optString("email");Account.save(this,email,token);remote=me.optJSONArray("profiles");if(remote==null)remote=new JSONArray();
+    email=user.optString("email");if(joining&&Account.has(this,email)){logout(token);show(EMAIL);error("Обліковий запис "+email+" уже є на цьому TV.");return;}session=token;if(!joining)Account.save(this,email,token);remote=me.optJSONArray("profiles");if(remote==null)remote=new JSONArray();
     JSONObject match=chosen;for(int i=0;i<remote.length();i++){JSONObject p=remote.optJSONObject(i);if(p!=null&&p.optString("id").equals(chosen.optString("id")))match=p;}pick(match);});}
    catch(Exception e){main.post(()->{if(destroyed)return;show(EMAIL);error("Немає зв’язку з KIK. Перевірте інтернет і спробуйте ще раз.");});}});
  }
@@ -149,13 +155,14 @@ public final class SignInActivity extends Activity {
  private void checkEmail(EditText field,Button button){
   String value=field.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
   if(!value.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]+")){error("Введіть коректну пошту, наприклад name@gmail.com");return;}
+  if(joining&&Account.has(this,value)){error("Цей обліковий запис уже є на цьому TV");return;}
   email=value;busy(button,"Перевірка…");
   call(button,"/api/auth/check",json("email",value),null,result->show("create".equals(result.optString("state"))?CREATE:PASSWORD),null);
  }
  private void login(EditText field,Button button){
   String password=field.getText().toString();if(password.isEmpty()){error("Введіть пароль");return;}
   busy(button,"Вхід…");
-  call(button,"/api/auth/login",json("email",email,"password",password,"device",true),null,this::signedIn,()->{field.setText("");field.requestFocus();error("Неправильний пароль. Спробуйте ще раз.");});
+  call(button,"/api/auth/login",json("email",email,"password",password,"device",true,"device_name",Account.deviceName()),null,this::signedIn,()->{field.setText("");field.requestFocus();error("Неправильний пароль. Спробуйте ще раз.");});
  }
  private void register(EditText field,EditText again,Button button){
   String password=field.getText().toString();
@@ -163,28 +170,29 @@ public final class SignInActivity extends Activity {
   if(password.length()>256){error("Пароль задовгий");field.requestFocus();return;}
   if(!password.equals(again.getText().toString())){error("Паролі не збігаються");again.setText("");again.requestFocus();return;}
   busy(button,"Створення…");
-  call(button,"/api/auth/register",json("email",email,"password",password,"profile",false,"device",true),null,this::signedIn,null);
+  call(button,"/api/auth/register",json("email",email,"password",password,"profile",false,"device",true,"device_name",Account.deviceName()),null,this::signedIn,null);
  }
  private void signedIn(JSONObject result)throws Exception{
   String token=result.getString("token");if(!token.matches("[a-f0-9]{64}"))throw new java.io.IOException("Token");
-  Account.save(this,email,token);remote=result.optJSONArray("profiles");if(remote==null)remote=new JSONArray();
+  session=token;if(!joining)Account.save(this,email,token);remote=result.optJSONArray("profiles");if(remote==null)remote=new JSONArray();
   profiles();
  }
  /** One profile on the account: no «Хто дивиться?», it is simply used. None: create one. Several: the viewer picks. */
  private void profiles(){JSONObject only=remote.length()==1?remote.optJSONObject(0):null;if(only!=null){pick(only);return;}show(remote.length()==0?NAME:PICK);}
  /** Reopened after sign-in but before a profile was chosen: continue from the account's profiles. */
  private void resume(){
-  show(LOADING);final String token=Account.token(this);
+  show(LOADING);final String token=Account.token(this);session=token;
   io.execute(()->{try{JSONObject me=request("/api/me",token);main.post(()->{if(destroyed)return;if(me.isNull("user")){Account.signOut(this);show(EMAIL);return;}remote=me.optJSONArray("profiles");if(remote==null)remote=new JSONArray();profiles();});}
    catch(Exception e){main.post(()->{if(destroyed)return;show(EMAIL);error(e instanceof CloudSync.Failure?e.getMessage():"Немає зв’язку з KIK. Перевірте інтернет і спробуйте ще раз.");});}});
  }
  private void pick(JSONObject chosen){
-  try{String local=Account.adopt(this,chosen,true);for(int i=0;i<remote.length();i++){JSONObject p=remote.optJSONObject(i);if(p!=null&&p!=chosen)Account.adopt(this,p,false);}ProfileStore.choose(this,local);}
+  try{if(joining)Account.save(this,email,session);String local=Account.adopt(this,chosen,!joining,session);for(int i=0;i<remote.length();i++){JSONObject p=remote.optJSONObject(i);if(p!=null&&p!=chosen)Account.adopt(this,p,false,session);}committed=true;ProfileStore.choose(this,local);}
   catch(Exception e){error("Не вдалося відкрити профіль. Спробуйте ще раз.");}
  }
  private void createProfile(String avatar){
   if(working)return;error("Створення профілю…");
-  call(null,"/api/profiles",json("name",name,"avatar",avatar),Account.token(this),p->{String local=Account.adopt(this,p,!adding);ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{Account.signOut(this);show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
+  final String token=adding?Account.token(this):session;
+  call(null,"/api/profiles",json("name",name,"avatar",avatar),token,p->{if(joining)Account.save(this,email,session);String local=Account.adopt(this,p,!adding&&!joining,token);committed=true;ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{if(!joining)Account.signOut(this);session="";show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
  }
 
  private interface Done{void run(JSONObject result)throws Exception;}
@@ -206,6 +214,7 @@ public final class SignInActivity extends Activity {
   java.net.HttpURLConnection c=(java.net.HttpURLConnection)new java.net.URL(UpdateConfig.WEB_ORIGIN+path).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestProperty("Authorization","Bearer "+token);
   try(java.io.InputStream in=c.getInputStream()){java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1&&out.size()<1024*1024)out.write(b,0,n);return new JSONObject(out.toString("UTF-8"));}finally{c.disconnect();}
  }
+ private static void logout(String token){Ui.bg(()->{try{CloudSync.request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
  private static JSONObject json(Object... pairs){try{JSONObject o=new JSONObject();for(int i=0;i<pairs.length;i+=2)o.put((String)pairs[i],pairs[i+1]);return o;}catch(JSONException e){throw new IllegalStateException(e);}}
 
  // ---------- views ----------

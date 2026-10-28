@@ -100,10 +100,11 @@ public final class ProfileStore {
  public static boolean use(Context c,String id){
   if(id==null||id.equals(current(c)))return id!=null;Profile p=null;for(Profile x:list(c))if(x.id.equals(id))p=x;
   if(p==null||!checkPassword(p,""))return false;
-  prefs(c).edit().putString("current",id).commit();picked=true;
-  try{java.lang.reflect.Field h=Class.forName("i72").getDeclaredField("h");h.setAccessible(true);h.set(null,null);Class.forName("gu7").getMethod("r",Context.class).invoke(null,c.getApplicationContext());}catch(Exception e){Log.w("KIK","Profile switch",e);}
+  prefs(c).edit().putString("current",id).commit();picked=true;rebind(c);
   return true;
  }
+ /** Points the film/progress cache at the current profile again (i72/gu7: RezkaTV 1.2.0's obfuscated names). */
+ static void rebind(Context c){try{java.lang.reflect.Field h=Class.forName("i72").getDeclaredField("h");h.setAccessible(true);h.set(null,null);Class.forName("gu7").getMethod("r",Context.class).invoke(null,c.getApplicationContext());}catch(Exception e){Log.w("KIK","Profile switch",e);}}
  /** "Who is watching" once per app start, when there is a choice to make. */
  public static boolean picked;
  public static void askOnce(Activity home){

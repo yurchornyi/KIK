@@ -7,7 +7,7 @@ import {preferredQuality} from './public/preferences.js';
 test('quality preference falls back below the target and auto picks the highest available',()=>{const q=['2160p','720p','480p'].map(label=>({label}));assert.equal(preferredQuality(q,'1080p').label,'720p');assert.equal(preferredQuality(q,'720p').label,'720p');assert.equal(preferredQuality(q,'auto').label,'2160p');assert.equal(preferredQuality(q,'240p').label,'480p');assert.equal(preferredQuality([],'1080p'),null);});
 
 // In-memory D1 stand-in built from the real migrations, so admin queries run against the production schema.
-import {DatabaseSync} from 'node:sqlite';import {readdirSync,readFileSync} from 'node:fs';import {storedSettings,logoutOtherSessions} from './management.mjs';import {hash} from './auth.mjs';
+import {DatabaseSync} from 'node:sqlite';import {readdirSync,readFileSync} from 'node:fs';import {storedSettings,logoutOtherSessions,devices,revokeDevice} from './management.mjs';import {hash} from './auth.mjs';
 function memoryD1(){
  const db=new DatabaseSync(':memory:'),dir=new URL('./migrations/',import.meta.url);db.exec('PRAGMA foreign_keys=ON');
  for(const f of readdirSync(dir).sort())db.exec(readFileSync(new URL(f,dir),'utf8'));
@@ -70,3 +70,7 @@ test('only a signed-in player queues an episode, and given-up episodes do not fi
  assert.deepEqual(await adBreaks(db,{link,voice:'35',season:'1',episode:'1'},Date.now(),{queue:false}),{breaks:[]});assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue').get().n,0);
  const add=db.raw.prepare("INSERT INTO ad_scan_queue(title_key,voice,season,episode,requested_at,attempts) VALUES('series/x/1-x.html','35','1',?,1,3)");for(let i=0;i<300;i++)add.run(String(i));
  assert.deepEqual(await adBreaks(db,{link,voice:'35',season:'1',episode:'2'}),{breaks:[],pending:true});assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue WHERE attempts<3').get().n,1);});
+test('the account lists its sign-ins and signs one TV out without touching the others',async()=>{const db=memoryD1();seed(db);const other={id:'u-2'};db.raw.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) VALUES('u-2','b','b@example.invalid','s','h',1)").run();const add=db.raw.prepare('INSERT INTO sessions(token_hash,user_id,expires_at,created_at,device) VALUES(?,?,9e15,1,?)');for(const [t,u,d] of [['browser',owner.id,null],['tv',owner.id,'XGIMI XK10T'],['phone',owner.id,null],['foreign-tv',other.id,'XGIMI XK10T']])add.run(await hash(t),u,d);
+ const listed=(await devices(db,owner,'browser')).devices;assert.equal(listed.length,3);const tv=listed.find(d=>d.tv);assert.equal(tv.name,'XGIMI XK10T');assert.equal(listed.find(d=>d.current).id,(await hash('browser')).slice(0,16));assert.ok(listed.every(d=>!('token_hash' in d)));
+ await assert.rejects(revokeDevice(db,owner,'browser',{id:(await hash('browser')).slice(0,16)}),e=>e.status===400);await assert.rejects(revokeDevice(db,owner,'browser',{id:(await hash('foreign-tv')).slice(0,16)}),e=>e.status===404);await assert.rejects(revokeDevice(db,null,'',{id:tv.id}),e=>e.status===401);
+ assert.deepEqual(await revokeDevice(db,owner,'browser',{id:tv.id}),{ok:true});const left=db.raw.prepare('SELECT token_hash FROM sessions ORDER BY token_hash').all().map(r=>r.token_hash);assert.deepEqual(left,(await Promise.all(['browser','phone','foreign-tv'].map(hash))).sort());});

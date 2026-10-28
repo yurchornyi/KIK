@@ -5,8 +5,8 @@ import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './l
 import {recommendations} from './recommendations.mjs';import {aiReady} from './sentra-ai.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
-import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport} from './management.mjs';
-import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken} from "./auth.mjs";
+import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport,devices,revokeDevice} from './management.mjs';
+import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken,deviceName} from "./auth.mjs";
 import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
@@ -92,14 +92,14 @@ async function api(request,env,ctx){
    // After an admin reset the account keeps its profiles and history; only the password is new.
    if(known.password_hash)fail("Ця пошта вже зареєстрована",409);
    if(!(await db.prepare("UPDATE users SET salt=?,password_hash=? WHERE id=? AND password_hash=''").bind(salt,password_hash,known.id).run()).meta.changes)fail("Ця пошта вже зареєстрована",409);
-   const token=await session(db,known.id,password_hash);return json({user:{id:known.id,email,role:known.role},profiles:await profiles(db,{id:known.id}),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
+   const token=await session(db,known.id,password_hash,b.device===true?deviceName(b.device_name):null);return json({user:{id:known.id,email,role:known.role},profiles:await profiles(db,{id:known.id}),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
   }
   const avatar=b.avatar===undefined?"bear":b.avatar;if(!validAvatar(avatar))fail("Виберіть аватарку зі списку");
   // The TV creates the account first and asks for the profile name on the next screen.
   const id=crypto.randomUUID(),name=typeof b.name==="string"&&b.name.trim()?b.name.trim().slice(0,40):email.split("@")[0].slice(0,40),withProfile=b.profile!==false;
   try{await db.batch([db.prepare("INSERT INTO users(id,username,email,salt,password_hash,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM registration_access WHERE email=?)").bind(id,email,email,salt,password_hash,now,email),...withProfile?[db.prepare("INSERT INTO profiles(id,user_id,name,avatar,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM users WHERE id=?)").bind(crypto.randomUUID(),id,name,avatar,now,id)]:[]]);}catch{fail("Ця пошта вже зареєстрована",409);}
   if(!await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first())fail("Ця пошта не має доступу до KIK. Попросіть адміністратора додати її.",403);
-  const token=await session(db,id,password_hash);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id}),...b.device===true?{token}:{}},201,{"Set-Cookie":cookie(token)});
+  const token=await session(db,id,password_hash,b.device===true?deviceName(b.device_name):null);return json({user:{id,email,role:"user"},profiles:await profiles(db,{id}),...b.device===true?{token}:{}},201,{"Set-Cookie":cookie(token)});
  }
  if(path==="/api/auth/login"&&request.method==="POST"){
   const b=await body(request,8192),email=normalizeEmail(b.email),legacy=typeof b.username==="string"?b.username.trim().toLowerCase():"";if((!validEmail(email)&&!validUsername(legacy))||typeof b.password!=="string"||b.password.length>256)fail("Неправильна пошта або пароль",401);
@@ -107,7 +107,7 @@ async function api(request,env,ctx){
   if(env.LOGIN_LIMIT&&!(await env.LOGIN_LIMIT.limit({key:await hash(loginEmail||loginLegacy)})).success)fail("Забагато спроб входу. Зачекайте хвилину.",429);
   const user=await db.prepare("SELECT * FROM users WHERE email=? OR (email IS NULL AND username=?)").bind(loginEmail,loginLegacy).first();if(user&&!user.password_hash)fail("Пароль скинув адміністратор. Натисніть «Вперше тут? Створити обліковий запис» з цією поштою й задайте новий пароль.",403);const digest=await passwordHash(b.password,user?.salt||"invalid-account-timing-padding");if(!user||!equal(digest,user.password_hash))fail("Неправильна пошта або пароль",401);
   if(user.role!=="admin"&&user.email&&!await registrationAllowed(db,user.email))fail("Доступ до KIK для цієї пошти відкликано. Зверніться до адміністратора.",403);
-  const token=await session(db,user.id,user.password_hash);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
+  const token=await session(db,user.id,user.password_hash,b.device===true?deviceName(b.device_name):null);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
  }
  const user=viewer===undefined?await identity(request,db):viewer;
  if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>aiReady(env)&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,name,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
@@ -123,7 +123,7 @@ async function api(request,env,ctx){
  if(path==="/api/pair/poll"&&request.method==="POST"){
   const b=await body(request,8192);if(typeof b.device_code!=="string"||!/^[a-f0-9]{64}$/.test(b.device_code))fail("Некоректний код");const device=await hash(b.device_code),pair=await db.prepare("SELECT * FROM pairs WHERE device_hash=? AND expires_at>?").bind(device,Date.now()).first();if(!pair||pair.consumed)fail("Код прострочений",410);if(!pair.user_id)return json({pending:true});
   const changed=await db.prepare("UPDATE pairs SET consumed=1 WHERE device_hash=? AND consumed=0 AND expires_at>? RETURNING user_id,profile_id").bind(device,Date.now()).first();if(!changed)fail("Код уже використано",410);
-  const token=await session(db,changed.user_id);return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
+  const token=await session(db,changed.user_id,null,deviceName(b.device_name));return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
  }
  if(path==="/api/genres"){
   const category=url.searchParams.get("category")||"films",key=new Request(url.origin+path+"?category="+encodeURIComponent(category)+"&__presentation=uk2");
@@ -142,9 +142,13 @@ async function api(request,env,ctx){
   const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:params=>catalogue(params,{background:true})}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env,{waitUntil:p=>ctx.waitUntil(p)});}
- if(path==="/api/diagnostics/site"&&request.method==="POST")return json(await siteReport(db,user,await body(request,2048)));
+ if(path==="/api/diagnostics/site"&&request.method==="POST"){const b=await body(request,2048),result=await siteReport(db,user,b);
+  // A TV signed in before sessions carried a name gets one from its first report, so the website can list it as a TV.
+  const token=request.headers.get("Authorization")&&requestToken(request);if(token)await db.prepare("UPDATE sessions SET device=? WHERE token_hash=? AND device IS NULL").bind(deviceName(b.device_name),await hash(token)).run();return json(result);}
  if(path==="/api/recommendations"&&request.method==="POST"){const b=await body(request,65536),p=await owned(db,user,b.profile_id);return json(await recommendations(db,p,b.items,env));}
  if(path==="/api/auth/logout-others"&&request.method==="POST")return json(await logoutOtherSessions(db,user,requestToken(request)));
+ if(path==="/api/devices"&&request.method==="GET")return json(await devices(db,user,requestToken(request)));
+ if(path==="/api/devices/revoke"&&request.method==="POST")return json(await revokeDevice(db,user,requestToken(request),await body(request,2048)));
  if(path==="/api/settings"){
   const b=request.method==="POST"?await body(request,8192):null,p=await owned(db,user,b?.profile_id||url.searchParams.get("profile_id"));
   if(b){const settings=cleanSettings(b.settings);await db.prepare("INSERT INTO profile_settings(profile_id,data,updated_at) VALUES(?,?,?) ON CONFLICT(profile_id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at").bind(p.id,JSON.stringify(settings),Date.now()).run();return json({settings});}

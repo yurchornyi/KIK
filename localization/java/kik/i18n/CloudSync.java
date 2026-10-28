@@ -10,7 +10,9 @@ public final class CloudSync {
  private static final java.util.concurrent.atomic.AtomicLong REVISION=new java.util.concurrent.atomic.AtomicLong();
  private static volatile String playingProfile;private static volatile String status="Не підключено";
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("kik_cloud",0);}
- public static boolean linked(Context c,String p){return !prefs(c).getString("token_"+p,"").isEmpty();}
+ public static boolean linked(Context c,String p){return !token(c,p).isEmpty();}
+ /** The sign-in this profile syncs with: the token of the account it belongs to. */
+ static String token(Context c,String p){return prefs(c).getString("token_"+p,"");}
  public static long revision(){return REVISION.get();}
  public static String status(Context c,String p){return linked(c,p)?status:"Не підключено";}
  public static String profileName(Context c,String p){return prefs(c).getString("name_"+p,"");}
@@ -31,11 +33,11 @@ public final class CloudSync {
  }
  public static void disconnect(Context context,String profile){Context c=context.getApplicationContext();String token=prefs(c).getString("token_"+profile,"");final boolean keep=shared(c,profile,token);// The account profile it was is remembered: only that account takes this local profile and its history back.
   String remote=remoteId(c,profile);prefs(c).edit().remove("token_"+profile).remove("remote_"+profile).remove("name_"+profile).remove("offset_"+profile).remove("adskip_"+profile).putString("past_remote_"+profile,remote.isEmpty()?prefs(c).getString("past_remote_"+profile,""):remote).apply();synchronized(CloudSync.class){stateFile(c,profile).delete();}status="Не підключено";if(!keep)IO.execute(()->{try{request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
- /** Signs a request to KIK's own public API with this TV's sign-in, so the server may spend its AI and scan budget on it. */
- /** "Bearer …" for this TV's sign-in, or null. */
+ /** "Bearer …" for the current profile's account (whoever opens a title pays for it with their own sign-in), or null. */
  static String bearer(){Context c=UiRuntime.app;if(c==null)return null;String token=Account.token(c);
   if(token.isEmpty())for(ProfileStore.Profile p:ProfileStore.list(c)){token=prefs(c).getString("token_"+p.id,"");if(!token.isEmpty())break;}
   return token.matches("[a-f0-9]{64}")?"Bearer "+token:null;}
+ /** Signs a request to KIK's own public API with the current profile's sign-in, so the server may spend its AI and scan budget on it. */
  static void authorize(HttpURLConnection connection){Context c=UiRuntime.app;if(c==null)return;String token=Account.token(c);
   if(token.isEmpty())for(ProfileStore.Profile p:ProfileStore.list(c)){token=prefs(c).getString("token_"+p.id,"");if(!token.isEmpty())break;}
   if(token.matches("[a-f0-9]{64}"))connection.setRequestProperty("Authorization","Bearer "+token);}
@@ -49,12 +51,14 @@ public final class CloudSync {
  /** A refused request with the server's own Ukrainian explanation (for the sign-in screens). */
  public static final class Failure extends IOException{public final int code;Failure(int code,String message){super(message.isEmpty()?"Cloud HTTP "+code:message);this.code=code;}}
  private static String errorText(HttpURLConnection connection){try(InputStream in=connection.getErrorStream()){if(in==null)return "";byte[] b=new byte[8192];int n,size=0;while(size<b.length&&(n=in.read(b,size,b.length-size))!=-1)size+=n;return new JSONObject(new String(b,0,size,"UTF-8")).optString("error");}catch(Exception e){return "";}}
- /** Whether another profile or the TV's account still signs in with this session. */
- private static boolean shared(Context c,String profile,String token){if(token.isEmpty())return false;if(token.equals(Account.token(c)))return true;for(ProfileStore.Profile p:ProfileStore.list(c))if(!p.id.equals(profile)&&token.equals(prefs(c).getString("token_"+p.id,"")))return true;return false;}
+ /** Whether another profile or one of the TV's accounts still signs in with this session. */
+ private static boolean shared(Context c,String profile,String token){if(token.isEmpty())return false;JSONArray accounts=Account.accounts(c);for(int i=0;i<accounts.length();i++){JSONObject a=accounts.optJSONObject(i);if(a!=null&&token.equals(a.optString("token")))return true;}for(ProfileStore.Profile p:ProfileStore.list(c))if(!p.id.equals(profile)&&token.equals(prefs(c).getString("token_"+p.id,"")))return true;return false;}
  static String remoteId(Context c,String profile){return prefs(c).getString("remote_"+profile,"");}
  /** The account profile this signed-out local profile belonged to; empty if it never belonged to one. */
  static String pastRemoteId(Context c,String profile){return prefs(c).getString("past_remote_"+profile,"");}
- private static void syncAll(Context c){if(!BUSY.compareAndSet(false,true))return;boolean revoked=false;try{for(ProfileStore.Profile p:ProfileStore.list(c))if(linked(c,p.id))try{sync(c,p.id);}catch(SecurityException e){status="Потрібне повторне підключення профілю";revoked=true;}catch(Exception e){status="Без мережі • зміни збережено на TV";}}finally{BUSY.set(false);}if(revoked)Account.revoked(c);}
+ private static void syncAll(Context c){if(!BUSY.compareAndSet(false,true))return;Set<String> revoked=new LinkedHashSet<>();try{for(ProfileStore.Profile p:ProfileStore.list(c))if(linked(c,p.id))try{sync(c,p.id);}catch(SecurityException e){status="Потрібне повторне підключення профілю";revoked.add(token(c,p.id));}catch(Exception e){status="Без мережі • зміни збережено на TV";}}finally{BUSY.set(false);}for(String token:revoked)if(!token.isEmpty())Account.revoked(c,token);}
+ /** Sends the latest changes of this account's profiles before it leaves the TV; {@code done} runs on the main thread either way. */
+ static void flush(Context context,String token,Runnable done){Context c=context.getApplicationContext();IO.execute(()->{for(ProfileStore.Profile p:ProfileStore.list(c))if(token.equals(token(c,p.id)))try{sync(c,p.id);}catch(Exception ignored){}MAIN.post(done);});}
  private static AtomicFile stateFile(Context c,String p){return new AtomicFile(new File(c.getFilesDir(),"kik_cloud_state_"+p+".json"));}
  private static JSONObject read(AtomicFile file){try{return new JSONObject(Site.read(file.openRead()));}catch(Exception e){return new JSONObject();}}
  private static void write(AtomicFile file,String text)throws IOException{FileOutputStream out=null;try{out=file.startWrite();out.write(text.getBytes("UTF-8"));file.finishWrite(out);}catch(IOException e){if(out!=null)file.failWrite(out);throw e;}}

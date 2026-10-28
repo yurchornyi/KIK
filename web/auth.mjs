@@ -20,9 +20,11 @@ export async function identity(request,db){const token=requestToken(request);if(
  * A new sign-in, created only while the account may still sign in. With `verified`, also only while the password is
  * the one just checked: a revocation or password reset that lands between the check and here leaves no session.
  */
-export async function session(db,user,verified=null){const token=randomToken(),now=Date.now();
- const r=await db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at,created_at) SELECT ?1,users.id,?2,?3 FROM users WHERE users.id=?4 AND users.password_hash<>'' AND (?5 IS NULL OR users.password_hash=?5) AND "+ALLOWED).bind(await hash(token),now+SESSION_MS,now,user,verified).run();
+export async function session(db,user,verified=null,device=null){const token=randomToken(),now=Date.now();
+ const r=await db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at,created_at,device) SELECT ?1,users.id,?2,?3,?6 FROM users WHERE users.id=?4 AND users.password_hash<>'' AND (?5 IS NULL OR users.password_hash=?5) AND "+ALLOWED).bind(await hash(token),now+SESSION_MS,now,user,verified,device).run();
  if(!r.meta.changes)throw Object.assign(Error("Доступ до KIK для цієї пошти відкликано. Зверніться до адміністратора."),{status:403});return token;}
+/** The name a TV gives for its sign-in, as the website lists it; a TV that sends none is just «Android TV». */
+export function deviceName(value){const name=typeof value==='string'?value.replace(/[\u0000-\u001f]/g,' ').trim().slice(0,60):'';return name||'Android TV';}
 export function validUsername(value){return typeof value==="string"&&/^[a-z0-9._-]{3,40}$/.test(value);}
 export function normalizeEmail(value){return typeof value==='string'?value.trim().toLowerCase():'';}
 export function validEmail(value){return typeof value==='string'&&value.length<=254&&value.length>=6&&!/[\s\r\n]/.test(value)&&/^[a-z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(value)&&value.split('@')[0].length<=64;}

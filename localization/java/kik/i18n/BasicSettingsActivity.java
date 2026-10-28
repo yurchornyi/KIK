@@ -76,6 +76,7 @@ public final class BasicSettingsActivity extends Activity {
   action(profile,"Змінити рекомендації",()->TasteActivity.open(this,false));
   action(profile,"Керувати профілями",()->startActivity(new Intent(this,ProfilesActivity.class)));
   action(profile,"Синхронізація профілю",()->startActivity(new Intent(this,SyncActivity.class)));
+  if(Account.signedIn(this))action(profile,"Облікові записи",this::accounts);
 
   LinearLayout updates=card(right,"Оновлення KIK","Версія "+AppUpdater.version(this));
   updateNow=Ui.pill(this,"Оновити",true);updateNow.setTextSize(15);updateNow.setBackground(Ui.states(Ui.shape(Ui.RED,dp(22),0,0),Ui.shape(Color.WHITE,dp(22),dp(2),Ui.RED)));LinearLayout.LayoutParams now=new LinearLayout.LayoutParams(-1,dp(44));now.bottomMargin=dp(12);updates.addView(updateNow,now);updateNow.setOnClickListener(v->AppUpdater.manual(this));updateNow.setVisibility(View.GONE);
@@ -89,6 +90,13 @@ public final class BasicSettingsActivity extends Activity {
   TextView author=Ui.text(this,"◐  Створено Чорним",13,Ui.GREY);author.setPadding(0,dp(8),0,0);about.addView(author);
   linkColumn(right);
   if(selectedButton!=null)selectedButton.requestFocus();
+ }
+ /** Every account on this TV with its own «Вийти», and «+ Інший обліковий запис» for another email. */
+ private void accounts(){
+  org.json.JSONArray list=Account.accounts(this);String[] items=new String[list.length()+1];String[] tokens=new String[list.length()];
+  for(int i=0;i<list.length();i++){org.json.JSONObject a=list.optJSONObject(i);tokens[i]=a==null?"":a.optString("token");items[i]="Вийти: "+(a==null||a.optString("email").isEmpty()?"обліковий запис":a.optString("email"));}
+  items[list.length()]="+ Інший обліковий запис";
+  Ui.dialog(this).setTitle("Облікові записи на TV").setItems(items,(d,which)->{if(which<tokens.length)Account.confirmLeave(this,tokens[which]);else SignInActivity.addAccount(this);}).setNegativeButton("Закрити",null).show();
  }
  // Up/Down stays inside the column: the taller catalogue grid on the left otherwise wins the focus search from the lower right cards.
  private void linkColumn(LinearLayout column){

@@ -57,6 +57,12 @@ if [ "${KIK_AUDIT_MODE:-full}" = oops ]; then
  adb -s "$DEVICE" shell am start -n kik.app/kik.i18n.HomeActivity
  exit 0
 fi
+if [ "${KIK_AUDIT_MODE:-full}" = accounts ]; then
+ adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.AccountsAudit | tee outputs/design-audit/accounts-instrumentation.txt
+ for f in accounts.json accounts-picker.png accounts-settings.png; do adb -s "$DEVICE" pull /sdcard/Android/data/kik.app/files/design-audit/$f outputs/design-audit/$f >/dev/null; done
+ python3 -c 'import json; assert json.load(open("outputs/design-audit/accounts.json"))["passed"]'
+ exit 0
+fi
 AUDIT_SCREEN_ARGS=(-e noScreenshots false)
 if [ "${KIK_AUDIT_NO_SCREENSHOTS:-0}" = 1 ]; then AUDIT_SCREEN_ARGS=(-e noScreenshots true); fi
 adb -s "$DEVICE" shell am instrument -w -r "${AUDIT_SCREEN_ARGS[@]}" kik.audit/kik.qa.AuditRunner | tee outputs/design-audit/instrumentation.txt

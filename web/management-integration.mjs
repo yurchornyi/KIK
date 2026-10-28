@@ -46,6 +46,9 @@ let adminCookie,memberCookie,memberId;try{
  check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:true},adminCookie)).body.enabled===true,'admin turns on ad skipping');
  check((await req('/api/sync',{profile_id:p,source_schema:2,records:[]},memberCookie)).body.profile.ad_skip===1&&(await req('/api/me',undefined,memberCookie)).body.profiles.find(x=>x.id===p).ad_skip===1,'ad skipping reaches the profile on web and TV');
  check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:false},adminCookie)).body.enabled===false,'admin turns off ad skipping');
+ const tv=await req('/api/auth/login',{email:guestEmail,password,device:true,device_name:'QA TV'}),signins=(await req('/api/devices',undefined,memberCookie)).body.devices,tvRow=signins.find(d=>d.tv&&d.name==='QA TV');check(tvRow&&signins.some(d=>d.current),'the website lists the TV by name next to this browser');
+ check((await req('/api/devices/revoke',{id:tvRow.id},memberCookie)).status===200&&(await req('/api/me',undefined,undefined,{Authorization:'Bearer '+tv.body.token})).body.user===null,'the owner signs one TV out from the website');
+ check((await req('/api/me',undefined,memberCookie)).body.user.id===memberId,'signing a TV out keeps this browser');
  const second=await req('/api/auth/login',{email:guestEmail,password});check((await req('/api/auth/logout-others',{},memberCookie)).status===200,'end other sessions');check((await req('/api/me',undefined,second.cookie)).body.user===null,'other session revoked');check((await req('/api/me',undefined,memberCookie)).body.user.id===memberId,'current session preserved');
  check((await req('/api/admin/users/delete',{id:adminId,confirm:adminEmail},adminCookie)).status===403,'admin cannot delete itself');
  check((await req('/api/admin/users/delete',{id:memberId,confirm:'wrong@example.invalid'},adminCookie)).status===400,'deletion needs exact email confirmation');

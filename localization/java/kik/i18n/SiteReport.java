@@ -49,7 +49,7 @@ final class SiteReport {
   IO.execute(()->{
    try{
     Context c=UiRuntime.app;String token=Account.token(c);if(token.isEmpty()){forget();return;}
-    CloudSync.request("/api/diagnostics/site",new JSONObject().put("status",status).put("host",host).put("detail",detail).put("app_version",AppUpdater.version(c)),token);
+    CloudSync.request("/api/diagnostics/site",new JSONObject().put("status",status).put("host",host).put("detail",detail).put("app_version",AppUpdater.version(c)).put("device_name",Account.deviceName()),token);
    }catch(Exception e){Log.w("KIK","Site report: "+e);forget();}
   });
  }
