@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {translatePublic,localizedRecords} from './localization.mjs';
+import {translatePublic,localizedRecords,displayWords} from './localization.mjs';
 import {hash} from './auth.mjs';
 test('translations already known in this isolate cost no D1 query; D1 answers are remembered',async()=>{
  const stored=new Map([[await hash('Тайна старого дома'),'Таємниця старого будинку']]),queries=[];
@@ -11,4 +11,8 @@ test('translations already known in this isolate cost no D1 query; D1 answers ar
  assert.equal(again.get('Тайна старого дома'),'Таємниця старого будинку');assert.equal(again.get('Драма'),'Драма');assert.equal(queries.length,1,'a known title is not asked again');
  const records=[{kind:'later',key:'films/drama/1-a.html',data:{title:'Тайна старого дома'},updated_at:1}];
  assert.equal((await localizedRecords(db,records))[0].data.displayTitle,'Таємниця старого будинку');assert.equal(queries.length,1,'a sync with known titles reads no translations');
+});
+test('the source\'s sections read as sections, not as people',()=>{
+ assert.equal(displayWords('Комедии, Семейные, Русские'),'Комедії, Сімейні, Російське кіно');
+ assert.equal(displayWords('Драмы, Украинские'),'Драми, Українське кіно');
 });
