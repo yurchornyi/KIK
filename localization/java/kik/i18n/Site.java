@@ -292,7 +292,7 @@ public final class Site {
   // this home network, which HDRezka banned for its bursts (2026-10-25), no longer talks to HDRezka at all. Straight
   // from here only when the service itself fails, and never while HDRezka refuses this network.
   IOException service;
-  try{return serviceFilm(link);}catch(IOException e){service=e;}
+  try{Film f=serviceFilm(link);SiteReport.service();return f;}catch(IOException e){service=e;}
   if(!OopsPolicy.askSourceDirectly(service)||accessPaused())throw service;
   Log.w("KIK","Service film "+link+": "+service+"; asking HDRezka directly");
   try{return directFilm(link,force);}catch(IOException e){if(paused(e))throw service;throw e;}

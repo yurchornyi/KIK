@@ -38,6 +38,8 @@ final class SiteReport {
  /** bypassed: the provider's DNS blocks the mirror and KIK reached it through DNS-over-HTTPS. */
  static void ok(String host,boolean bypassed){report(bypassed?"doh":"ok",host,"");}
  static void failed(String status,String host,String detail){report(status,host,detail);}
+ /** Titles came through KIK's service, as they do since 1.25: this TV no longer asks the mirrors, so their last state would never change. */
+ static void service(){report("service",Site.SERVICE,"");}
 
  private static synchronized void report(String status,String host,String detail){
   String key=status+"|"+detail;long now=SystemClock.elapsedRealtime();
