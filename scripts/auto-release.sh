@@ -42,6 +42,8 @@ echo "KIK $VERSION ($CODE)"
 
 bash scripts/build.sh
 python3 scripts/validate.py
+# The signer, package and version publish-release.py will demand, checked before anything reaches main.
+python3 scripts/publish-release.py > /dev/null
 if [ -n "$DRY" ]; then
   echo "Dry run: outputs/KIK-$VERSION.apk built and checked, nothing pushed or published"
   exit 0
