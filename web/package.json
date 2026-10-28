@@ -17,6 +17,6 @@
     "hls.js": "^1.7.3"
   },
   "devDependencies": {
-    "wrangler": "4.152.0"
+    "wrangler": "4.154.0"
   }
 }
