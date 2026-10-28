@@ -1,16 +1,17 @@
 import {titleKey,canonicalLink} from './sync.mjs';import {film} from './catalogue.mjs';import {localizedFilm} from './localization.mjs';import {aiReady,complete,giveBack} from './sentra-ai.mjs';
 // Sentra writes it (sentra-ai.mjs) with the model it picks for role:quality; without a usable answer the title has no logline.
 
-export const SYNOPSIS_MAX=210,SYNOPSIS_DAILY=100;
+/** A logline is 90–190 characters, as the prompt asks: a shorter one says too little, a longer one is cut at a sentence end. */
+export const SYNOPSIS_MIN=90,SYNOPSIS_MAX=190,SYNOPSIS_DAILY=100;
 /** A title whose answer was rejected keeps an empty summary this long, so each open does not ask Sentra again. */
 const REJECTED_FOR=3*86400_000;
 const pending=new Map();
-/** Model output to one clean paragraph of at most SYNOPSIS_MAX characters, cut at a sentence end; null when unusable. */
+/** Model output to one clean paragraph of SYNOPSIS_MIN–SYNOPSIS_MAX characters, cut at a sentence end; null when unusable. */
 export function cleanSynopsis(raw){
  if(typeof raw!=='string')return null;let s=raw.replace(/^\s*(?:опис|синопсис|summary)\s*:\s*/i,'').replace(/[*_#`]/g,'').replace(/^["«„'“]+|["»“'”]+$/g,'').replace(/\s+/g,' ').trim();
  if(s.length>SYNOPSIS_MAX){const cut=s.slice(0,SYNOPSIS_MAX),end=Math.max(cut.lastIndexOf('. '),cut.lastIndexOf('! '),cut.lastIndexOf('? '));if(end<60)return null;s=cut.slice(0,end+1);}
  // Russian letters or the commonest Russian-only words mean the model slipped out of Ukrainian.
- if(s.length<40||!/[іїєґ]/i.test(s)||/[ыэъё]/i.test(s)||/(^|[\s,.(])(и|святой|который|которая|это|его|ее|её|они|был|была)(?=[\s,.)!?])/i.test(s))return null;
+ if(s.length<SYNOPSIS_MIN||!/[іїєґ]/i.test(s)||/[ыэъё]/i.test(s)||/(^|[\s,.(])(и|святой|который|которая|это|его|ее|её|они|был|была)(?=[\s,.)!?])/i.test(s))return null;
  return s;
 }
 /** A short synopsis of one catalogue title, written once and cached; null when there is no model, budget or usable answer. */
