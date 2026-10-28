@@ -21,7 +21,7 @@ KIK збирається накладанням власного коду на �
 - **`kik-data`** — уся база: `users`, `sessions`, `pairs`, `profiles`, `profile_settings`, `records` (історія), `registration_access`, `admin_events`, `site_reports`, `recommendation_cache`, `synopsis_cache`, `public_translations`, `ai_daily_budget`, `ad_breaks`, `ad_scan_queue`. Sentra її лише читає.
 - `web/wrangler.test.jsonc` — тільки для локального `wrangler dev` і CI, публічної адреси не має.
 
-Поза Cloudflare Basic: код і APK — [GitHub yurchornyi/KIK](https://github.com/yurchornyi/KIK) (APK у Releases); AI — Sentra, окремий сервіс власника ([SENTRA.md](SENTRA.md)); сканер реклами — постійно ввімкнений ПК власника (`web/scanner/`, [docs/AD-SKIP_UA.md](docs/AD-SKIP_UA.md)); ключ підпису APK — лише на комп'ютері власника (`work/signing/`).
+Поза Cloudflare Basic: код і APK — [GitHub yurchornyi/KIK](https://github.com/yurchornyi/KIK) (APK у Releases); AI — Sentra, окремий сервіс власника ([SENTRA.md](SENTRA.md)); сканер реклами — постійно ввімкнений ПК власника (`web/scanner/`, [docs/AD-SKIP_UA.md](docs/AD-SKIP_UA.md)); ключ підпису APK — на комп'ютері власника (`work/signing/`) і в секретах репозиторію для авторелізу ([docs/AUTO-UPDATES_UA.md](docs/AUTO-UPDATES_UA.md)).
 
 ## Перевірки й розгортання
 
