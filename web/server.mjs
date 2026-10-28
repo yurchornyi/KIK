@@ -24,18 +24,20 @@ const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status
 /**
  * Public source data from the edge cache. A copy older than `fresh` seconds is still served at once and refreshed
  * in the background, so visitors rarely wait for the source; browsers keep each answer for `fresh` seconds.
+ * An answer `keep` refuses (Sentra failed) is neither stored nor kept by the browser, so a later request asks again;
+ * a stored copy answers meanwhile.
  */
 const refreshing=new Map();
-async function edgeCached(ctx,key,fresh,load){
+async function edgeCached(ctx,key,fresh,load,keep=()=>true){
  const reply=async stored=>{const r=new Response(stored.body,stored);r.headers.set("Cache-Control","public, max-age="+fresh);r.headers.delete("X-KIK-Stored");return r;};
- const store=async()=>{const r=json(await load(),200,{"Cache-Control":"public, max-age=604800","X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
+ const store=async()=>{const value=await load();if(!keep(value))throw Object.assign(Error("not kept"),{unkept:json(value)});const r=json(value,200,{"Cache-Control":"public, max-age=604800","X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
  const cached=await caches.default.match(key);
  // Gone from the source (404): the stored copy goes too, instead of answering for a week.
  const gone=e=>{if(e.status!==404)return false;ctx.waitUntil(caches.default.delete(key).catch(()=>{}));return true;};
  // A copy older than a day is refreshed first, but still answers for up to a week while the source is down.
- if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>86400000)return reply(await store().catch(e=>{if(gone(e))throw e;console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
+ if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>86400000)return reply(await store().catch(e=>{if(gone(e))throw e;if(!e.unkept)console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
  if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!refreshing.has(key.url)){const task=store().catch(gone).finally(()=>refreshing.delete(key.url));refreshing.set(key.url,task);ctx.waitUntil(task);}return reply(cached);}
- return reply(await store());
+ return store().then(reply,e=>{if(e.unkept)return e.unkept;throw e;});
 }
 
 function origin(request){const o=request.headers.get("Origin");if(o&&o!==new URL(request.url).origin)fail("Запит з іншого сайту відхилено",403);if(request.headers.get("Sec-Fetch-Site")==="cross-site")fail("Запит з іншого сайту відхилено",403);}
@@ -68,7 +70,7 @@ async function api(request,env,ctx){
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
  // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
  // Signed out, only the free lookups run: no env reaches the model, so Sentra is not asked.
- if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:null,query,aliases)}));}
+ if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:null,query,aliases)}),r=>!r.aliases.failed);}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
@@ -108,7 +110,7 @@ async function api(request,env,ctx){
   const token=await session(db,user.id,user.password_hash);return json({user:{id:user.id,email:user.email,username:user.email?undefined:user.username,role:user.role},profiles:await profiles(db,user),...b.device===true?{token}:{}},200,{"Set-Cookie":cookie(token)});
  }
  const user=viewer===undefined?await identity(request,db):viewer;
- if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>aiReady(env)&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
+ if(path.startsWith("/api/admin/"))return json(await admin(request,db,user,body,{rebuild:id=>aiReady(env)&&ctx.waitUntil((async()=>{const p=await db.prepare("SELECT id,name,enhanced_recs FROM profiles WHERE id=?").bind(id).first();if(!p?.enhanced_recs)return;const pages=await Promise.allSettled([catalogue({category:"films",filter:"popular"}),catalogue({category:"series",filter:"popular"})]);await recommendations(db,p,pages.flatMap(r=>r.value||[]).slice(0,100),env);})().catch(()=>console.warn("KIK recommendation rebuild delayed")))}));
  if(path==="/api/auth/logout"&&request.method==="POST"){
   const token=requestToken(request);if(token){const digest=await hash(token);await db.batch([db.prepare("DELETE FROM sessions WHERE token_hash=?").bind(digest),db.prepare("DELETE FROM pairs WHERE approved_session_hash=?").bind(digest)]);}return json({ok:true},200,{"Set-Cookie":cookie("",true)});
  }

@@ -10,8 +10,8 @@ export const SENTRA_DAILY=600;
 /** Gives back calls reserved in KIK's own ai_daily_budget when Sentra spent nothing on them (a 429, or no answer for frames). */
 export const giveBack=(db,day,calls=1)=>db.prepare('UPDATE ai_daily_budget SET calls=MAX(0,calls-?) WHERE day=?').bind(calls,day).run();
 let warnedOff=false;
-async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache}){
- const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim(),'x-sentra-skill':skill,'x-sentra-deadline-ms':String(timeout),...(cache?{'x-sentra-cache':String(cache)}:{})},body:JSON.stringify({model:'role:'+role,messages,max_tokens:maxTokens,temperature,...(json?{response_format:{type:'json_object'}}:{})}),signal:AbortSignal.timeout(timeout+2000)});
+async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache,who}){
+ const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim(),'x-sentra-skill':skill,'x-sentra-deadline-ms':String(timeout),...(cache?{'x-sentra-cache':String(cache)}:{})},body:JSON.stringify({model:'role:'+role,messages,max_tokens:maxTokens,temperature,...(json?{response_format:{type:'json_object'}}:{}),...(who?{sentra:{who}}:{})}),signal:AbortSignal.timeout(timeout+2000)});
  if(!r.ok)throw Object.assign(Error('Sentra '+r.status),{status:r.status});
  return String((await r.json())?.choices?.[0]?.message?.content??'');
 }
@@ -20,11 +20,13 @@ async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,tim
  * unusable). Otherwise {value:null,why}: 'off' (no SENTRA_URL/TOKEN), 'limit' (a 429: a limit or Sentra's spend guard, no
  * error — the caller gives its own budget back), 'error' (Sentra failed or timed out) or 'rejected' (an unusable answer).
  * The feature then keeps its plain result. `cache` asks Sentra to keep the answer that many seconds (x-sentra-cache).
+ * `who` tells the owner whom the answer was for («профіль Юра», at most 40 characters) in Sentra's own `sentra` field of the
+ * body, which Sentra takes out before the cache or any model sees the request.
  */
-export async function complete(env,{skill,role='fast',messages,maxTokens,temperature=0,json=false,timeout,cache},accept,label){
+export async function complete(env,{skill,role='fast',messages,maxTokens,temperature=0,json=false,timeout,cache,who},accept,label){
  if(!sentraReady(env)){if(!warnedOff){warnedOff=true;console.warn('KIK AI: SENTRA_URL or SENTRA_TOKEN is missing, AI features keep their plain results');}return {value:null,why:'off'};}
  let raw;
- try{raw=await viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache});}
+ try{raw=await viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache,who});}
  catch(err){if(err?.status===429)return {value:null,why:'limit'};console.warn(label+': Sentra '+(err?.status?'HTTP '+err.status:err?.name==='TimeoutError'?'timed out':'unreachable')+', plain result kept');return {value:null,why:'error'};}
  try{const value=accept(raw);if(value!=null)return {value,by:'sentra'};}catch{}
  console.warn(label+': Sentra answered unusably, plain result kept');return {value:null,why:'rejected'};

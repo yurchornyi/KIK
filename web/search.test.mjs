@@ -53,7 +53,7 @@ test('search fixes come from Sentra; its «not sure» is an answer, and Workers 
  globalThis.fetch=async(url,opts)=>{sent.push(opts);return Response.json({choices:[{message:{content:reply}}]});};
  try{
   let runs=0;const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t',AI:{run:async()=>{runs++;return {response:'{"titles":["Wrong"]}'};}}};
-  assert.deepEqual(await corrections(fakeDb(),env,'интерстелар',memoryCache()),['Интерстеллар']);assert.equal(sent[0].headers['x-sentra-skill'],'kik-search-fix');assert.equal(JSON.parse(sent[0].body).model,'role:fast');
+  assert.deepEqual(await corrections(fakeDb(),env,'интерстелар',memoryCache()),['Интерстеллар']);assert.equal((await corrections(fakeDb(),env,'интерстелар',memoryCache())).failed,undefined);assert.equal(sent[0].headers['x-sentra-skill'],'kik-search-fix');assert.equal(JSON.parse(sent[0].body).model,'role:fast');
   reply='{"titles":[]}';assert.deepEqual(await corrections(fakeDb(),env,'qqqq zzzz',memoryCache()),[]);assert.equal(runs,0);
  }finally{globalThis.fetch=original;}
 });
@@ -64,6 +64,8 @@ test('search fixes ask Sentra to cache them; a failure is not cached as «no fix
  try{
   const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},cache=memoryCache();
   assert.deepEqual(await corrections(db,env,'Сентра Збій',cache),[]);assert.equal(sent[0].headers['x-sentra-cache'],'2592000');
+  // The failure is marked, so the edge cache of /api/search-aliases does not keep it for a day either.
+  assert.equal((await corrections(db,env,'Сентра Збій',cache)).failed,true);assert.equal((await searchAlternatives(db,env,'Сентра Збій',async()=>[])).failed,true);assert.equal(sent.length,1,'the next ten minutes ask nobody');
   assert.equal(JSON.parse(JSON.parse(sent[0].body).messages[1].content).query,'сентра збій');assert.equal(await cache.match(new Request('https://kik.internal/search-fix/v1?q='+encodeURIComponent('сентра збии'))),undefined);assert.equal(budget.calls,1);
   status=429;assert.deepEqual(await corrections(db,env,'ліміт сентри',cache),[]);assert.equal(budget.calls,1);
  }finally{globalThis.fetch=original;}
