@@ -13,7 +13,13 @@ let warnedOff=false;
 async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache,who}){
  const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim(),'x-sentra-skill':skill,'x-sentra-deadline-ms':String(timeout),...(cache?{'x-sentra-cache':String(cache)}:{})},body:JSON.stringify({model:'role:'+role,messages,max_tokens:maxTokens,temperature,...(json?{response_format:{type:'json_object'}}:{}),...(who?{sentra:{who}}:{})}),signal:AbortSignal.timeout(timeout+2000)});
  if(!r.ok)throw Object.assign(Error('Sentra '+r.status),{status:r.status});
- return String((await r.json())?.choices?.[0]?.message?.content??'');
+ return {content:String((await r.json())?.choices?.[0]?.message?.content??''),sample:r.headers.get('x-sentra-sample-id')||''};
+}
+/** Tells Sentra an answer was unusable (POST /v1/feedback, «rejected»): it counts against the model on the skill's ladder
+ * and into its next lesson. Best effort: a lost report changes nothing for the viewer. */
+async function reportRejected(env,sample,note){
+ if(!sample)return;
+ await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/feedback',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim()},body:JSON.stringify({sample,signal:'rejected',note:String(note).slice(0,200)}),signal:AbortSignal.timeout(3000)}).catch(()=>{});
 }
 /**
  * Sentra's answer as {value,by:'sentra'} when `accept` takes it (it returns the value, or null / throws when the answer is
@@ -25,9 +31,10 @@ async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,tim
  */
 export async function complete(env,{skill,role='fast',messages,maxTokens,temperature=0,json=false,timeout,cache,who},accept,label){
  if(!sentraReady(env)){if(!warnedOff){warnedOff=true;console.warn('KIK AI: SENTRA_URL or SENTRA_TOKEN is missing, AI features keep their plain results');}return {value:null,why:'off'};}
- let raw;
- try{raw=await viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache,who});}
+ let raw,sample;
+ try{({content:raw,sample}=await viaSentra(env,{skill,role,messages,maxTokens,temperature,json,timeout,cache,who}));}
  catch(err){if(err?.status===429)return {value:null,why:'limit'};console.warn(label+': Sentra '+(err?.status?'HTTP '+err.status:err?.name==='TimeoutError'?'timed out':'unreachable')+', plain result kept');return {value:null,why:'error'};}
- try{const value=accept(raw);if(value!=null)return {value,by:'sentra'};}catch{}
- console.warn(label+': Sentra answered unusably, plain result kept');return {value:null,why:'rejected'};
+ let why='no usable value';
+ try{const value=accept(raw);if(value!=null)return {value,by:'sentra'};}catch(err){why=err?.message||why;}
+ console.warn(label+': Sentra answered unusably, plain result kept');await reportRejected(env,sample,label+': '+why);return {value:null,why:'rejected'};
 }
