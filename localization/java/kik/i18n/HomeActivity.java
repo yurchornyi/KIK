@@ -197,14 +197,14 @@ public final class HomeActivity extends Activity {
    Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");
    // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
    final List<Row> saved=savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
-   if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(local,cached,preferences);
+   if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(profile,local,cached,preferences);
    Log.d("KIK.Load","Home rows "+(SystemClock.elapsedRealtime()-started)+"ms"+(saved!=null?" (saved)":""));translateNow(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
    final List<Row> first=all;
    main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if((!first.isEmpty()||loadedOnce)&&!(loadedOnce&&signature(first).equals(shownSignature)))show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
    if(saved!=null&&!cached.isEmpty()){final List<Row> fresh=Recommendations.rows(this,preferences,cached);saveRecommendations(profile,fresh);translateNow(fresh);main.post(()->{if(valid(gen,profile))for(Row r:fresh)updateRecommendations(r);});}
    long cacheAge=System.currentTimeMillis()-getSharedPreferences("kik_home",0).getLong("updated",0);
    if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
-   List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
+   List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(profile,local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
    });}:null,preferences);
    if(site.isEmpty()){final Throwable why=rowError;main.post(()->{if(valid(gen,profile)&&first.isEmpty())fail(why);});return;}
@@ -216,8 +216,9 @@ public final class HomeActivity extends Activity {
    recommendLater(preferences,site,gen,profile);
   },"kik-home").start();
  }
- private List<Row> homeRows(List<Row> local,List<Row> catalogue,Recommendations.Snapshot preferences){
-  List<Row> out=new ArrayList<Row>(local);List<Row> personal=Recommendations.rows(this,preferences,catalogue);if(!catalogue.isEmpty())saveRecommendations(ProfileStore.current(this),personal);out.addAll(personal);out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
+ /** {@code profile} is the one these rows were built for: the viewer may have switched while the catalogue loaded. */
+ private List<Row> homeRows(String profile,List<Row> local,List<Row> catalogue,Recommendations.Snapshot preferences){
+  List<Row> out=new ArrayList<Row>(local);List<Row> personal=Recommendations.rows(this,preferences,catalogue);if(!catalogue.isEmpty())saveRecommendations(profile,personal);out.addAll(personal);out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
  }
  /** Last ranked personal rows per profile, so the next start shows them without waiting for the ranking. */
  private void saveRecommendations(String profile,List<Row> rows){

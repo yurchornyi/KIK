@@ -42,7 +42,7 @@ public final class KikPlayerActivity extends Activity {
  private static final int MIN_BUFFER=30000,MAX_BUFFER=120000,START_BUFFER=1500,REBUFFER=5000,BUFFER_BYTES=48*1024*1024;
  /** Buffering longer than this, or a picture that does not move, counts as a dead stream. */
  private static final long STALL_MS=30000,FROZEN_MS=15000,ENDED_SLACK_MS=90000,INTRO_HOLD_MS=2550,WARM_MS=180000,SHORT_HLS_MS=180000;
- private String season,episode,title,poster,profileId;private Site.Stream stream;private String quality;private float speed=1f;private boolean manualQuality;
+ private String season,episode,title,poster,profileId;private Site.Stream stream;private String streamKey="";private String quality;private float speed=1f;private boolean manualQuality;
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  /** Ad clips of the playing file (AdBreaks): confirmed ones are jumped over, AI hints get the «Пропустити рекламу» button. */
  private double[] ads,hints;private long hintTo=-1;private TextView skipAd;
@@ -228,11 +228,16 @@ public final class KikPlayerActivity extends Activity {
   hideOops();
   if(!recovering){recovery.reset();failedVoices.clear();refreshAttempt=0;voiceAttempt=0;sameAttempt=0;earlyEnds=0;rebuffers.clear();recoveryStarted=SystemClock.elapsedRealtime();}
   lastMovement=SystemClock.elapsedRealtime();bufferingSince=0;playGeneration++;final int gen=++generation;final Site.Film selectedFilm=film;final Site.Voice selected=voice;final String ss=season,ee=episode;
-  final long keep=prepared?pos():resumeAt;if(player!=null)player.setPlayWhenReady(false);if(fromHistory)playWhenReady=true;prepared=false;failed=false;loading.setText(recovering?loading.getText():"Підготовка відео");waiting(true);
+  // Where this episode starts is known before its stream: a retry after a failed load (start(false)) keeps it, not the last episode's moment.
+  if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else if(prepared)resumeAt=pos();
+  final long keep=resumeAt;
+  // Another episode or voice: the old address, media and events must not stand in for it (recovery, a late READY, a save) while the new one loads.
+  if(stream!=null&&!(selected.id+"|"+ss+"|"+ee).equals(streamKey)){stream=null;ads=null;hints=null;if(player!=null){player.stop();player.clearMediaItems();}}else if(player!=null)player.setPlayWhenReady(false);
+  if(fromHistory)playWhenReady=true;prepared=false;failed=false;loading.setText(recovering?loading.getText():"Підготовка відео");waiting(true);
   name.setText(title);paintSub();
   Ui.bg(()->{
    try{
-    Site.Film updated=null;if(refreshEpisodes&&selectedFilm.series){Site.Film copy=new Site.Film();copy.id=selectedFilm.id;copy.favs=selectedFilm.favs;copy.origin=selectedFilm.origin;try{Site.episodesFor(copy,selected.id);if(!copy.episodes.isEmpty())updated=copy;}catch(Exception e){Log.w("KIK","Voice episodes",e);}}
+    Site.Film updated=null;if(refreshEpisodes&&selectedFilm.series){Site.Film copy=new Site.Film();copy.link=selectedFilm.link;copy.id=selectedFilm.id;copy.favs=selectedFilm.favs;copy.origin=selectedFilm.origin;try{Site.episodesFor(copy,selected.id);if(!copy.episodes.isEmpty())updated=copy;}catch(Exception e){Log.w("KIK","Voice episodes",e);}}
     final Site.Film episodeData=updated;
     Site.Voice use=selected;final Warm w=refreshEpisodes||recovering?null:takeWarm(selectedFilm,selected,ss,ee);if(w!=null){use=w.voice;Log.d("KIK.Player","Using prefetched stream");}
     if(w==null&&selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,(refreshEpisodes||recovering)?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
@@ -246,9 +251,9 @@ public final class KikPlayerActivity extends Activity {
       // Say so only when the episode is not in the language the viewer wants (their choice, else the best one offered).
       String chosen=Progress.voice(this,selectedFilm.link),desired=null;for(Site.Voice v:selectedFilm.voices)if(!v.premium&&(chosen==null?desired==null:v.id.equals(chosen)))desired=PlaybackPolicy.lang(v.name);
       String got=PlaybackPolicy.lang(playing.name);if(desired!=null&&!desired.equals(got))Ui.toast(this,PlaybackPolicy.label(desired)+" озвучка для цієї серії недоступна. Увімкнено: "+PlaybackPolicy.label(got).toLowerCase(Locale.ROOT)+".");}
-     recovering=false;sourcePaused=false;stream=s;if(s.qualities.isEmpty()){failure(OopsPolicy.VOICE,false);return;}
+     recovering=false;sourcePaused=false;stream=s;streamKey=playing.id+"|"+ss+"|"+ee;if(s.qualities.isEmpty()){failure(OopsPolicy.VOICE,false);return;}
      quality=quality!=null&&s.qualities.containsKey(quality)&&(!fromHistory||manualQuality)?quality:pickQuality(s);
-     if(fromHistory){long[] p=Progress.episode(this,film.link,season,episode);resumeAt=p!=null&&!(p[1]>0&&p[0]>p[1]*0.93)?p[0]:0;}else resumeAt=keep;
+     resumeAt=keep;
      // Start after the voice studio's ident: the film begins at once, as on Netflix.
      resumeAt=Math.max(resumeAt,PlaybackPolicy.introMs(playing.name));
      subGeneration++;cues.clear();subIndex=-1;subtitle.setText("");

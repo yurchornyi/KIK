@@ -71,6 +71,7 @@ public final class ProfileStore {
   c.getSharedPreferences("kik_search_"+id,0).edit().clear().commit();if(android.os.Build.VERSION.SDK_INT>=24)c.deleteSharedPreferences("kik_search_"+id);
   RatingStore.delete(c,id);
   if(id.equals(current(c)))prefs(c).edit().putString("current",all.isEmpty()?FIRST:all.get(0).id).commit();
+  TvChannels.removed(c,id);
  }
  public static String nameOf(Context c,String id){for(Profile p:list(c))if(p.id.equals(id))return p.name;return null;}
  public static String avatarOf(Context c,String id){for(Profile p:list(c))if(p.id.equals(id))return p.avatar;return Avatars.fallback(id);}

@@ -42,6 +42,10 @@ public final class SignInActivity extends Activity {
   email=joining?"":Account.email(this);
   if(joining)show(EMAIL);else if(adding)show(NAME);else if(!Account.token(this).isEmpty())resume();else show(EMAIL);
  }
+ // A stopped screen (Home pressed) asks nothing: phone sign-in polling waits until the screen is back.
+ private boolean stopped;private Runnable resumePair;
+ @Override protected void onStart(){super.onStart();stopped=false;Runnable r=resumePair;resumePair=null;if(r!=null)r.run();}
+ @Override protected void onStop(){stopped=true;super.onStop();}
  @Override protected void onDestroy(){if(joining&&!committed&&!session.isEmpty()){final String unused=session;Ui.bg(()->{try{CloudSync.request("/api/auth/logout",new JSONObject(),unused);}catch(Exception ignored){}});}destroyed=true;main.removeCallbacksAndMessages(null);io.shutdownNow();super.onDestroy();}
 
  // ---------- steps ----------
@@ -136,7 +140,7 @@ public final class SignInActivity extends Activity {
  }
  /** Asks every 3 s; an expired code is replaced by a fresh one while the card stays open. */
  private void pollPair(int gen,String secret,long until,ImageView qr,TextView code,TextView steps){
-  if(destroyed||gen!=pairing)return;if(SystemClock.elapsedRealtime()>until){startPair(gen,qr,code,steps);return;}
+  if(destroyed||gen!=pairing)return;if(stopped){resumePair=()->pollPair(gen,secret,until,qr,code,steps);return;}if(SystemClock.elapsedRealtime()>until){startPair(gen,qr,code,steps);return;}
   io.execute(()->{try{JSONObject r=CloudSync.request("/api/pair/poll",new JSONObject().put("device_code",secret).put("device_name",Account.deviceName()),null);if(!r.optBoolean("pending")){main.post(()->{if(!destroyed&&gen==pairing)paired(r);});return;}}
    catch(CloudSync.Failure e){if(e.code==410){main.post(()->{if(!destroyed&&gen==pairing)startPair(gen,qr,code,steps);});return;}}catch(Exception ignored){}
    main.postDelayed(()->pollPair(gen,secret,until,qr,code,steps),3000);});
@@ -192,7 +196,9 @@ public final class SignInActivity extends Activity {
  private void createProfile(String avatar){
   if(working)return;error("Створення профілю…");
   final String token=adding?Account.token(this):session;
-  call(null,"/api/profiles",json("name",name,"avatar",avatar),token,p->{if(joining)Account.save(this,email,session);String local=Account.adopt(this,p,!adding&&!joining,token);committed=true;ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{if(!joining)Account.signOut(this);session="";show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
+  call(null,"/api/profiles",json("name",name,"avatar",avatar),token,p->{if(joining)Account.save(this,email,session);String local=Account.adopt(this,p,!adding&&!joining,token);committed=true;ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{
+   // Adding a profile works with the current account's sign-in: only that account leaves when it has ended, the TV's other accounts stay.
+   if(adding){Account.revoked(this,token);finish();return;}if(!joining)Account.signOut(this);session="";show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
  }
 
  private interface Done{void run(JSONObject result)throws Exception;}
