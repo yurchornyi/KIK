@@ -19,12 +19,13 @@ import org.json.*;
  * allowed or whose password was reset, a new password), then a profile and its avatar when the account has none.
  * The server decides which emails may enter. «Увійти з телефону» unfolds a code and a QR code instead: the viewer confirms
  * it on a phone already signed in to the website, and the TV signs in without a password typed on the remote.
- * {@link #addAccount} runs the same screens for a second account: its profiles join this TV's next to the first one's.
+ * {@link #addAccount} runs the same screens for a second account: its profiles join this TV's next to the first one's,
+ * for good or, with «Тимчасовий вхід», only for this visit ({@link TemporarySignIn}).
  */
 public final class SignInActivity extends Activity {
  private static final int LOADING=0,EMAIL=1,PASSWORD=2,CREATE=3,PICK=4,NAME=5,AVATAR=6;
  private final Handler main=new Handler(Looper.getMainLooper());private final ExecutorService io=Executors.newSingleThreadExecutor();
- private volatile boolean destroyed;private boolean working;private ScrollView scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding,joining,committed;
+ private volatile boolean destroyed;private boolean working;private ScrollView scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding,joining,committed,temporary;
  // The sign-in of the account these screens work on; a joining account becomes one of the TV's only once a profile is chosen.
  private String email="",name="",session="";private JSONArray remote=new JSONArray();
 
@@ -54,16 +55,18 @@ public final class SignInActivity extends Activity {
   // A step without a text field must not keep the previous step's keyboard over its tiles.
   ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(content.getWindowToken(),0);
   content.removeAllViews();
-  content.addView(Brand.logo(this,96,44));space(26);
+  // Another account is added from inside KIK: its taller first screen (with «Тимчасовий вхід») fits without the logo.
+  if(!joining){content.addView(Brand.logo(this,96,44));space(26);}
   if(step==LOADING){head("Вхід у KIK","Завантаження облікового запису…");return;}
   if(step==EMAIL){
    if(joining)head("Інший обліковий запис","Введіть пошту ще одного облікового запису KIK. Його профілі з’являться на цьому TV поруч із вашими.");else head("Увійдіть у KIK","Введіть пошту, яку адміністратор додав до KIK.");
    final EditText field=input("Пошта",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,EditorInfo.IME_ACTION_NEXT);field.setText(email);field.setSelection(field.length());
+   if(joining)temporaryOption();
    final Button next=wide("Далі",true);next.setOnClickListener(v->checkEmail(field,next));submit(field,next);
    // Focus starts on a button, so no keyboard covers the phone option; OK on the field opens it.
    Button phone=phoneOption();(email.isEmpty()?phone:next).requestFocus();
   }else if(step==PASSWORD){
-   head("Введіть пароль",email);
+   head("Введіть пароль",email+(temporary?" · тимчасовий вхід":""));
    final EditText field=input("Пароль",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,EditorInfo.IME_ACTION_DONE);
    LinearLayout row=actions();final Button login=button(row,"Увійти",true);button(row,"Інша пошта",false).setOnClickListener(v->show(EMAIL));
    login.setOnClickListener(v->login(field,login));submit(field,login);type(field);
@@ -190,13 +193,15 @@ public final class SignInActivity extends Activity {
    catch(Exception e){main.post(()->{if(destroyed)return;show(EMAIL);error(e instanceof CloudSync.Failure?e.getMessage():"Немає зв’язку з KIK. Перевірте інтернет і спробуйте ще раз.");});}});
  }
  private void pick(JSONObject chosen){
-  try{if(joining)Account.save(this,email,session);String local=Account.adopt(this,chosen,!joining,session);for(int i=0;i<remote.length();i++){JSONObject p=remote.optJSONObject(i);if(p!=null&&p!=chosen)Account.adopt(this,p,false,session);}committed=true;ProfileStore.choose(this,local);}
+  try{if(joining)join();String local=Account.adopt(this,chosen,!joining,session);for(int i=0;i<remote.length();i++){JSONObject p=remote.optJSONObject(i);if(p!=null&&p!=chosen)Account.adopt(this,p,false,session);}committed=true;ProfileStore.choose(this,local);}
   catch(Exception e){error("Не вдалося відкрити профіль. Спробуйте ще раз.");}
  }
+ /** The other account becomes one of this TV's; a temporary one starts its clock. */
+ private void join(){Account.save(this,email,session,temporary);if(temporary)TemporarySignIn.begin(this);}
  private void createProfile(String avatar){
   if(working)return;error("Створення профілю…");
   final String token=adding?Account.token(this):session;
-  call(null,"/api/profiles",json("name",name,"avatar",avatar),token,p->{if(joining)Account.save(this,email,session);String local=Account.adopt(this,p,!adding&&!joining,token);committed=true;ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{
+  call(null,"/api/profiles",json("name",name,"avatar",avatar),token,p->{if(joining)join();String local=Account.adopt(this,p,!adding&&!joining,token);committed=true;ProfileStore.requireTasteSetup(this,local);ProfileStore.choose(this,local);},()->{
    // Adding a profile works with the current account's sign-in: only that account leaves when it has ended, the TV's other accounts stay.
    if(adding){Account.revoked(this,token);finish();return;}if(!joining)Account.signOut(this);session="";show(EMAIL);error("Сеанс завершився. Увійдіть ще раз.");});
  }
@@ -233,6 +238,17 @@ public final class SignInActivity extends Activity {
  private EditText input(String hint,int type,int action){
   EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(0xff8a8592);e.setTextColor(Color.WHITE);e.setTextSize(19);e.setSingleLine(true);e.setPadding(dp(16),0,dp(16),0);e.setBackground(fieldBackground());
   e.setInputType(type);e.setTypeface(Typeface.DEFAULT);e.setImeOptions(action|EditorInfo.IME_FLAG_NO_EXTRACT_UI);content.addView(e,new LinearLayout.LayoutParams(dp(480),dp(58)));space(16);return e;
+ }
+ /** «Тимчасовий вхід» for another account: a tick box the remote turns with OK. */
+ private void temporaryOption(){
+  final LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER_VERTICAL);row.setFocusable(true);row.setClickable(true);row.setPadding(dp(16),dp(12),dp(16),dp(12));row.setBackground(fieldBackground());
+  final TextView box=text("",17);box.setTypeface(Typeface.DEFAULT_BOLD);box.setIncludeFontPadding(false);row.addView(box,new LinearLayout.LayoutParams(dp(26),dp(26)));
+  LinearLayout copy=new LinearLayout(this);copy.setOrientation(1);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.leftMargin=dp(14);row.addView(copy,lp);
+  TextView title=text("Тимчасовий вхід",17);title.setGravity(Gravity.START);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);copy.addView(title);
+  TextView note=text("Вийде з TV сам, коли закриєте KIK або через "+TemporarySignIn.IDLE/60_000+" хв без дій.",14);note.setGravity(Gravity.START);note.setTextColor(0xffb5b1be);note.setLineSpacing(0,1.1f);copy.addView(note);
+  final Runnable paint=()->{box.setText(temporary?"✓":"");box.setBackground(temporary?Ui.shape(Ui.RED,dp(6),0,0):Ui.shape(0,dp(6),dp(2),0xff8a8592));row.setContentDescription("Тимчасовий вхід, "+(temporary?"увімкнено":"вимкнено"));};
+  paint.run();row.setOnClickListener(v->{temporary=!temporary;paint.run();});
+  content.addView(row,new LinearLayout.LayoutParams(dp(480),-2));space(16);
  }
  /** The keyboard's Enter submits the step, so a remote never has to leave the field. */
  private void submit(EditText field,Button button){field.setOnEditorActionListener((v,a,e)->{if(button.isEnabled())button.performClick();return true;});}

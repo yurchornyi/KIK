@@ -16,6 +16,8 @@ import java.util.List;
 public final class ProfilesActivity extends Activity {
  private LinearLayout content;
  private boolean manage;
+ // A screen inside this one (adding a profile): Back returns to the profiles instead of closing them.
+ private boolean nested;
  private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);
@@ -26,8 +28,11 @@ public final class ProfilesActivity extends Activity {
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
   render();
  }
+ @Override public void onBackPressed(){if(nested){render();return;}super.onBackPressed();}
+ /** The profiles changed while this screen was open (a temporary sign-in ended). */
+ void refresh(){if(isFinishing())return;manage=false;render();}
  private void render(){
-  content.removeAllViews();
+  nested=false;content.removeAllViews();
   List<ProfileStore.Profile> all=ProfileStore.list(this);
   TextView title=text(all.isEmpty()?"Створіть профіль":manage?"Керування профілями":"Хто дивиться?",34);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(title);space(8);
   TextView sub=text(all.isEmpty()?"Наявна історія переглядів перейде в цей профіль.":manage?"Виберіть профіль, щоб змінити його. Потрібен пароль профілю.":"Кожен профіль має свою історію та місце, де ви зупинилися.",16);sub.setTextColor(0xffb5b1be);content.addView(sub);space(26);
@@ -42,6 +47,7 @@ public final class ProfilesActivity extends Activity {
    TextView label=text((p.id.equals(current)?"● ":"")+p.name,19);label.setTextColor(0xffb3b3b3);label.setPadding(0,dp(10),0,0);label.setSingleLine(true);label.setEllipsize(TextUtils.TruncateAt.END);tile.addView(label,new LinearLayout.LayoutParams(-1,-2));
    // With two accounts on the TV, two «Юра» are told apart by whose email they belong to.
    String owner=several?Account.emailOf(this,CloudSync.token(this,p.id)):"";if(!owner.isEmpty()){TextView mail=text(owner,13);mail.setTextColor(0xff8a8592);mail.setSingleLine(true);mail.setEllipsize(TextUtils.TruncateAt.MIDDLE);tile.addView(mail,new LinearLayout.LayoutParams(-1,-2));}
+   if(Account.temporary(this,CloudSync.token(this,p.id))){TextView temporary=text("Тимчасовий вхід",13);temporary.setTextColor(0xffef5a62);temporary.setSingleLine(true);tile.addView(temporary,new LinearLayout.LayoutParams(-1,-2));}
    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(190),-2);lp.setMargins(dp(10),0,dp(10),0);row.addView(tile,lp);
    b.setOnClickListener(v->{if(manage)unlock(p);else ProfileStore.choose(this,p.id);});
    if(p.id.equals(current)||focus==null)focus=b;
@@ -49,16 +55,38 @@ public final class ProfilesActivity extends Activity {
   space(30);
   LinearLayout actions=new LinearLayout(this);actions.setOrientation(0);actions.setClipChildren(false);actions.setClipToPadding(false);actions.setGravity(Gravity.CENTER);content.addView(actions,new LinearLayout.LayoutParams(-2,-2));
   if(!manage){
-   Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{if(!Account.token(this).isEmpty()){addSigned();return;}content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
+   Button add=button("+ Додати профіль");actions.addView(add,params(260));add.setOnClickListener(v->{if(!Account.token(this).isEmpty()){addSigned();return;}nested=true;content.removeAllViews();TextView t=text("Новий профіль",30);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(t);space(20);createForm(false);});
    Button edit=button("Керувати профілями");actions.addView(edit,params(280));edit.setOnClickListener(v->{manage=true;render();});
   }else{
    Button done=button("Готово");actions.addView(done,params(200));done.setOnClickListener(v->{manage=false;render();});
   }
   if(focus!=null)focus.requestFocus();
  }
- /** A new profile in this viewer's account, or the profiles of another account (another email) on this TV. */
- private void addSigned(){String email=Account.email(this);
-  Ui.dialog(this).setTitle("Додати профіль").setItems(new String[]{"Новий профіль у "+(email.isEmpty()?"цьому обліковому записі":email),"Профіль з іншого облікового запису (інша пошта)"},(d,which)->{if(which==0)SignInActivity.addProfile(this);else SignInActivity.addAccount(this);}).show();}
+ /** A new profile in this viewer's account, or the profiles of another account (another email) on this TV: two large choices, Back returns. */
+ private void addSigned(){
+  nested=true;content.removeAllViews();String email=Account.email(this);
+  TextView title=text("Додати профіль",34);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);content.addView(title);space(8);
+  TextView hint=text("Для кого цей профіль?",16);hint.setTextColor(0xffb5b1be);content.addView(hint);space(32);
+  LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);content.addView(row,new LinearLayout.LayoutParams(-2,-2));
+  View own=choice(row,"+","Новий профіль","Для когось удома. Історія та «Мій список» будуть у вашому обліковому записі.",email);
+  View other=choice(row,"@","Інший обліковий запис","Для гостя з власною поштою KIK. Можна увійти тимчасово: обліковий запис вийде з TV сам.",null);
+  own.setOnClickListener(v->SignInActivity.addProfile(this));other.setOnClickListener(v->SignInActivity.addAccount(this));
+  space(34);LinearLayout actions=new LinearLayout(this);actions.setGravity(Gravity.CENTER);actions.setClipChildren(false);actions.setClipToPadding(false);content.addView(actions,new LinearLayout.LayoutParams(-2,-2));
+  Button cancel=button("Скасувати");actions.addView(cancel,params(200));cancel.setOnClickListener(v->render());
+  own.requestFocus();
+ }
+ /** A large choice for the remote: a round mark, a bold title and a softer line or two; white with a red edge in focus, like the buttons. */
+ private View choice(LinearLayout row,String mark,String title,String body,String note){
+  LinearLayout card=new LinearLayout(this);card.setOrientation(1);card.setFocusable(true);card.setClickable(true);card.setPadding(dp(26),dp(24),dp(26),dp(24));card.setContentDescription(title+". "+body);
+  card.setBackground(Ui.states(Ui.shape(Ui.CARD,dp(18),dp(1),0xff2e2e33),Ui.shape(Color.WHITE,dp(18),dp(2),Ui.RED)));card.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.04f));
+  TextView m=text(mark,26);m.setTypeface(Typeface.DEFAULT,Typeface.BOLD);m.setIncludeFontPadding(false);m.setDuplicateParentStateEnabled(true);m.setBackground(Ui.states(Ui.shape(0xff2e2e33,dp(26),0,0),Ui.shape(Ui.RED,dp(26),0,0)));card.addView(m,new LinearLayout.LayoutParams(dp(52),dp(52)));
+  TextView t=text(title,21);t.setGravity(Gravity.START);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setDuplicateParentStateEnabled(true);t.setTextColor(colors(Color.BLACK,Color.WHITE));t.setPadding(0,dp(18),0,dp(6));card.addView(t);
+  TextView b=text(body,15);b.setGravity(Gravity.START);b.setDuplicateParentStateEnabled(true);b.setTextColor(colors(0xff4a4a50,0xffb5b1be));b.setLineSpacing(0,1.15f);card.addView(b);
+  if(note!=null&&!note.isEmpty()){TextView n=text(note,14);n.setGravity(Gravity.START);n.setSingleLine(true);n.setEllipsize(TextUtils.TruncateAt.MIDDLE);n.setDuplicateParentStateEnabled(true);n.setTextColor(colors(0xff6a6a70,0xff8a8592));n.setPadding(0,dp(12),0,0);card.addView(n);}
+  // Two cards side by side; a narrow screen shares what it has. Both are as tall as the taller one.
+  int width=Math.min(dp(320),(getResources().getDisplayMetrics().widthPixels-dp(96+48))/2);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(width,-1);lp.setMargins(dp(12),0,dp(12),0);row.addView(card,lp);return card;
+ }
+ private static android.content.res.ColorStateList colors(int focused,int idle){return new android.content.res.ColorStateList(new int[][]{new int[]{android.R.attr.state_focused},new int[]{}},new int[]{focused,idle});}
  private void createForm(final boolean first){
   final String[] avatar={Avatars.idAt(ProfileStore.list(this).size())};
   LinearLayout avatarRow=new LinearLayout(this);avatarRow.setGravity(Gravity.CENTER);avatarRow.setClipChildren(false);avatarRow.setClipToPadding(false);

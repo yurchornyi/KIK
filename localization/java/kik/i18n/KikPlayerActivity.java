@@ -64,7 +64,7 @@ public final class KikPlayerActivity extends Activity {
  private ConnectivityManager.NetworkCallback network;
  private Oops oops;private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
  private final Handler h=new Handler(Looper.getMainLooper());
- private final Runnable hide=()->{if(!visible)return;if(prepared&&!seeking&&playWhenReady)show(false);else if(playWhenReady&&!failed)h.postDelayed(this.hide,1000);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active)save();h.postDelayed(this,5000);}};
+ private final Runnable hide=()->{if(!visible)return;if(prepared&&!seeking&&playWhenReady)show(false);else if(playWhenReady&&!failed)h.postDelayed(this.hide,1000);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active){save();if(player!=null&&player.isPlaying())TemporarySignIn.touch(KikPlayerActivity.this);}h.postDelayed(this,5000);}};
  private int dp(float n){return Ui.dp(this,n);}
 
  public static void open(Context c,Site.Film f,Site.Voice v,String season,String episode,String title,String poster){
