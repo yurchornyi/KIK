@@ -4,7 +4,7 @@ import android.text.*;
 import java.net.*;
 import org.json.JSONObject;
 
-/** The title page's three-line description: the full text when it fits, else KIK's short synopsis, cut only at a sentence. */
+/** Descriptions that read whole (the title page's three lines, the home hero's two): the full text when it fits, else KIK's short synopsis, cut only at a sentence. */
 final class Synopsis {
  private Synopsis(){}
  private static final long TTL=30L*24*3600*1000;
@@ -27,6 +27,23 @@ final class Synopsis {
   int dot=Math.max(head.lastIndexOf(". "),Math.max(head.lastIndexOf("! "),head.lastIndexOf("? ")));if(dot>40)return head.substring(0,dot+1);
   for(int cut=head.length()-1;cut>20;cut--){if(head.charAt(cut)==' '){String t=head.substring(0,cut).replaceAll("[,;:—–-]+$","")+"…";if(fits(t,paint,width,spacing,lines))return t;}}
   return head;
+ }
+ /**
+  * Short text that is whole in the lines: the description when it fits, else the short synopsis when it fits, else the
+  * description's whole sentences, else the synopsis's; a word cut with … only when no sentence fits.
+  */
+ static String brief(String full,String brief,TextPaint paint,int width,float spacing,int lines){
+  full=full==null?"":full.trim();if(fits(full,paint,width,spacing,lines))return full;
+  String b=brief==null?"":brief.trim();if(!b.isEmpty()&&fits(b,paint,width,spacing,lines))return b;
+  String own=shorten(full,paint,width,spacing,lines);if(!own.endsWith("…")||b.isEmpty())return own;
+  String other=shorten(b,paint,width,spacing,lines);return other.endsWith("…")?own:other;
+ }
+ /** For two short lines: a whole sentence however short beats a cut one; with none, the cut falls at a comma, else at a word. */
+ private static String shorten(String text,TextPaint paint,int width,float spacing,int lines){
+  StaticLayout l=layout(text,paint,width,spacing);if(l.getLineCount()<=lines)return text;String head=text.substring(0,l.getLineEnd(lines-1));
+  int dot=Math.max(head.lastIndexOf(". "),Math.max(head.lastIndexOf("! "),head.lastIndexOf("? ")));if(dot>=20)return head.substring(0,dot+1);
+  for(int comma=head.lastIndexOf(", ");comma>head.length()/2;comma=head.lastIndexOf(", ",comma-1)){String t=head.substring(0,comma)+"…";if(fits(t,paint,width,spacing,lines))return t;}
+  return fit(text,paint,width,spacing,lines);
  }
  @SuppressWarnings("deprecation") private static StaticLayout layout(CharSequence text,TextPaint paint,int width,float spacing){return new StaticLayout(text,paint,Math.max(1,width),Layout.Alignment.ALIGN_NORMAL,spacing,0,false);}
 }

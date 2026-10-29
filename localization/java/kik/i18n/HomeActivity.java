@@ -65,7 +65,7 @@ public final class HomeActivity extends Activity {
   FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0xff4a4a50,dp(2),0,0));heroBar=new View(this);heroBar.setBackground(Ui.shape(RED,dp(2),0,0));track.addView(heroBar,new FrameLayout.LayoutParams(0,-1));
   LinearLayout.LayoutParams trackLp=new LinearLayout.LayoutParams(dp(120),dp(4));trackLp.setMargins(0,0,dp(12),0);heroResume.addView(track,trackLp);heroResume.addView(heroSub);
   info.addView(heroResume);space(info,8);
-  info.addView(heroText,new LinearLayout.LayoutParams(Ui.contentWidth(this,500,80),-2));space(info,14);
+  heroWidth=Ui.contentWidth(this,500,80);info.addView(heroText,new LinearLayout.LayoutParams(heroWidth,-2));space(info,14);
   LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);
   // The row's padding leaves room for the focus ring and zoom; pulled back by it, the buttons start where the title does, as on the film page.
   LinearLayout.LayoutParams buttonsLp=new LinearLayout.LayoutParams(-1,-2);buttonsLp.setMargins(-dp(8),0,-dp(8),0);info.addView(Ui.horizontal(this,buttons),buttonsLp);
@@ -316,7 +316,7 @@ public final class HomeActivity extends Activity {
    try{Site.Film f=FreeSources.metadata(i.link);RecommendationMetadata.remember(this,f);String d=f.description==null?"":f.description;
     final String[] g=new String[]{d,f.poster,f.rating,f.year,f.genres.isEmpty()?null:f.genres.get(0),f.age,f.duration};DETAILS.put(norm(i.link),g);
     main.post(()->{i.description=g[0];if(g[1]!=null&&!i.wideArt)i.wide=g[1];if(g[2]!=null)i.rating=g[2];if(i.year==null)i.year=g[3];if(i.genre==null)i.genre=g[4];if(g[5]!=null)i.age=g[5];if(g[6]!=null)i.duration=g[6];
-     if(!destroyed&&hero==i){heroText.setText(i.description);heroMeta.setText(facts(i));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null&&!i.wideArt)Images.crossfade(i.wide,heroImage);}});
+     if(!destroyed&&hero==i){heroDescription(i);heroMeta.setText(facts(i));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();if(i.wide!=null&&!i.wideArt)Images.crossfade(i.wide,heroImage);}});
    }catch(Exception e){Log.w("KIK","Hero details: "+e);}
   },"kik-hero").start();
   main.postDelayed(detailTask,600);
@@ -486,6 +486,18 @@ public final class HomeActivity extends Activity {
  private static final long SLIDE_MS=9000;private long slideAt;
  /** A title on the hero that is not a slide of its own: it holds the current pill for one turn. */
  private boolean borrowed;
+ private int heroWidth;private static final java.util.Set<String> SYNOPSIS_ASKED=java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+ /**
+  * The hero's two lines say something whole, never a sentence cut at «…»: see {@link Synopsis#brief}. KIK's short synopsis
+  * is asked for the show's own slides only: a focused card uses one already on the TV, so browsing spends no AI.
+  */
+ private void heroDescription(final Item i){
+  final String full=i.description==null?"":i.description.trim(),known=Synopsis.cached(this,i.link);
+  heroText.setText(Synopsis.brief(full,known,heroText.getPaint(),heroWidth,1.12f,2));
+  if(known!=null||borrowed||full.isEmpty()||Synopsis.fits(full,heroText.getPaint(),heroWidth,1.12f,2)||!SYNOPSIS_ASKED.add(norm(i.link)))return;
+  final Context app=getApplicationContext();
+  Ui.bg(()->{final String got=Synopsis.fetch(app,i.link);if(got==null)return;main.post(()->{if(destroyed||hero!=i)return;heroText.setText(Synopsis.brief(full,got,heroText.getPaint(),heroWidth,1.12f,2));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();});});
+ }
  /**
   * A focused card features its title, Netflix-style, while the show goes on: a title among the slides makes the show jump
   * to its pill; any other borrows the current pill, which fills again for it. Then the show continues with the next pill.
@@ -521,7 +533,7 @@ public final class HomeActivity extends Activity {
   HeroActions.label(watch,i.resume?(i.left>0?"Продовжити · ще "+Ui.minutes(i.left):"Продовжити"):"Дивитися",HeroActions.PLAY);
   Ui.watched(watch,i.resume&&i.left>0?i.progress:0);
   paintLater();
-  heroText.setText(i.description==null?"":i.description);details(i);
+  heroDescription(i);details(i);
   Images.crossfade(i.wide!=null?i.wide:i.poster,heroImage);if(!i.wideArt&&!candidates.contains(i))wideArt(java.util.Collections.singletonList(i));
   for(View v:new View[]{heroTitle,heroMeta,heroResume,heroText}){v.animate().cancel();v.setAlpha(0.35f);v.animate().alpha(1f).setDuration(240).setInterpolator(EASE).withLayer().start();}
  }
