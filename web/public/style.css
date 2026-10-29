@@ -281,3 +281,4 @@ dialog.detail-loading #modal-content{min-height:min(420px,70dvh);padding:36px 28
 @keyframes oops-busy{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
 @media (prefers-reduced-motion:reduce){.oops-mark img,.oops-mark::before,.oops-bar.busy>span{animation:none}.oops-bar>span{transition:none}}
 @media (max-width:650px){.oops-mark{width:108px;margin-bottom:28px}.oops-compact .oops-mark{width:64px;margin-bottom:16px}.player-status.oops-holder .oops-text{display:none}}
+.warning-box{margin:16px 0;padding:14px 16px;border:1px solid #ed303c55;border-radius:14px;background:#ed303c14;color:#ffd9dc}.warning-box strong{display:block;color:#ff9da3;font-size:14px;margin-bottom:6px}.warning-box p{margin:0;line-height:1.55;font-size:13.5px}.warning-box ul{margin:0;padding-left:18px;line-height:1.6;font-size:13.5px}.warning-box li+li{margin-top:4px}

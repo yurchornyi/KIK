@@ -1,4 +1,4 @@
-import {normalizeEmail,validEmail,hash,SESSION_MS} from './auth.mjs';
+import {normalizeEmail,validEmail,hash,SESSION_MS,passwordHash,randomToken,requestToken} from './auth.mjs';
 import {DEFAULT_SETTINGS} from './public/preferences.js';import {engagement,engagementLabel} from './public/watching.js';import {titleKey} from './sync.mjs';
 export {DEFAULT_SETTINGS};
 export function cleanSettings(input){if(!input||typeof input!=='object'||Array.isArray(input))throw Object.assign(Error('Некоректні налаштування'),{status:400});const out={};for(const [key,value] of Object.entries(input)){if(key==='quality'&&['auto','2160p','1440p','1080p','720p','480p'].includes(value)||key==='speed'&&[.75,1,1.25,1.5,2].includes(value)||key==='audio'&&['uk','ru','en'].includes(value)||key==='autoplay'&&typeof value==='boolean')out[key]=value;else throw Object.assign(Error('Некоректне значення налаштування'),{status:400});}return {...DEFAULT_SETTINGS,...out};}
@@ -41,6 +41,25 @@ export async function admin(request,db,user,readBody,options={}){requireAdmin(us
   // A new password is set by email at the next sign-in: an old account without one could never be reached again.
   if(!target.email)fail('У цього акаунта немає пошти, тому новий пароль задати не вийде',409);
   await db.batch([db.prepare("UPDATE users SET password_hash='' WHERE id=?").bind(target.id),db.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id),db.prepare('DELETE FROM pairs WHERE user_id=?').bind(target.id),await event(db,user,'reset-password',target.email||target.id)]);return {ok:true};}
+ // A new email or password set by the admin: profiles, history and signed-in TVs stay with the account.
+ if(path==='/api/admin/users/update'&&request.method==='POST'){const b=await readBody(request,8192);if(typeof b.id!=='string'||!b.id)fail('Виберіть акаунт');const target=await db.prepare('SELECT id,email,username,role FROM users WHERE id=?').bind(b.id).first();if(!target)fail('Акаунт не знайдено',404);const self=target.id===user.id;if(target.role==='admin'&&!self)fail('Акаунт адміністратора захищений',403);
+  const email=b.email==null||b.email===''?null:normalizeEmail(b.email),password=b.password==null||b.password===''?null:b.password,old=target.email?normalizeEmail(target.email):null;
+  if(email!==null&&!validEmail(email))fail('Введіть коректну пошту');if(password!==null&&(typeof password!=='string'||password.length<6||password.length>256))fail('Пароль: від 6 до 256 символів');
+  const moved=email!==null&&email!==old?email:null;if(!moved&&password===null)fail('Нічого не змінено: введіть нову пошту або новий пароль');
+  if(moved&&await db.prepare('SELECT id FROM users WHERE (email=?1 OR username=?1) AND id<>?2').bind(moved,target.id).first())fail('Ця пошта вже належить іншому акаунту',409);
+  const steps=[];
+  if(moved){
+   // An email account signs in by its email, so the username follows; an old username-only account keeps its name.
+   steps.push(db.prepare('UPDATE users SET username=CASE WHEN email IS NULL THEN username ELSE ?1 END,email=?1 WHERE id=?2').bind(moved,target.id));
+   // Access moves to the new email; an account whose access was revoked stays revoked, an old one without email keeps its access.
+   const access=old?await db.prepare('SELECT email FROM registration_access WHERE email=?').bind(old).first():target.role!=='admin';
+   if(access)steps.push(...old?[db.prepare('DELETE FROM registration_access WHERE email=?').bind(old)]:[],db.prepare('INSERT INTO registration_access(email,created_by,created_at) VALUES(?,?,?) ON CONFLICT(email) DO NOTHING').bind(moved,user.id,Date.now()));
+   steps.push(await event(db,user,'change-email',(old||target.username)+' → '+moved));
+  }
+  if(password!==null){const salt=randomToken();steps.push(db.prepare('UPDATE users SET salt=?,password_hash=? WHERE id=?').bind(salt,await passwordHash(password,salt),target.id),await event(db,user,'change-password',moved||old||target.username));
+   // Signing out is the admin's choice: a forgotten password needs none, a leaked one ends every other sign-in and TV pairing.
+   if(b.signout===true){const current=self&&requestToken(request);steps.push(db.prepare('DELETE FROM sessions WHERE user_id=? AND token_hash<>?').bind(target.id,current?await hash(current):''),db.prepare('DELETE FROM pairs WHERE user_id=?').bind(target.id));}}
+  try{await db.batch(steps);}catch(e){if(moved&&/UNIQUE/i.test(String(e?.message)))fail('Ця пошта вже належить іншому акаунту',409);throw e;}return {ok:true,email:moved||old};}
  if(path==='/api/admin/users/delete'&&request.method==='POST'){const b=await readBody(request,8192);if(typeof b.id!=='string'||!b.id)fail('Виберіть акаунт');if(b.id===user.id)fail('Власний акаунт адміністратора видалити не можна',403);const target=await db.prepare('SELECT id,email,username,role FROM users WHERE id=?').bind(b.id).first();if(!target)fail('Акаунт не знайдено',404);if(target.role==='admin')fail('Акаунт адміністратора захищений',403);if(normalizeEmail(b.confirm)!==normalizeEmail(target.email||target.username))fail('Для підтвердження введіть пошту акаунта');await db.batch([db.prepare('DELETE FROM pairs WHERE user_id=?').bind(target.id),db.prepare('DELETE FROM registration_access WHERE email=?').bind(target.email||''),db.prepare("DELETE FROM users WHERE id=? AND role='user'").bind(target.id),await event(db,user,'delete',target.email||target.username)]);return {ok:true};}
  fail('Не знайдено',404);
 }
