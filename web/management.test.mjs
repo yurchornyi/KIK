@@ -74,3 +74,28 @@ test('the account lists its sign-ins and signs one TV out without touching the o
  const listed=(await devices(db,owner,'browser')).devices;assert.equal(listed.length,3);const tv=listed.find(d=>d.tv);assert.equal(tv.name,'XGIMI XK10T');assert.equal(listed.find(d=>d.current).id,(await hash('browser')).slice(0,16));assert.ok(listed.every(d=>!('token_hash' in d)));
  await assert.rejects(revokeDevice(db,owner,'browser',{id:(await hash('browser')).slice(0,16)}),e=>e.status===400);await assert.rejects(revokeDevice(db,owner,'browser',{id:(await hash('foreign-tv')).slice(0,16)}),e=>e.status===404);await assert.rejects(revokeDevice(db,null,'',{id:tv.id}),e=>e.status===401);
  assert.deepEqual(await revokeDevice(db,owner,'browser',{id:tv.id}),{ok:true});const left=db.raw.prepare('SELECT token_hash FROM sessions ORDER BY token_hash').all().map(r=>r.token_hash);assert.deepEqual(left,(await Promise.all(['browser','phone','foreign-tv'].map(hash))).sort());});
+test('the admin changes an account email or password: profiles, access and TVs stay, other admins stay protected',async()=>{const db=memoryD1();seed(db,3);const {passwordHash}=await import('./auth.mjs');
+ for(const email of ['member1@example.invalid','member2@example.invalid'])await call(db,'/api/admin/access',{email,action:'allow'});
+ db.raw.exec("INSERT INTO profiles(id,user_id,name,avatar,created_at) VALUES('p1','u0001','Кіно','bear',1)");const tv=await session(db,'u0001','h');
+ assert.deepEqual(await call(db,'/api/admin/users/update',{id:'u0001',email:' New.Mail@Example.invalid '}),{ok:true,email:'new.mail@example.invalid'});
+ const moved=db.raw.prepare("SELECT email,username FROM users WHERE id='u0001'").get();assert.deepEqual({...moved},{email:'new.mail@example.invalid',username:'new.mail@example.invalid'});
+ assert.equal((await identity(bearer(tv),db)).id,'u0001','the TV stays signed in');assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM profiles WHERE user_id='u0001'").get().n,1);
+ assert.deepEqual(db.raw.prepare('SELECT email FROM registration_access ORDER BY email').all().map(r=>r.email),['member2@example.invalid','new.mail@example.invalid'],'access follows the email');
+ await assert.rejects(call(db,'/api/admin/users/update',{id:'u0001',email:'member2@example.invalid'}),e=>e.status===409,'another account owns it');
+ await assert.rejects(call(db,'/api/admin/users/update',{id:'u0001',email:'new.mail@example.invalid'}),e=>e.status===400,'nothing changed');
+ await assert.rejects(call(db,'/api/admin/users/update',{id:'u0001',password:'12345'}),e=>e.status===400,'too short');
+ // A revoked account keeps its revocation under a new email.
+ await call(db,'/api/admin/users/update',{id:'u0003',email:'third@example.invalid'});assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM registration_access WHERE email='third@example.invalid'").get().n,0);
+ // A new password works at once; signing out is optional and ends every sign-in and TV pairing.
+ await call(db,'/api/admin/users/update',{id:'u0001',password:'secret-2026'});const row=db.raw.prepare("SELECT salt,password_hash FROM users WHERE id='u0001'").get();assert.equal(row.password_hash,await passwordHash('secret-2026',row.salt));assert.ok(await identity(bearer(tv),db));
+ await call(db,'/api/admin/users/update',{id:'u0001',password:'secret-2027',signout:true});assert.equal(await identity(bearer(tv),db),null);
+ // A reset account gets a usable password again.
+ await call(db,'/api/admin/users/reset-password',{id:'u0002'});await call(db,'/api/admin/users/update',{id:'u0002',password:'fresh-pass'});assert.notEqual(db.raw.prepare("SELECT password_hash FROM users WHERE id='u0002'").get().password_hash,'');
+ // The admin may change its own email and password; signing out keeps this browser.
+ const mine=await session(db,owner.id),other=await session(db,owner.id),me={...owner};
+ await admin(new Request('https://kik.test/api/admin/users/update',{method:'POST',body:JSON.stringify({id:owner.id,email:'boss@example.invalid',password:'admin-pass',signout:true}),headers:{Authorization:'Bearer '+mine}}),db,me,r=>r.json());
+ assert.ok(await identity(bearer(mine),db));assert.equal(await identity(bearer(other),db),null);assert.equal(db.raw.prepare('SELECT email FROM users WHERE id=?').get(owner.id).email,'boss@example.invalid');
+ db.raw.exec("INSERT INTO users(id,username,email,salt,password_hash,created_at,role) VALUES('a2','second@example.invalid','second@example.invalid','s','h',1,'admin')");
+ await assert.rejects(call(db,'/api/admin/users/update',{id:'a2',password:'whatever'}),e=>e.status===403);
+ await assert.rejects(call(db,'/api/admin/users/update',{id:'u0001',password:'whatever'},{id:'u0002',role:'user'}),e=>e.status===403,'members cannot');
+ assert.deepEqual(events(db).filter(e=>e.startsWith('change-email')),['change-email:member1@example.invalid → new.mail@example.invalid','change-email:member3@example.invalid → third@example.invalid','change-email:owner@example.invalid → boss@example.invalid']);});
