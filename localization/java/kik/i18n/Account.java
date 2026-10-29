@@ -27,13 +27,18 @@ public final class Account {
  /** Signed in = some profile syncs with an account; a session without a chosen profile resumes on the sign-in screen. */
  public static boolean signedIn(Context c){for(ProfileStore.Profile p:ProfileStore.list(c))if(CloudSync.linked(c,p.id))return true;return false;}
  /** Adds an account, or replaces the sign-in of the same email. */
- static void save(Context c,String email,String token){
+ static void save(Context c,String email,String token){save(c,email,token,false);}
+ /** A temporary one («Тимчасовий вхід») leaves the TV by itself: see {@link TemporarySignIn}. */
+ static void save(Context c,String email,String token,boolean temporary){
   JSONArray a=accounts(c),out=new JSONArray();boolean placed=false;
-  try{JSONObject added=new JSONObject().put("email",email).put("token",token);
+  try{JSONObject added=new JSONObject().put("email",email).put("token",token);if(temporary)added.put("temporary",true);
    for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;if(o.optString("email").equalsIgnoreCase(email)){if(!placed)out.put(added);placed=true;}else out.put(o);}
    if(!placed)out.put(added);}catch(JSONException ignored){}
   store(c,out);
  }
+ /** The sign-ins added with «Тимчасовий вхід». */
+ static java.util.List<String> temporaryTokens(Context c){java.util.List<String> out=new java.util.ArrayList<String>();JSONArray a=accounts(c);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&o.optBoolean("temporary")&&!o.optString("token").isEmpty())out.add(o.optString("token"));}return out;}
+ static boolean temporary(Context c,String token){return !token.isEmpty()&&temporaryTokens(c).contains(token);}
  /** The name the website shows for this TV's sign-ins, such as «XGIMI XK10T». */
  static String deviceName(){String maker=android.os.Build.MANUFACTURER==null?"":android.os.Build.MANUFACTURER.trim(),model=android.os.Build.MODEL==null?"":android.os.Build.MODEL.trim();
   String name=model.toLowerCase(java.util.Locale.ROOT).startsWith(maker.toLowerCase(java.util.Locale.ROOT))?model:(maker+" "+model).trim();return name.isEmpty()?"Android TV":name;}
@@ -95,8 +100,16 @@ public final class Account {
   if(ProfileStore.nameOf(c,current)==null)for(ProfileStore.Profile p:ProfileStore.list(c))if(CloudSync.linked(c,p.id)&&ProfileStore.use(c,p.id))break;
   logout(token);
  }
+ /**
+  * A temporary sign-in ran out: the account leaves as with «Вийти», without asking. Its latest changes go up first,
+  * then its profiles leave this TV even when it was the last account: a visitor's history stays only in their account.
+  */
+ static void expire(Context context,final String token){
+  final Context c=context.getApplicationContext();if(!accountsWith(c,token))return;final String email=emailOf(c,token);
+  CloudSync.flush(c,token,()->{if(!accountsWith(c,token))return;boolean watching=token.equals(CloudSync.token(c,ProfileStore.current(c)));drop(c,token);TemporarySignIn.ended(c,email,watching);});
+ }
  /** The profile being watched has left: the home screen opens on the new current profile, with «Хто дивиться?» when there is a choice. */
- private static void reopen(Context c){
+ static void reopen(Context c){
   ProfileStore.rebind(c);Intent home=new Intent(c,HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
   if(ProfileStore.list(c).size()>1)c.startActivities(new Intent[]{home,new Intent(c,ProfilesActivity.class)});else c.startActivity(home);
  }

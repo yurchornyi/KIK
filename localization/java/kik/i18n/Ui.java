@@ -23,8 +23,10 @@ public final class Ui {
  public static final long TRANSLATE_WAIT=180;
 
  /** Leaves KIK for the home screen. A plain finish returns to whatever task is below, and once a TV service
-  *  force-stops the launcher (TCL TV Guard does) that is the last app used, e.g. Netflix, not home. */
+  *  force-stops the launcher (TCL TV Guard does) that is the last app used, e.g. Netflix, not home.
+  *  A temporary sign-in («Тимчасовий вхід») ends here: the visit is over. */
  public static void leaveApp(Activity a){
+  TemporarySignIn.leaving(a);
   try{a.startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception ignored){}
   a.finishAffinity();
  }

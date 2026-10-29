@@ -94,7 +94,7 @@ public final class BasicSettingsActivity extends Activity {
  /** Every account on this TV with its own «Вийти», and «+ Інший обліковий запис» for another email. */
  private void accounts(){
   org.json.JSONArray list=Account.accounts(this);String[] items=new String[list.length()+1];String[] tokens=new String[list.length()];
-  for(int i=0;i<list.length();i++){org.json.JSONObject a=list.optJSONObject(i);tokens[i]=a==null?"":a.optString("token");items[i]="Вийти: "+(a==null||a.optString("email").isEmpty()?"обліковий запис":a.optString("email"));}
+  for(int i=0;i<list.length();i++){org.json.JSONObject a=list.optJSONObject(i);tokens[i]=a==null?"":a.optString("token");items[i]="Вийти: "+(a==null||a.optString("email").isEmpty()?"обліковий запис":a.optString("email"))+(a!=null&&a.optBoolean("temporary")?" (тимчасово)":"");}
   items[list.length()]="+ Інший обліковий запис";
   Ui.dialog(this).setTitle("Облікові записи на TV").setItems(items,(d,which)->{if(which<tokens.length)Account.confirmLeave(this,tokens[which]);else SignInActivity.addAccount(this);}).setNegativeButton("Закрити",null).show();
  }
