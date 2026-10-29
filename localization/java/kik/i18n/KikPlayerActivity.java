@@ -18,7 +18,10 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.audio.AudioSink;
+import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
@@ -117,9 +120,15 @@ public final class KikPlayerActivity extends Activity {
   playIntro();
   start(true);
  }
+ private Loudness loudness;
  private ExoPlayer createPlayer(){
   DefaultLoadControl load=new DefaultLoadControl.Builder().setBufferDurationsMs(MIN_BUFFER,MAX_BUFFER,START_BUFFER,REBUFFER).setTargetBufferBytes(BUFFER_BYTES).setPrioritizeTimeOverSizeThresholds(false).build();
-  DefaultRenderersFactory renderers=new DefaultRenderersFactory(this).setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
+  // «Однакова гучність фільмів» (settings, on by default): the sound passes through Loudness on its way out.
+  final boolean even=getSharedPreferences("settings",0).getBoolean(Loudness.PREF,true);loudness=even?new Loudness():null;
+  DefaultRenderersFactory renderers=new DefaultRenderersFactory(this){@Override protected AudioSink buildAudioSink(Context c,boolean floatOutput,boolean playbackParams){
+   if(loudness==null)return super.buildAudioSink(c,floatOutput,playbackParams);
+   return new DefaultAudioSink.Builder(c).setEnableFloatOutput(floatOutput).setEnableAudioTrackPlaybackParams(playbackParams).setAudioProcessors(new AudioProcessor[]{loudness}).build();
+  }}.setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
   ExoPlayer p=new ExoPlayer.Builder(this,renderers).setLoadControl(load).setHandleAudioBecomingNoisy(true).build();
   p.addListener(new Player.Listener(){
    @Override public void onPlaybackStateChanged(int state){onState(state);}
