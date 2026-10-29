@@ -19,18 +19,25 @@ test('model answers become at most three plain titles',()=>{
  assert.deepEqual(cleanFixes('Sure: {"titles":["Во все тяжкие","Breaking Bad","брейкінг бед","<b>x</b>","https://a.b"]}','брейкінг бед'),['Во все тяжкие','Breaking Bad']);
  assert.deepEqual(cleanFixes('not json','x'),[]);assert.deepEqual(cleanFixes(['Aa','Bb','Cc','Dd'],'q'),['Aa','Bb','Cc']);
 });
-function fakeDb(limit=10){let calls=0;return {calls:()=>calls,prepare:()=>({bind:()=>({first:async()=>++calls<=limit?{calls}:null})})};}
-const memoryCache=()=>{const m=new Map();return {match:async r=>m.get(r.url)?.clone(),put:async(r,res)=>{m.set(r.url,res);}};};
+/** D1 with the day's budget (`limit` calls) and search_fix_cache in `saved` (query key → {fixes,updated_at}). */
+function fakeDb(limit=10,saved=new Map()){let calls=0;return {calls:()=>calls,saved,prepare:sql=>({bind:(...a)=>({
+ first:async()=>sql.includes('FROM search_fix_cache')?saved.get(a[0])||null:++calls<=limit?{calls}:null,
+ run:async()=>{if(sql.includes('INTO search_fix_cache'))saved.set(a[0],{fixes:a[1],updated_at:a[2]});}})})};}
 /** Sentra stubbed for one test, answering every request with `titles`; KIK has no AI of its own. */
 async function withSentra(titles,run){const original=globalThis.fetch;let runs=0;globalThis.fetch=async()=>{runs++;return Response.json({choices:[{message:{content:JSON.stringify({titles})}}]});};try{return await run({SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},()=>runs);}finally{globalThis.fetch=original;}}
-test('corrections ask the model once per query and respect the daily budget',()=>withSentra(['Во все тяжкие','Breaking Bad'],async(env,runs)=>{
- const cache=memoryCache();
- assert.deepEqual(await corrections(fakeDb(),env,'брейкінг бед',cache),['Во все тяжкие','Breaking Bad']);
- assert.deepEqual(await corrections(fakeDb(),env,'Брейкінг  бед',cache),['Во все тяжкие','Breaking Bad']);assert.equal(runs(),1);
- assert.deepEqual(await corrections(fakeDb(0),env,'zzzz qqqq',memoryCache()),[]);assert.equal(runs(),1);
+test('corrections ask the model once per query, keep the answer in D1 and respect the daily budget',()=>withSentra(['Во все тяжкие','Breaking Bad'],async(env,runs)=>{
+ const db=fakeDb();
+ assert.deepEqual(await corrections(db,env,'брейкінг бед'),['Во все тяжкие','Breaking Bad']);
+ assert.deepEqual(await corrections(fakeDb(),env,'Брейкінг  бед'),['Во все тяжкие','Breaking Bad']);assert.equal(runs(),1);
+ assert.deepEqual(JSON.parse(db.saved.get('бреикинг бед').fixes),['Во все тяжкие','Breaking Bad']);
+ // Any colo, any later day: a fix in D1 is answered without Sentra, however old; «not sure» is asked again after a month.
+ const old=Date.now()-400*86400000,kept=fakeDb(10,new Map([['шерлок холмс',{fixes:'["Шерлок"]',updated_at:old}],['невидомо що',{fixes:'[]',updated_at:old}]]));
+ assert.deepEqual(await corrections(kept,env,'Шерлок Холмс'),['Шерлок']);assert.equal(runs(),1);
+ assert.deepEqual(await corrections(kept,env,'невідомо що'),['Во все тяжкие','Breaking Bad']);assert.equal(runs(),2);
+ assert.deepEqual(await corrections(fakeDb(0),env,'zzzz qqqq'),[]);assert.equal(runs(),2);
  assert.deepEqual(await corrections(fakeDb(),{},'без моделі'),[]);
  // A Workers AI binding left behind is never asked: only Sentra answers.
- assert.deepEqual(await corrections(fakeDb(),{AI:{run:async()=>({response:'{"titles":["X"]}'})}},'без сентри',memoryCache()),[]);
+ assert.deepEqual(await corrections(fakeDb(),{AI:{run:async()=>({response:'{"titles":["X"]}'})}},'без сентри'),[]);
 }));
 test('alternatives prefer exact Wikidata names, then swapped layout, then the model',()=>withSentra(['Интерстеллар'],async(env)=>{
  assert.deepEqual(await searchAlternatives(fakeDb(),env,'breaking bad',async q=>q==='breaking bad'?['Во все тяжкие']:[]),['Во все тяжкие']);
@@ -55,20 +62,21 @@ test('search fixes come from Sentra; its «not sure» is an answer, and Workers 
  globalThis.fetch=async(url,opts)=>{sent.push(opts);return Response.json({choices:[{message:{content:reply}}]});};
  try{
   let runs=0;const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t',AI:{run:async()=>{runs++;return {response:'{"titles":["Wrong"]}'};}}};
-  assert.deepEqual(await corrections(fakeDb(),env,'интерстелар',memoryCache()),['Интерстеллар']);assert.equal((await corrections(fakeDb(),env,'интерстелар',memoryCache())).failed,undefined);assert.equal(sent[0].headers['x-sentra-skill'],'kik-search-fix');assert.equal(JSON.parse(sent[0].body).model,'role:fast');
-  reply='{"titles":[]}';assert.deepEqual(await corrections(fakeDb(),env,'qqqq zzzz',memoryCache()),[]);assert.equal(runs,0);
+  assert.deepEqual(await corrections(fakeDb(),env,'интерстелар'),['Интерстеллар']);assert.equal((await corrections(fakeDb(),env,'интерстелар')).failed,undefined);assert.equal(sent[0].headers['x-sentra-skill'],'kik-search-fix');assert.equal(JSON.parse(sent[0].body).model,'role:fast');
+  reply='{"titles":[]}';assert.deepEqual(await corrections(fakeDb(),env,'qqqq zzzz'),[]);assert.equal(runs,0);
  }finally{globalThis.fetch=original;}
 });
-test('search fixes ask Sentra to cache them; a failure is not cached as «no fixes», and a 429 gives the call back',async()=>{
+test('search fixes are not cached twice by Sentra; a failure is not kept as «no fixes», and a 429 gives the call back',async()=>{
  const original=globalThis.fetch,sent=[];let status=503;
  globalThis.fetch=async(url,opts)=>{sent.push(opts);return status===200?Response.json({choices:[{message:{content:'{"titles":["Интерстеллар"]}'}}]}):new Response('x',{status});};
- const budget={calls:0},db={prepare:sql=>({bind:(...a)=>({first:async()=>({calls:++budget.calls}),run:async()=>{if(sql.startsWith('UPDATE ai_daily_budget'))budget.calls-=a[0];}})})};
+ const budget={calls:0},saved=[],db={prepare:sql=>({bind:(...a)=>({first:async()=>sql.includes('FROM search_fix_cache')?null:({calls:++budget.calls}),run:async()=>{if(sql.startsWith('UPDATE ai_daily_budget'))budget.calls-=a[0];if(sql.includes('INTO search_fix_cache'))saved.push(a[0]);}})})};
  try{
-  const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},cache=memoryCache();
-  assert.deepEqual(await corrections(db,env,'Сентра Збій',cache),[]);assert.equal(sent[0].headers['x-sentra-cache'],'2592000');
+  const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'};
+  // KIK keeps fixes in D1 itself: no x-sentra-cache on top (SENTRA.md, rule 6).
+  assert.deepEqual(await corrections(db,env,'Сентра Збій'),[]);assert.equal(sent[0].headers['x-sentra-cache'],undefined);
   // The failure is marked, so the edge cache of /api/search-aliases does not keep it for a day either.
-  assert.equal((await corrections(db,env,'Сентра Збій',cache)).failed,true);assert.equal((await searchAlternatives(db,env,'Сентра Збій',async()=>[])).failed,true);assert.equal(sent.length,1,'the next ten minutes ask nobody');
-  assert.equal(JSON.parse(JSON.parse(sent[0].body).messages[1].content).query,'сентра збій');assert.equal(await cache.match(new Request('https://kik.internal/search-fix/v1?q='+encodeURIComponent('сентра збии'))),undefined);assert.equal(budget.calls,1);
-  status=429;assert.deepEqual(await corrections(db,env,'ліміт сентри',cache),[]);assert.equal(budget.calls,1);
+  assert.equal((await corrections(db,env,'Сентра Збій')).failed,true);assert.equal((await searchAlternatives(db,env,'Сентра Збій',async()=>[])).failed,true);assert.equal(sent.length,1,'the next ten minutes ask nobody');
+  assert.equal(JSON.parse(JSON.parse(sent[0].body).messages[1].content).query,'сентра збій');assert.deepEqual(saved,[]);assert.equal(budget.calls,1);
+  status=429;assert.deepEqual(await corrections(db,env,'ліміт сентри'),[]);assert.equal(budget.calls,1);assert.deepEqual(saved,[]);
  }finally{globalThis.fetch=original;}
 });

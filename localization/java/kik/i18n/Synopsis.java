@@ -4,7 +4,7 @@ import android.text.*;
 import java.net.*;
 import org.json.JSONObject;
 
-/** The title page's three-line description: the full text when it fits, else KIK's short synopsis, cut only at a sentence. */
+/** Descriptions that read whole in a few lines: the title page's and the home hero's three, cut only at a sentence. */
 final class Synopsis {
  private Synopsis(){}
  private static final long TTL=30L*24*3600*1000;
@@ -27,6 +27,21 @@ final class Synopsis {
   int dot=Math.max(head.lastIndexOf(". "),Math.max(head.lastIndexOf("! "),head.lastIndexOf("? ")));if(dot>40)return head.substring(0,dot+1);
   for(int cut=head.length()-1;cut>20;cut--){if(head.charAt(cut)==' '){String t=head.substring(0,cut).replaceAll("[,;:—–-]+$","")+"…";if(fits(t,paint,width,spacing,lines))return t;}}
   return head;
+ }
+ /**
+  * The home hero's lines say what the title is about: KIK's short synopsis («Трилер про вчителя, який…») comes first,
+  * since a description often opens with a scene. Without one, the description when it fits, else its whole sentences.
+  */
+ static String brief(String full,String brief,TextPaint paint,int width,float spacing,int lines){
+  String b=brief==null?"":brief.trim();if(!b.isEmpty())return shorten(b,paint,width,spacing,lines);
+  return shorten(full==null?"":full.trim(),paint,width,spacing,lines);
+ }
+ /** For a few short lines: a whole sentence however short beats a cut one; with none, the cut falls at a comma, else at a word. */
+ private static String shorten(String text,TextPaint paint,int width,float spacing,int lines){
+  StaticLayout l=layout(text,paint,width,spacing);if(l.getLineCount()<=lines)return text;String head=text.substring(0,l.getLineEnd(lines-1));
+  int dot=Math.max(head.lastIndexOf(". "),Math.max(head.lastIndexOf("! "),head.lastIndexOf("? ")));if(dot>=20)return head.substring(0,dot+1);
+  for(int comma=head.lastIndexOf(", ");comma>head.length()/2;comma=head.lastIndexOf(", ",comma-1)){String t=head.substring(0,comma)+"…";if(fits(t,paint,width,spacing,lines))return t;}
+  return fit(text,paint,width,spacing,lines);
  }
  @SuppressWarnings("deprecation") private static StaticLayout layout(CharSequence text,TextPaint paint,int width,float spacing){return new StaticLayout(text,paint,Math.max(1,width),Layout.Alignment.ALIGN_NORMAL,spacing,0,false);}
 }
