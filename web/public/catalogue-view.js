@@ -52,7 +52,7 @@ export class CataloguePages {
  */
 export function createCatalogueView({main,el,button,card,keyOf,api,visible=items=>items,isActive,onSelection=()=>{},skip=4,oops=null}){
  const models=new Map(),genreCache=new Map();
- let model,section,list,failure,note,more,count,genreSelect,genreRetry,sort,categories,studioButton,studioChip,studioSelect,studioControl,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null,ghosts=[],lastBatch=0;
+ let model,section,list,failure,note,more,count,genreSelect,genreRetry,sort,categories,studioButton,studioChip,studioSelect,studioControl,shownKeys=new Set(),painted=0,genreRequest=0,watcher=null,ghosts=[],lastBatch=0,starved=false;
  const fetchPage=(params,signal)=>api('/api/catalogue?'+new URLSearchParams(params),undefined,{signal,timeout:params.studio?60000:25000});
  const live=()=>!!section?.isConnected&&isActive();
  const label=category=>CATEGORIES.find(([key])=>key===category)?.[1]||'Каталог';
@@ -101,6 +101,8 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
    const node=paint();first||=node;
    if(!ok||first||current.end)break;
   }
+  // Pages that showed nothing (all hidden by the country filter) stop the infinite scroll; «Показати ще» goes on.
+  starved=!first&&!current.error;
   if(focusNew&&first&&live())first.focus({preventScroll:false});
  }
  async function loadGenres(){
@@ -116,7 +118,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
    target.value=model.genre;target.disabled=false;
   }catch{if(request!==genreRequest||target!==genreSelect||model.category!==category||!section?.isConnected)return;target.replaceChildren(el('option',{value:model.genre},model.genre||'Жанри недоступні'));retry.hidden=false;}
  }
- function restart(){shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;list.replaceChildren();onSelection(selection());}
+ function restart(){shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;starved=false;list.replaceChildren();onSelection(selection());}
  function selection(){return {category:model.category,filter:model.filter,genre:model.genre,...(model.studio?{studio:model.studio}:{})};}
  function select(next){
   const changedCategory=next.category!==model.category;model=modelFor(next);
@@ -126,7 +128,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
  }
  /** Infinite scroll: the next page comes while «Показати ще» is still a screen away; the button stays for errors and keyboards. */
  function autoMore(){
-  if(!live()||!model.page||model.loading||model.end||model.error||more.hidden)return;
+  if(!live()||!model.page||model.loading||model.end||model.error||more.hidden||starved)return;
   if(more.getBoundingClientRect().top>innerHeight+900)return;
   load();
  }
@@ -157,7 +159,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
    el('div',{class:'page-head'},el('div',{},el('div',{class:'eyebrow'},'КАТАЛОГ KIK'),el('h1',{},label(model.category))),count),
    el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},dropdown(genreSelect),dropdown(sort,'',{value:o=>o.value==='last'?'Нові':o.textContent}),studioControl,studioChip,genreRetry)),
    list,failure=el('div',{class:'catalogue-failure'}),el('div',{class:'catalogue-bottom'},note,more));
-  shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;main.replaceChildren(section);onSelection(selection());paintStudio();paint();loadGenres();
+  shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;starved=false;main.replaceChildren(section);onSelection(selection());paintStudio();paint();loadGenres();
   watcher?.disconnect();if(typeof IntersectionObserver!=='undefined'){watcher=new IntersectionObserver(e=>{if(e.some(x=>x.isIntersecting))autoMore();},{rootMargin:'0px 0px 900px 0px'});watcher.observe(more);}
   if(!model.page&&!model.loading)load();else if(model.loading)watch(model);
   return true;

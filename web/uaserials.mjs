@@ -14,13 +14,15 @@ const year4=v=>String(v||'').match(/(?:19|20)\d{2}/)?.[0]||'',twins=new Map();
 export async function rezkaTwin({title,original,year,series}={}){
  const y=year4(year),names=[...new Set([original,title].filter(Boolean).map(s=>String(s).trim()).filter(s=>s.length>1))].slice(0,2);if(!y||!names.length)return null;
  const key=names.join('|')+'|'+y+'|'+series;if(twins.has(key))return twins.get(key);
- let found=null;
- for(const query of names){let cards;try{cards=await catalogue({query});}catch{continue;}
-  const candidates=cards.slice(0,8).filter(c=>year4(c.info)===y&&(series===undefined||c.link.includes('/series/')===!!series||!series&&/\/(cartoons|animation)\//.test(c.link))).slice(0,3);
+ let found=null,failed=false;
+ for(const query of names){let cards;try{cards=await catalogue({query});}catch{failed=true;continue;}
+  // Anime and cartoon series live under /animation/ and /cartoons/: only /films/ or /series/ rules a card out.
+  const candidates=cards.slice(0,8).filter(c=>year4(c.info)===y&&(series===undefined||!c.link.includes(series?'/films/':'/series/'))).slice(0,3);
   // A same-year result is not enough ("Friends: The Reunion" vs a Beatles film): the original names must agree.
-  for(const c of candidates){if(!original){found=c;break;}try{const page=await film(c.link);if(sameName(page.original,original)||sameName(page.title,original)){found=c;break;}}catch{}}
+  for(const c of candidates){if(!original){found=c;break;}try{const page=await film(c.link);if(sameName(page.original,original)||sameName(page.title,original)){found=c;break;}}catch{failed=true;}}
   if(found)break;}
- if(twins.size>=300)twins.delete(twins.keys().next().value);twins.set(key,found);return found;
+ // A source that failed (paused, busy) has not said «no twin»: the next search asks again.
+ if(found||!failed){if(twins.size>=300)twins.delete(twins.keys().next().value);twins.set(key,found);}return found;
 }
 /** Search results: a title also on HDRezka becomes that playable card under its Ukrainian name, so one show appears once. */
 export async function uaSearch(params){
