@@ -49,7 +49,7 @@ async function api(request,env,ctx){
  if(path==="/api/health")return json({ok:true,service:"kik-web"});
  if(!["GET","POST"].includes(request.method)&&!(path.startsWith("/api/media/")&&request.method==="HEAD"))return json({error:"Метод недоступний"},405);
  origin(request);
- const limit=path.startsWith("/api/media/")?env.MEDIA_LIMIT:["/api/auth/login","/api/auth/register","/api/pair/start"].includes(path)?env.AUTH_LIMIT:env.API_LIMIT;
+ const limit=path.startsWith("/api/media/")?env.MEDIA_LIMIT:["/api/auth/login","/api/auth/register","/api/auth/check","/api/pair/start"].includes(path)?env.AUTH_LIMIT:env.API_LIMIT;
  if(limit&&!(await limit.limit({key:ip})).success)fail("Забагато запитів. Зачекайте хвилину.",429);
  if(publicArtworkPreview(request,env))return previewArtwork(request);
  if(path==="/api/artwork"&&request.method==="GET")return json(await artworkService.lookup(Object.fromEntries(url.searchParams),{token:env.TMDB_READ_TOKEN,cache:caches.default,origin:url.origin}));
@@ -139,7 +139,7 @@ async function api(request,env,ctx){
  if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
-  const r=json({items:await localizedCards(db,await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:params=>catalogue(params,{background:true})}))});r.headers.set("Cache-Control","public, max-age=43200");ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
+  const items=await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:params=>catalogue(params,{background:true})}),r=json({items:await localizedCards(db,items)});r.headers.set("Cache-Control","public, max-age="+(items.partial?600:43200));ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env,{waitUntil:p=>ctx.waitUntil(p)});}
  if(path==="/api/diagnostics/site"&&request.method==="POST"){const b=await body(request,2048),result=await siteReport(db,user,b);

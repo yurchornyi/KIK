@@ -58,7 +58,8 @@ function place(panel,trigger){
  // An icon-only pill (the studio filter) is too narrow to hold names: its panel gets room for them.
  const many=panel.querySelector('.dropdown-list.many'),base=r.width<80?Math.max(r.width,240):r.width;let width=Math.min(many?Math.max(base,innerWidth<=720?360:520):base,innerWidth-margin*2);
  // Player menus are as wide as their longest choice, never wider and never wrapped; a phone that cannot fit one lets it wrap.
- if(trigger.closest('.player-tools')){panel.classList.add('fit');panel.style.minWidth='0';panel.style.width='max-content';const natural=Math.ceil(panel.getBoundingClientRect().width),room=innerWidth-margin*2;panel.classList.toggle('fit',natural<=room);width=Math.min(Math.max(natural,Math.min(r.width,room)),room);}
+ // The CSS max-width would clamp the measured width to the room and keep a too-long choice on one clipped line.
+ if(trigger.closest('.player-tools')){panel.classList.add('fit');panel.style.minWidth='0';panel.style.maxWidth='none';panel.style.width='max-content';const natural=Math.ceil(panel.getBoundingClientRect().width),room=innerWidth-margin*2;panel.style.maxWidth='';panel.classList.toggle('fit',natural<=room);width=Math.min(Math.max(natural,Math.min(r.width,room)),room);}
  panel.style.width=panel.style.minWidth=width+'px';panel.style.maxHeight=(innerHeight-margin*2)+'px';
  const up=below<Math.min(panel.scrollHeight,280)&&above>below;panel.style.maxHeight=Math.max(80,up?above:below)+'px';
  const actualWidth=panel.offsetWidth,left=Math.min(Math.max(margin,r.left),innerWidth-actualWidth-margin);

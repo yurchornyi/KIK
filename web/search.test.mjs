@@ -47,6 +47,8 @@ test('similar titles: TMDB recommendations found on the catalogue first, then th
  assert.ok(tmdbCalls.every(u=>u.startsWith('https://api.themoviedb.org/3/')&&u.includes('api_key=')));
  assert.deepEqual((await similar(page.link,{token:'',load:async()=>page,search:async()=>[]})).map(i=>i.title),['Война и мир']);
  assert.equal(sameWork({name:'Озарк',first_air_date:'2017',media_type:'tv'},{link:'https://hdrezka.sh/films/drama/9-ozark-2017.html',title:'Озарк',info:'2017'}),false);
+ assert.equal(sameWork({name:'Ван Пис',first_air_date:'1999',media_type:'tv'},{link:'https://hdrezka.sh/animation/adventures/10-van-pis-1999.html',title:'Ван Пис',info:'1999'}),true);
+ assert.equal(sameWork({title:'Ван Пис',release_date:'1999',media_type:'movie'},{link:'https://hdrezka.sh/series/comedy/11-van-pis-1999.html',title:'Ван Пис',info:'1999'}),false);
 });
 test('search fixes come from Sentra; its «not sure» is an answer, and Workers AI is never asked',async()=>{
  const original=globalThis.fetch,sent=[];let reply='{"titles":["Интерстеллар"]}';

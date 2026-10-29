@@ -45,12 +45,14 @@ export async function adBreaks(db,params,now=Date.now(),{queue=true}={}){
  const e=episodeOf(params),args=[e.key,e.voice,e.season,e.episode];
  const row=await db.prepare('SELECT duration,breaks,suggested,scanned_at FROM ad_breaks WHERE title_key=? AND voice=? AND season=? AND episode=?').bind(...args).first();
  const breaks=row?cleanBreaks(JSON.parse(row.breaks),row.duration):[],suggested=row?hints(JSON.parse(row.suggested||'[]'),breaks,row.duration):[];
- if(row&&(breaks.length||now-row.scanned_at<RESCAN))return {duration:row.duration,breaks,...suggested.length?{suggested}:{}};
+ const known=row?{duration:row.duration,breaks,...suggested.length?{suggested}:{}}:{breaks:[]};
+ if(row&&(breaks.length||now-row.scanned_at<RESCAN))return known;
  // Only a signed-in player adds to the queue: anonymous requests cannot fill it with made-up episodes.
- if(!SPONSORED.has(e.voice)||!queue)return {breaks:[]};
+ // An old scan's hints stay on screen until the rescan replaces them.
+ if(!SPONSORED.has(e.voice)||!queue)return known;
  const queued=await db.prepare('SELECT COUNT(*) AS n FROM ad_scan_queue WHERE attempts<3').first();
  if((queued?.n||0)<QUEUE_MAX)await db.prepare('INSERT OR IGNORE INTO ad_scan_queue(title_key,voice,season,episode,requested_at) VALUES(?,?,?,?,?)').bind(...args,now).run();
- return {breaks:[],pending:true};
+ return {...known,pending:true};
 }
 /** The scanner PC's two calls, behind its own secret: take queued episodes, report what it found. */
 export async function adScanner(request,db,env,path,readBody,now=Date.now()){

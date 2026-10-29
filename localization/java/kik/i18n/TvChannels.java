@@ -38,6 +38,11 @@ public final class TvChannels {
   prefs(c).edit().putString("profile",profile).apply();Log.d(TAG,"Last playing profile is now "+profile);
   IO.execute(()->publish(c,true));
  }
+ /** A profile left the TV (deleted, or its account signed out): if the channels showed it, its titles leave the launcher now, not at the next refresh. */
+ public static void removed(Context context,String profile){
+  if(!supported())return;Context c=context.getApplicationContext();String last=prefs(c).getString("profile",null);if(last!=null&&!last.equals(profile))return;
+  prefs(c).edit().remove("profile").apply();IO.execute(()->publish(c,true));
+ }
  /** Playback stopped: the position changed, so Continue is rebuilt from local history. */
  public static void stopped(Context context){if(!supported())return;Context c=context.getApplicationContext();IO.execute(()->publish(c,false));}
  /** On app start: the periodic refresh, and a first publication if the channels are not there yet. */
