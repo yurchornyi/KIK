@@ -60,6 +60,7 @@ public final class BasicSettingsActivity extends Activity {
   Switch next=toggle(playback,"Наступна серія автоматично",prefs.getBoolean("auto_play_next_episode",true));
   next.setOnCheckedChangeListener((v,on)->{prefs.edit().putBoolean("auto_play_next_episode",on).apply();UiRuntime.updateState("E",on);});
   Switch intro=toggle(playback,"Заставка перед відео",prefs.getBoolean("intro",true));intro.setOnCheckedChangeListener((v,on)->prefs.edit().putBoolean("intro",on).apply());
+  Switch even=toggle(playback,"Однакова гучність фільмів",prefs.getBoolean(Loudness.PREF,true));even.setOnCheckedChangeListener((v,on)->prefs.edit().putBoolean(Loudness.PREF,on).apply());
 
   LinearLayout countries=card(left,"Каталог","Приховайте країни, які не хочете бачити в добірках.");
   Set<String> hidden=new LinkedHashSet<>(CountryFilter.excluded());GridLayout countryGrid=new GridLayout(this);countryGrid.setColumnCount(2);countryGrid.setClipChildren(false);countryGrid.setClipToPadding(false);countries.addView(countryGrid);

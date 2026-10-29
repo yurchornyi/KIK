@@ -63,6 +63,21 @@ if [ "${KIK_AUDIT_MODE:-full}" = accounts ]; then
  python3 -c 'import json; assert json.load(open("outputs/design-audit/accounts.json"))["passed"]'
  exit 0
 fi
+if [ "${KIK_AUDIT_MODE:-full}" = loudness ]; then
+ # Two black clips with a 440 Hz tone 20 dB apart; the audit copies them from /data/local/tmp into KIK's files.
+ clips=$(mktemp -d)
+ for spec in quiet:-30 loud:-10; do
+  amp=$(python3 -c "print(8*10**(${spec#*:}/20)*2**0.5)")
+  ffmpeg -loglevel error -y -f lavfi -i color=c=black:s=640x360:r=25:d=14 -f lavfi -i sine=frequency=440:sample_rate=48000:duration=14 -filter_complex "[1:a]volume=$amp,aformat=channel_layouts=stereo[a]" -map 0:v -map "[a]" -c:v libx264 -pix_fmt yuv420p -c:a aac -b:a 128k -shortest "$clips/loudness-${spec%%:*}.mp4"
+  adb -s "$DEVICE" push "$clips/loudness-${spec%%:*}.mp4" /data/local/tmp/ >/dev/null
+  adb -s "$DEVICE" shell chmod 644 "/data/local/tmp/loudness-${spec%%:*}.mp4"
+ done
+ rm -rf "$clips"
+ adb -s "$DEVICE" shell am instrument -w -r kik.audit/kik.qa.LoudnessAudit | tee outputs/design-audit/loudness-instrumentation.txt
+ adb -s "$DEVICE" shell rm -f /data/local/tmp/loudness-quiet.mp4 /data/local/tmp/loudness-loud.mp4
+ grep -q "Loudness passed=true" outputs/design-audit/loudness-instrumentation.txt
+ exit 0
+fi
 AUDIT_SCREEN_ARGS=(-e noScreenshots false)
 if [ "${KIK_AUDIT_NO_SCREENSHOTS:-0}" = 1 ]; then AUDIT_SCREEN_ARGS=(-e noScreenshots true); fi
 adb -s "$DEVICE" shell am instrument -w -r "${AUDIT_SCREEN_ARGS[@]}" kik.audit/kik.qa.AuditRunner | tee outputs/design-audit/instrumentation.txt
