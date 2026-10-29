@@ -2,8 +2,8 @@ package kik.qa;
 import android.app.*;import android.content.*;import android.graphics.*;import android.os.*;import android.text.Layout;import android.widget.*;import java.io.*;import java.lang.reflect.*;import java.util.*;import org.json.*;import kik.i18n.*;
 
 /**
- * The home hero's description reads whole on every slide: it fits its two lines, nothing is cut by the view, and it ends
- * on a sentence (a word cut with «…» only when no sentence fits). Runs on the real catalogue with a made-up profile and
+ * The home hero's description reads whole on every slide: it fits its four lines (three under a resume line), nothing is cut by the view, it ends
+ * on a sentence (a cut with «…» only when no sentence fits), and a title with KIK's short synopsis shows that synopsis. Runs on the real catalogue with a made-up profile and
  * only that profile in the list; the TV's own accounts and profiles are put back afterwards.
  */
 public final class HeroAudit extends Instrumentation {
@@ -42,7 +42,9 @@ public final class HeroAudit extends Instrumentation {
     boolean sentence=shown.trim().matches("(?s).*[.!?…][»\"”)]?$");
     String title=ui(()->((TextView)field(h,"heroTitle")).getText().toString());
     Bundle b=new Bundle();b.putString("stream","  "+title+": "+shown+"\n");sendStatus(0,b);
-    check("slide "+(n+1)+" fits two lines whole",!shown.isEmpty()&&lines<=2&&cut==0);
+    int room=ui(text::getMaxLines);check("slide "+(n+1)+" fits its "+room+" lines whole",!shown.isEmpty()&&lines<=room&&room<=4&&cut==0);
+    String link=ui(()->(String)field(((List<?>)field(h,"slides")).get(at),"link"));Method cached=Class.forName("kik.i18n.Synopsis").getDeclaredMethod("cached",Context.class,String.class);cached.setAccessible(true);String synopsis=(String)cached.invoke(null,c,link);
+    if(synopsis!=null)check("slide "+(n+1)+" says what it is about with KIK's synopsis",shown.length()>20&&synopsis.startsWith(shown.replaceAll("…$","").substring(0,20)));
     check("slide "+(n+1)+" ends on a sentence or a marked cut",sentence);
     // «…» only when no sentence was there to end on: a whole one, however short, is shown instead.
     check("slide "+(n+1)+" is cut only when no sentence fits",!shown.endsWith("…")||!shown.matches("(?s).*[.!?] .*"));

@@ -59,12 +59,13 @@ public final class HomeActivity extends Activity {
   LinearLayout info=heroInfo=new LinearLayout(this);info.setOrientation(1);info.setClipChildren(false);info.setClipToPadding(false);info.setPadding(dp(40),dp(6),dp(40),dp(12));info.setMinimumHeight(dp(200));info.setGravity(Gravity.BOTTOM);
   heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setLetterSpacing(-0.01f);heroTitle.setShadowLayer(dp(10),0,dp(1),0x99000000);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
   heroMeta=text("",15,0xffd8d8dc);heroMeta.setTypeface(Ui.MEDIUM);heroMeta.setSingleLine(true);heroMeta.setEllipsize(TextUtils.TruncateAt.END);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
-  heroText=text("",14,0xffd0d0d4);heroText.setLines(2);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
+  heroText=text("",14,0xffd0d0d4);heroText.setLines(HERO_LINES);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
   info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
   heroResume=new LinearLayout(this);heroResume.setOrientation(0);heroResume.setGravity(Gravity.CENTER_VERTICAL);
   FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0xff4a4a50,dp(2),0,0));heroBar=new View(this);heroBar.setBackground(Ui.shape(RED,dp(2),0,0));track.addView(heroBar,new FrameLayout.LayoutParams(0,-1));
   LinearLayout.LayoutParams trackLp=new LinearLayout.LayoutParams(dp(120),dp(4));trackLp.setMargins(0,0,dp(12),0);heroResume.addView(track,trackLp);heroResume.addView(heroSub);
-  info.addView(heroResume);space(info,8);
+  // The resume line is as tall as a line of the description below: one takes the other's place, so the buttons stay put.
+  info.addView(heroResume,new LinearLayout.LayoutParams(-2,heroText.getLineHeight()));heroResume.setVisibility(View.GONE);space(info,8);
   heroWidth=Ui.contentWidth(this,500,80);info.addView(heroText,new LinearLayout.LayoutParams(heroWidth,-2));space(info,14);
   LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);
   // The row's padding leaves room for the focus ring and zoom; pulled back by it, the buttons start where the title does, as on the film page.
@@ -80,6 +81,10 @@ public final class HomeActivity extends Activity {
   more.setOnKeyListener((v,k,e)->k==KeyEvent.KEYCODE_DPAD_RIGHT&&e.getAction()==KeyEvent.ACTION_DOWN&&turn(1));
   dots=new LinearLayout(this);dots.setOrientation(0);dots.setGravity(Gravity.CENTER_VERTICAL);LinearLayout.LayoutParams dl=new LinearLayout.LayoutParams(-2,dp(6));dl.topMargin=dp(16);info.addView(dots,dl);
   content.addView(info);
+  // As tall as with four lines of description, the room for it: a shorter one leaves the space above the title, so the
+  // date, the description and the buttons stay together and the buttons stay put from slide to slide.
+  heroText.setLines(HERO_LINES);info.measure(View.MeasureSpec.makeMeasureSpec(getResources().getDisplayMetrics().widthPixels,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
+  info.getLayoutParams().height=info.getMeasuredHeight();heroText.setMinLines(1);
   Ui.enter(info,60);
   heroText.setText("Завантаження…");
   ProfileStore.askOnce(this);
@@ -467,7 +472,7 @@ public final class HomeActivity extends Activity {
   // Home redraws every few seconds while it syncs: the same picks keep the slide on screen and its timer.
   StringBuilder keys=new StringBuilder();for(Item i:found)keys.append(norm(i.link)).append(',');
   if(keys.toString().equals(slideKeys)&&!slides.isEmpty())return;
-  slideKeys=keys.toString();candidates=found;arrange();keepTurn();wideArt(found);
+  slideKeys=keys.toString();candidates=found;arrange();prefetchSynopses(slides);keepTurn();wideArt(found);
  }
  /** Up to 10 slides. Once three or more picks have a wide picture, only those are shown, so the hero is always filled
  *  like the website's; until then (or without enough), the rest follow with their posters. */
@@ -478,7 +483,7 @@ public final class HomeActivity extends Activity {
   if(links.isEmpty())return;
   Ui.bg(()->{final Map<String,String> art=TvChannels.backdrops(this,links,titles);main.post(()->{if(destroyed)return;boolean any=false;
    for(Item x:want){String w=art.get(norm(x.link));if(w==null)continue;x.wide=w;x.wideArt=true;any=true;if(hero==x)Images.crossfade(w,heroImage);}
-   if(!any||slides.isEmpty()||want!=candidates)return;arrange();keepTurn();});});
+   if(!any||slides.isEmpty()||want!=candidates)return;arrange();prefetchSynopses(slides);keepTurn();});});
  }
  private void showSlide(int n){borrowed=false;slide=n;setHero(slides.get(n));scheduleSlide();paintDots();}
  /** One turn ends, the next begins; a borrowed turn ends too, even with a single slide. */
@@ -486,17 +491,28 @@ public final class HomeActivity extends Activity {
  private static final long SLIDE_MS=9000;private long slideAt;
  /** A title on the hero that is not a slide of its own: it holds the current pill for one turn. */
  private boolean borrowed;
- private int heroWidth;private static final java.util.Set<String> SYNOPSIS_ASKED=java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+ private int heroWidth;private static final int HERO_LINES=4;
+ private static final java.util.Set<String> SYNOPSIS_ASKED=java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+ private Runnable synopsisTask=()->{};
  /**
-  * The hero's two lines say something whole, never a sentence cut at «…»: see {@link Synopsis#brief}. KIK's short synopsis
-  * is asked for the show's own slides only: a focused card uses one already on the TV, so browsing spends no AI.
+  * The hero's up to four lines (three under a resume line) say what the title is about, whole: see {@link Synopsis#brief}. A missing synopsis is asked once
+  * per run: at once for the show's own slides, for a focused card only once the focus rests on it. The server keeps
+  * every synopsis it wrote and caps new ones a day, so browsing costs little.
   */
+ /** The slides' synopses are fetched one by one as soon as the show is known, so a slide opens on its synopsis, not on the description. */
+ private void prefetchSynopses(List<Item> items){
+  final List<String> links=new ArrayList<String>();for(Item x:items)if(Synopsis.cached(this,x.link)==null&&SYNOPSIS_ASKED.add(norm(x.link)))links.add(x.link);
+  if(links.isEmpty())return;final Context app=getApplicationContext();
+  Ui.bg(()->{for(final String link:links){if(destroyed)return;if(Synopsis.fetch(app,link)!=null)main.post(()->{if(!destroyed&&hero!=null&&norm(hero.link).equals(norm(link)))heroDescription(hero);});}});
+ }
  private void heroDescription(final Item i){
-  final String full=i.description==null?"":i.description.trim(),known=Synopsis.cached(this,i.link);
-  heroText.setText(Synopsis.brief(full,known,heroText.getPaint(),heroWidth,1.12f,2));
-  if(known!=null||borrowed||full.isEmpty()||Synopsis.fits(full,heroText.getPaint(),heroWidth,1.12f,2)||!SYNOPSIS_ASKED.add(norm(i.link)))return;
+  String full=i.description==null?"":i.description.trim(),known=Synopsis.cached(this,i.link);
+  heroText.setText(Synopsis.brief(full,known,heroText.getPaint(),heroWidth,1.12f,heroText.getMaxLines()));
+  main.removeCallbacks(synopsisTask);if(known!=null||SYNOPSIS_ASKED.contains(norm(i.link)))return;
   final Context app=getApplicationContext();
-  Ui.bg(()->{final String got=Synopsis.fetch(app,i.link);if(got==null)return;main.post(()->{if(destroyed||hero!=i)return;heroText.setText(Synopsis.brief(full,got,heroText.getPaint(),heroWidth,1.12f,2));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();});});
+  synopsisTask=()->{if(destroyed||hero!=i||!SYNOPSIS_ASKED.add(norm(i.link)))return;
+   Ui.bg(()->{final String got=Synopsis.fetch(app,i.link);if(got==null)return;main.post(()->{if(destroyed||hero!=i)return;heroText.setText(Synopsis.brief(i.description,got,heroText.getPaint(),heroWidth,1.12f,heroText.getMaxLines()));heroText.setAlpha(0.3f);heroText.animate().alpha(1f).setDuration(260).start();});});};
+  main.postDelayed(synopsisTask,borrowed?900:0);
  }
  /**
   * A focused card features its title, Netflix-style, while the show goes on: a title among the slides makes the show jump
@@ -525,10 +541,10 @@ public final class HomeActivity extends Activity {
   fill.animate().scaleX(1f).setDuration(SLIDE_MS-spent).setInterpolator(new android.view.animation.LinearInterpolator()).start();}}
 
  private void setHero(Item i){
-  if(i==hero)return;hero=i;expanded=false;heroText.setLines(2);
+  if(i==hero)return;hero=i;expanded=false;heroText.setMaxLines(i.resume?HERO_LINES-1:HERO_LINES);
   heroTitle.setText(tr(i.title));
   heroMeta.setText(facts(i));
-  heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.INVISIBLE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();
+  heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.GONE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();
   // Continue fills up to where the title was left and says how much is left, like the launcher's Now Playing card.
   HeroActions.label(watch,i.resume?(i.left>0?"Продовжити · ще "+Ui.minutes(i.left):"Продовжити"):"Дивитися",HeroActions.PLAY);
   Ui.watched(watch,i.resume&&i.left>0?i.progress:0);
