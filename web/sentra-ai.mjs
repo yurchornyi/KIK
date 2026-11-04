@@ -17,7 +17,7 @@ async function viaSentra(env,{skill,role,messages,maxTokens,temperature,json,tim
 }
 /** Tells Sentra an answer was unusable (POST /v1/feedback, «rejected»): it counts against the model on the skill's ladder
  * and into its next lesson. Best effort: a lost report changes nothing for the viewer. */
-async function reportRejected(env,sample,note){
+export async function reportRejected(env,sample,note){
  if(!sample)return;
  await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/feedback',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim()},body:JSON.stringify({sample,signal:'rejected',note:String(note).slice(0,200)}),signal:AbortSignal.timeout(3000)}).catch(()=>{});
 }
@@ -37,4 +37,30 @@ export async function complete(env,{skill,role='fast',messages,maxTokens,tempera
  let why='no usable value';
  try{const value=accept(raw);if(value!=null)return {value,by:'sentra'};}catch(err){why=err?.message||why;}
  console.warn(label+': Sentra answered unusably, plain result kept');await reportRejected(env,sample,label+': '+why);return {value:null,why:'rejected'};
+}
+
+/**
+ * Background work for Sentra (POST /v1/jobs): the owner's PC answers it with no viewer waiting, or Sentra's cloud
+ * when the PC is away. Asked only after a live answer failed (owner, 04.11: «тре задіювати локальну ллм більше»), once
+ * per title or taste: `key` makes a repeat the same job. Returns the job id, or null (no Sentra, a limit, an error).
+ */
+export async function submitJob(env,{skill,role='quality',messages,maxTokens,temperature=0,json=false,key,hours=12}){
+ if(!sentraReady(env))return null;
+ try{
+  const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/jobs',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim(),'x-sentra-skill':skill},body:JSON.stringify({kind:'chat',idempotencyKey:jobKey(key),deadlineSeconds:Math.round(hours*3600),fallback:true,body:{model:'role:'+role,messages,max_tokens:maxTokens,temperature,...(json?{response_format:{type:'json_object'}}:{})}}),signal:AbortSignal.timeout(5000)});
+  if(!r.ok)return null;const id=String((await r.json())?.id||'');return id||null;
+ }catch{return null;}
+}
+/** Sentra's idempotency key: Latin letters, digits and . _ : - only, at most 128. */
+export const jobKey=key=>String(key).replace(/[^A-Za-z0-9._:-]+/g,'_').slice(0,128);
+/** A job's state: {state:'done',content,sample}, 'queued' / 'running' while it waits, else 'gone' (failed, expired, unknown). */
+export async function jobAnswer(env,id){
+ if(!sentraReady(env)||!id)return {state:'gone'};
+ try{
+  const r=await fetch(String(env.SENTRA_URL).replace(/\/+$/,'')+'/v1/jobs/'+encodeURIComponent(id),{headers:{Authorization:'Bearer '+String(env.SENTRA_TOKEN).trim()},signal:AbortSignal.timeout(5000)});
+  if(!r.ok)return {state:r.status===404?'gone':'queued'};
+  const job=await r.json();
+  if(job?.state==='done')return {state:'done',content:String(job.result?.choices?.[0]?.message?.content??(typeof job.result==='string'?job.result:'')),sample:String(job.sampleId||'')};
+  return {state:job?.state==='queued'||job?.state==='running'?job.state:'gone'};
+ }catch{return {state:'queued'};}
 }

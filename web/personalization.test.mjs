@@ -43,3 +43,15 @@ test('the request is genres, country, kind and loglines with empty fields left o
  assert.deepEqual(request.taste,[{title:'Space story',genres:'Космос, Драма',affinity:6},{title:'Watching now',affinity:3,watched:'Переглянуто 20 хв',about:logline}]);
  list[1]={...list[1],data:{...list[1].data,pos:1800000,watched:1800000}};assert.equal((await recommendations(db,profile,candidates,env)).mode,'ai');assert.equal(sent.length,1,'more minutes of the same watching keep the AI answer');
 }));
+test('a ranking Sentra could not give in time is made by the PC in the background, without the profile ID, and used next time',()=>{let jobState='queued';return viaSentra((n)=>null,async(env,sent)=>{
+ const original=globalThis.fetch;globalThis.fetch=async(url,opts)=>{url=String(url);sent.push({url,opts});if(url.endsWith('/v1/chat/completions'))return new Response('busy',{status:502});if(url.endsWith('/v1/jobs'))return Response.json({id:'11111111-2222-3333-4444-555555555555'},{status:202});return Response.json(jobState==='done'?{state:'done',result:{choices:[{message:{content:'{"order":[3,1,0,2]}'}}]}}:{state:jobState});};
+ try{
+  const db=database(records),jobs=new Map(),prepare=db.prepare;db.prepare=sql=>sql.includes('ai_jobs')?{bind:(...a)=>({first:async()=>jobs.get(a[0])??null,run:async()=>{if(sql.startsWith('INSERT'))jobs.set(a[0],{job_id:a[1],meta:a[2]});else jobs.delete(a[0]);}})}:prepare(sql);
+  const profile={id:'secret-profile-id',enhanced_recs:1};
+  assert.equal((await recommendations(db,profile,candidates,env)).mode,'standard');assert.equal(jobs.size,1);
+  const job=sent.find(s=>s.url.endsWith('/v1/jobs'));assert.ok(job);assert.ok(!job.opts.body.includes('secret-profile-id'));assert.equal(job.opts.headers['x-sentra-skill'],'kik-recommendations');
+  db.state.cache.updated_at-=1800001;
+  assert.equal((await recommendations(db,profile,candidates,env)).status,'pending');
+  jobState='done';const r=await recommendations(db,profile,candidates,env);assert.equal(r.mode,'ai');assert.equal(jobs.size,0);assert.equal(db.state.cache.mode,'ai');
+ }finally{globalThis.fetch=original;}
+});});
