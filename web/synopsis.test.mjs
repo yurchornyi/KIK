@@ -54,3 +54,21 @@ test('the logline prompt keeps the model to the description: no made-up roles, n
  try{await synopsis(fakeDb(),{SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},link,async()=>page,async(d,f)=>f);}finally{globalThis.fetch=original;}
  assert.match(system,/Пиши лише те, що є в описі/);assert.doesNotMatch(system,/загальновідомі факти/);
 });
+test('a live answer that failed is written by the PC in the background and taken on the next open',async()=>{
+ const original=globalThis.fetch,warn=console.warn,calls=[];console.warn=()=>{};let jobState='queued';
+ const good='Біографічна драма про ченця Паїсія, який виростає серед вигнання й війни та шукає віру, якої йому бракує.';
+ globalThis.fetch=async(url,init)=>{url=String(url);calls.push(url);
+  if(url.endsWith('/v1/chat/completions'))return new Response('busy',{status:502});
+  if(url.endsWith('/v1/jobs'))return Response.json({id:'11111111-2222-3333-4444-555555555555'},{status:202});
+  if(url.includes('/v1/jobs/'))return Response.json(jobState==='done'?{state:'done',result:{choices:[{message:{content:good}}]}}:{state:jobState});
+  return new Response('?',{status:404});};
+ const jobs=new Map(),db=fakeDb(),prepare=db.prepare;
+ db.prepare=sql=>sql.includes('ai_jobs')?{bind:(...a)=>({first:async()=>jobs.get(a[0])??null,run:async()=>{if(sql.startsWith('INSERT'))jobs.set(a[0],{job_id:a[1]});else jobs.delete(a[0]);}})}:prepare(sql);
+ const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},open=()=>synopsis(db,env,link,async()=>page,async(d,f)=>f);
+ try{
+  assert.deepEqual(await open(),{summary:null,status:'pending'});assert.equal(jobs.size,1);
+  assert.deepEqual(await open(),{summary:null,status:'pending'});assert.equal(calls.filter(u=>u.endsWith('/v1/chat/completions')).length,1,'no second live call while the PC works');
+  jobState='done';assert.deepEqual(await open(),{summary:good,cached:false});assert.equal(jobs.size,0);
+  assert.equal((await open()).summary,good);
+ }finally{globalThis.fetch=original;console.warn=warn;}
+});
