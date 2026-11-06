@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {cleanSynopsis,synopsis,SYNOPSIS_MIN,SYNOPSIS_MAX} from './synopsis.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {cleanSynopsis,synopsis,synopsisNight,NIGHT_TITLES,NIGHT_RESERVE,SYNOPSIS_DAILY,SYNOPSIS_MIN,SYNOPSIS_MAX} from './synopsis.mjs';
 function fakeDb(){const cache=new Map(),budget=new Map();return {cache,budget,prepare(sql){return {bind(...a){return {
  async first(){if(sql.startsWith('SELECT summary'))return cache.get(a[0])??null;if(sql.startsWith('INSERT INTO ai_daily_budget')){const n=(budget.get(a[0])||0)+1;if(n>a[1])return null;budget.set(a[0],n);return {calls:n};}return null;},
  async run(){if(sql.startsWith('INSERT INTO synopsis_cache'))cache.set(a[0],{summary:a[1],updated_at:a[2]});if(sql.startsWith('UPDATE ai_daily_budget'))budget.set(a[1],Math.max(0,(budget.get(a[1])||0)-a[0]));}};}};}};}
@@ -71,4 +71,34 @@ test('a live answer that failed is written by the PC in the background and taken
   jobState='done';assert.deepEqual(await open(),{summary:good,cached:false});assert.equal(jobs.size,0);
   assert.equal((await open()).summary,good);
  }finally{globalThis.fetch=original;console.warn=warn;}
+});
+
+test('at night popular and new titles without a logline get a PC job each, and finished jobs are saved',async()=>{
+ const original=globalThis.fetch,submitted=[];let done=false;
+ const good='Біографічна драма про ченця Паїсія, який виростає серед вигнання й війни та шукає віру, якої йому бракує.';
+ globalThis.fetch=async(url,init)=>{url=String(url);
+  if(url.endsWith('/v1/chat/completions'))throw Error('no live call at night');
+  if(url.endsWith('/v1/jobs')){const body=JSON.parse(init.body);submitted.push(body.idempotencyKey);assert.equal(init.headers['x-sentra-skill'],'kik-synopsis');assert.equal(body.fallback,true);return Response.json({id:'job-'+submitted.length},{status:202});}
+  if(url.includes('/v1/jobs/'))return Response.json(done?{state:'done',result:{choices:[{message:{content:good}}]}}:{state:'queued'});
+  return new Response('?',{status:404});};
+ const cache=new Map([['films/drama/1-cached.html',{summary:'є'}]]),jobs=new Map(),budget=new Map();
+ const db={prepare(sql){return {bind(...a){return {
+  async first(){if(sql.startsWith('SELECT 1 FROM synopsis_cache'))return cache.has(a[0])||jobs.has(a[1])?{1:1}:null;if(sql.startsWith('INSERT INTO ai_daily_budget')){const n=(budget.get(a[0])||0)+1;if(n>a[1])return null;budget.set(a[0],n);return {calls:n};}return null;},
+  async run(){if(sql.startsWith('INSERT INTO ai_jobs'))jobs.set(a[0],{job_key:a[0],job_id:a[1]});if(sql.startsWith('DELETE FROM ai_jobs'))jobs.delete(a[0]);if(sql.startsWith('INSERT INTO synopsis_cache'))cache.set(a[0],{summary:a[1]});if(sql.startsWith('UPDATE ai_daily_budget'))budget.set(a[1],Math.max(0,(budget.get(a[1])||0)-a[0]));}};},
+  async all(){return {results:[...jobs.values()]};}};}};
+ const card=n=>({link:'https://hdrezka.sh/films/drama/'+n+'.html'});
+ const list=async({filter})=>filter==='popular'?[card('1-cached'),...Array.from({length:12},(_,i)=>card(String(i+2)+'-new'))]:[card('2-new'),card('uaserials/x')];
+ const loads=[];const load=async(link,options)=>{loads.push(options?.background);return page;};
+ const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'};
+ try{
+  const first=await synopsisNight(db,env,{list,load,localize:async(d,f)=>f});
+  assert.deepEqual(first,{saved:0,rejected:0,queued:NIGHT_TITLES});
+  assert.ok(!submitted.some(key=>key.includes('1-cached')),'a title with a logline is skipped');
+  assert.ok(loads.every(Boolean),'the source is asked as background work');
+  // The next run: the PC finished them, they are saved; ten more are queued, but never past the viewers' reserve.
+  done=true;budget.set([...budget.keys()][0],SYNOPSIS_DAILY-NIGHT_RESERVE-1);
+  const second=await synopsisNight(db,env,{list,load,localize:async(d,f)=>f});
+  assert.equal(second.saved,NIGHT_TITLES);assert.equal(second.queued,1);
+  assert.equal(cache.get('films/drama/2-new.html').summary,good);
+ }finally{globalThis.fetch=original;}
 });
