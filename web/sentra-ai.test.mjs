@@ -1,9 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {complete,SENTRA_DAILY} from './sentra-ai.mjs';
-import {RECS_DAILY} from './recommendations.mjs';import {SYNOPSIS_DAILY} from './synopsis.mjs';import {FIX_DAILY} from './search-fix.mjs';import {AD_FRAMES_DAILY,AD_FRAMES_PER_CALL} from './ad-breaks.mjs';
+import {RECS_DAILY} from './recommendations.mjs';import {SYNOPSIS_DAILY,NIGHT_DAILY} from './synopsis.mjs';import {FIX_DAILY} from './search-fix.mjs';import {AD_FRAMES_DAILY,AD_FRAMES_PER_CALL} from './ad-breaks.mjs';
 test('KIK\'s own daily caps together stay under Sentra\'s daily limit for KIK',()=>{
  // A frame call of 16 is six Sentra requests (three frames each).
  const frameRequests=Math.ceil(AD_FRAMES_DAILY/AD_FRAMES_PER_CALL)*Math.ceil(AD_FRAMES_PER_CALL/3);
- assert.ok(RECS_DAILY+SYNOPSIS_DAILY+FIX_DAILY+frameRequests<=SENTRA_DAILY,'caps add up to '+(RECS_DAILY+SYNOPSIS_DAILY+FIX_DAILY+frameRequests));
+ assert.ok(RECS_DAILY+SYNOPSIS_DAILY+NIGHT_DAILY+FIX_DAILY+frameRequests<=SENTRA_DAILY,'caps add up to '+(RECS_DAILY+SYNOPSIS_DAILY+NIGHT_DAILY+FIX_DAILY+frameRequests));
 });
 test('complete says why there is no answer and logs the HTTP status; a 429 is not logged as a failure',async()=>{
  const original=globalThis.fetch,warn=console.warn,logged=[];let reply;console.warn=m=>logged.push(m);globalThis.fetch=async()=>reply();

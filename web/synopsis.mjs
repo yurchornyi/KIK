@@ -60,14 +60,14 @@ export async function synopsis(db,env,link,load=film,localize=localizedFilm,{gen
  pending.set(key,task);return task;
 }
 
-/** Night (owner, 06.11 «задіяти ПК для всіх проектів»): a run writes this many new loglines at most, and leaves the day's
- *  budget this much for viewers who open a title that still has none. */
-export const NIGHT_TITLES=10,NIGHT_RESERVE=30;
+/** Night (owner, 06.11 «задіяти ПК для всіх проектів»): a run writes this many new loglines at most, a night this many
+ *  in all, on a budget of its own: the viewers' SYNOPSIS_DAILY stays whole (owner: only more, never less). */
+export const NIGHT_TITLES=10,NIGHT_DAILY=20;
 const saveSynopsis=(db,key,summary)=>db.prepare('INSERT INTO synopsis_cache(title_key,summary,updated_at) VALUES(?,?,?) ON CONFLICT(title_key) DO UPDATE SET summary=excluded.summary,updated_at=excluded.updated_at').bind(key,summary,Date.now()).run();
 /**
  * The night's loglines, written ahead on the owner's PC: the loglines its jobs finished are saved (as a viewer's open
- * would), then popular and new titles with none get a job each, up to NIGHT_TITLES a run, inside the day's budget less
- * NIGHT_RESERVE. A title page then has its logline without a live call, and the recommendations read it too. The source
+ * would), then popular and new titles with none get a job each, up to NIGHT_TITLES a run and NIGHT_DAILY a night, on a
+ * budget of their own. A title page then has its logline without a live call, and the recommendations read it too. The source
  * is asked as background work (a viewer's request goes first) and the run stops at its first refusal.
  */
 export async function synopsisNight(db,env,{list=catalogue,load=film,localize=localizedFilm}={}){
@@ -91,8 +91,8 @@ export async function synopsisNight(db,env,{list=catalogue,load=film,localize=lo
   if(await db.prepare('SELECT 1 FROM synopsis_cache WHERE title_key=? UNION ALL SELECT 1 FROM ai_jobs WHERE job_key=?').bind(key,'synopsis:'+key).first())continue;
   let request;try{request=await synopsisRequest(db,key,(link)=>load(link,{background:true}),localize);}catch{break;}
   if(!request)continue;
-  const day='synopsis:'+new Date().toISOString().slice(0,10);
-  if(!await db.prepare('INSERT INTO ai_daily_budget(day,calls) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1 WHERE calls<? RETURNING calls').bind(day,SYNOPSIS_DAILY-NIGHT_RESERVE).first())break;
+  const day='synopsis-night:'+new Date().toISOString().slice(0,10);
+  if(!await db.prepare('INSERT INTO ai_daily_budget(day,calls) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1 WHERE calls<? RETURNING calls').bind(day,NIGHT_DAILY).first())break;
   const id=await submitJob(env,{skill:'kik-synopsis',role:'quality',messages:request.messages,maxTokens:220,temperature:.3,key:'kik-synopsis:'+key});
   if(!id){await giveBack(db,day);break;}
   await db.prepare('INSERT INTO ai_jobs(job_key,job_id,meta,created_at) VALUES(?,?,NULL,?) ON CONFLICT(job_key) DO UPDATE SET job_id=excluded.job_id,created_at=excluded.created_at').bind('synopsis:'+key,id,Date.now()).run();

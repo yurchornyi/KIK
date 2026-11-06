@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {cleanSynopsis,synopsis,synopsisNight,NIGHT_TITLES,NIGHT_RESERVE,SYNOPSIS_DAILY,SYNOPSIS_MIN,SYNOPSIS_MAX} from './synopsis.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {cleanSynopsis,synopsis,synopsisNight,NIGHT_TITLES,NIGHT_DAILY,SYNOPSIS_MIN,SYNOPSIS_MAX} from './synopsis.mjs';
 function fakeDb(){const cache=new Map(),budget=new Map();return {cache,budget,prepare(sql){return {bind(...a){return {
  async first(){if(sql.startsWith('SELECT summary'))return cache.get(a[0])??null;if(sql.startsWith('INSERT INTO ai_daily_budget')){const n=(budget.get(a[0])||0)+1;if(n>a[1])return null;budget.set(a[0],n);return {calls:n};}return null;},
  async run(){if(sql.startsWith('INSERT INTO synopsis_cache'))cache.set(a[0],{summary:a[1],updated_at:a[2]});if(sql.startsWith('UPDATE ai_daily_budget'))budget.set(a[1],Math.max(0,(budget.get(a[1])||0)-a[0]));}};}};}};}
@@ -95,8 +95,10 @@ test('at night popular and new titles without a logline get a PC job each, and f
   assert.deepEqual(first,{saved:0,rejected:0,queued:NIGHT_TITLES});
   assert.ok(!submitted.some(key=>key.includes('1-cached')),'a title with a logline is skipped');
   assert.ok(loads.every(Boolean),'the source is asked as background work');
-  // The next run: the PC finished them, they are saved; ten more are queued, but never past the viewers' reserve.
-  done=true;budget.set([...budget.keys()][0],SYNOPSIS_DAILY-NIGHT_RESERVE-1);
+  // The night's own budget: the viewers' one is never touched.
+  assert.deepEqual([...budget.keys()].map(k=>k.split(':')[0]),['synopsis-night']);
+  // The next run: the PC finished them, they are saved; more are queued, but never past the night's budget.
+  done=true;budget.set([...budget.keys()][0],NIGHT_DAILY-1);
   const second=await synopsisNight(db,env,{list,load,localize:async(d,f)=>f});
   assert.equal(second.saved,NIGHT_TITLES);assert.equal(second.queued,1);
   assert.equal(cache.get('films/drama/2-new.html').summary,good);
