@@ -39,7 +39,7 @@ test('without a token the site keeps its own artwork and never calls TMDB',async
 test('lookup searches, picks images, sends the token only in the header and caches',async()=>{
  const {fetcher,calls}=mockTmdb([['/search/movie',{results:[{id:157336,title:'Интерстеллар',release_date:'2014-11-05'}]}],['/movie/157336?',{posters:[poster],backdrops:[backdrop]}]]);
  const service=createArtworkService({fetcher});
- const [a,b]=await Promise.all([service.lookup({link,title:'Интерстеллар'},{token:'secret'}),service.lookup({link,title:'Интерстеллар'},{token:'secret'})]);
+ const a=await service.lookup({link,title:'Интерстеллар'},{token:'secret'}),b=await service.lookup({link,title:'Интерстеллар'},{token:'secret'});
  assert.equal(a.artwork.id,157336);assert.equal(a.artwork.page,'https://www.themoviedb.org/movie/157336');assert.deepEqual(a,b);
  assert.equal(calls.length,2);
  for(const c of calls){assert.equal(c.init.headers.Authorization,'Bearer secret');assert.ok(['follow','manual'].includes(c.init.redirect),'Workers reject other redirect modes');assert.ok(!c.url.includes('secret'));}

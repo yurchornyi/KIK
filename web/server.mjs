@@ -27,7 +27,9 @@ const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status
  * An answer `keep` refuses (Sentra failed) is neither stored nor kept by the browser, so a later request asks again;
  * a stored copy answers meanwhile.
  */
-const refreshing=new Map();
+// URL → when its background refresh started. A refresh still marked after REFRESH_STALE is taken as dead (a Worker's
+// promise never settles once its request is cancelled), so it can no longer block that URL's refresh for the isolate's life.
+const refreshing=new Map(),REFRESH_STALE=120000;
 async function edgeCached(ctx,key,fresh,load,keep=()=>true){
  const reply=async stored=>{const r=new Response(stored.body,stored);r.headers.set("Cache-Control","public, max-age="+fresh);r.headers.delete("X-KIK-Stored");return r;};
  const store=async()=>{const value=await load();if(!keep(value))throw Object.assign(Error("not kept"),{unkept:json(value)});const r=json(value,200,{"Cache-Control":"public, max-age=604800","X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
@@ -36,7 +38,7 @@ async function edgeCached(ctx,key,fresh,load,keep=()=>true){
  const gone=e=>{if(e.status!==404)return false;ctx.waitUntil(caches.default.delete(key).catch(()=>{}));return true;};
  // A copy older than a day is refreshed first, but still answers for up to a week while the source is down.
  if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>86400000)return reply(await store().catch(e=>{if(gone(e))throw e;if(!e.unkept)console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
- if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!refreshing.has(key.url)){const task=store().catch(gone).finally(()=>refreshing.delete(key.url));refreshing.set(key.url,task);ctx.waitUntil(task);}return reply(cached);}
+ if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!(Date.now()-(refreshing.get(key.url)||0)<REFRESH_STALE)){const started=Date.now();refreshing.set(key.url,started);ctx.waitUntil(store().catch(gone).finally(()=>{if(refreshing.get(key.url)===started)refreshing.delete(key.url);}));}return reply(cached);}
  return store().then(reply,e=>{if(e.unkept)return e.unkept;throw e;});
 }
 

@@ -5,7 +5,6 @@ import {titleKey,canonicalLink} from './sync.mjs';import {film,catalogue} from '
 export const SYNOPSIS_MIN=90,SYNOPSIS_MAX=190,SYNOPSIS_DAILY=100;
 /** A title whose answer was rejected keeps an empty summary this long, so each open does not ask Sentra again. */
 const REJECTED_FOR=3*86400_000;
-const pending=new Map();
 /** Model output to one clean paragraph of SYNOPSIS_MIN–SYNOPSIS_MAX characters, cut at a sentence end; null when unusable. */
 export function cleanSynopsis(raw){
  if(typeof raw!=='string')return null;let s=raw.replace(/^\s*(?:опис|синопсис|summary)\s*:\s*/i,'').replace(/[*_#`]/g,'').replace(/^["«„'“]+|["»“'”]+$/g,'').replace(/\s+/g,' ').trim();
@@ -27,8 +26,8 @@ export async function synopsis(db,env,link,load=film,localize=localizedFilm,{gen
  const cached=await db.prepare('SELECT summary,updated_at FROM synopsis_cache WHERE title_key=?').bind(key).first();
  if(cached?.summary)return {summary:cached.summary,cached:true};if(cached&&Date.now()-cached.updated_at<REJECTED_FOR)return {summary:null,status:'fallback'};
  if(!generate)return {summary:null,status:'sign-in'};
- if(pending.has(key))return pending.get(key);
- const task=(async()=>{
+ // Each request writes for itself: another request's promise never settles once that request is cancelled (06.11 audit).
+ return (async()=>{
   if(!aiReady(env))return {summary:null,status:'unavailable'};
   const save=summary=>db.prepare('INSERT INTO synopsis_cache(title_key,summary,updated_at) VALUES(?,?,?) ON CONFLICT(title_key) DO UPDATE SET summary=excluded.summary,updated_at=excluded.updated_at').bind(key,summary,Date.now()).run();
   // A logline the owner's PC is writing in the background (asked after a live answer failed): taken when done, waited on
@@ -60,8 +59,7 @@ export async function synopsis(db,env,link,load=film,localize=localizedFilm,{gen
    await giveBack(db,day);
   }
   return {summary:null,status:'fallback'};
- })().finally(()=>pending.delete(key));
- pending.set(key,task);return task;
+ })();
 }
 
 /** Night (owner, 06.11 «задіяти ПК для всіх проектів»): a run writes this many new loglines at most, a night this many

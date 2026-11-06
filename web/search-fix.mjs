@@ -12,14 +12,15 @@ const swap=(s,from,to)=>[...s].map(ch=>{const lower=ch.toLowerCase(),i=from.inde
 export function layoutSwaps(query){const q=String(query||'').trim();if(!q)return [];const latin=/^[\x20-\x7e]+$/.test(q)&&/[a-z]/i.test(q),cyr=/\p{Script=Cyrillic}/u.test(q)&&!/[a-z]/i.test(q);return [...new Set(latin?[swap(q,EN,RU),swap(q,EN,UK)]:cyr?[swap(q,/[іїє]/i.test(q)?UK:RU,EN)]:[])].filter(s=>s!==q);}
 /** Model output to at most three short title strings; anything else is dropped. */
 export function cleanFixes(raw,query){let value=raw;if(typeof value==='string'){const j=value.match(/\{[\s\S]*\}|\[[\s\S]*\]/)?.[0];try{value=JSON.parse(j||value);}catch{return [];}}const list=Array.isArray(value)?value:value?.titles;if(!Array.isArray(list))return [];const q=foldQuery(query);return [...new Set(list.filter(t=>typeof t==='string').map(t=>t.replace(/\s+/g,' ').trim()).filter(t=>t.length>1&&t.length<=100&&!/[<>{}\\]|https?:/i.test(t)&&foldQuery(t)!==q))].slice(0,3);}
-const memo=new Map(),pending=new Map();
+// Only settled answers are shared across requests: another request's promise never settles once that request is cancelled.
+const memo=new Map();
 /** No fixes because Sentra failed, not «none»: `failed` (not enumerable, so the list stays a plain list) keeps it out of D1 and the edge cache. */
 const failedList=()=>Object.defineProperty([],'failed',{value:true});
 /** Likely real titles for a query the catalogue could not answer; kept for good, bounded per day. */
 export async function corrections(db,env,query){
  query=String(query||'').replace(/\s+/g,' ').trim().slice(0,100);const key=foldQuery(query);if(key.length<3||!aiReady(env))return [];
- const hit=memo.get(key);if(hit&&hit.expires>Date.now())return hit.value;if(pending.has(key))return pending.get(key);
- const task=(async()=>{
+ const hit=memo.get(key);if(hit&&hit.expires>Date.now())return hit.value;
+ return (async()=>{
   const saved=await db.prepare('SELECT fixes,updated_at FROM search_fix_cache WHERE query_key=?').bind(key).first().catch(()=>null);
   if(saved?.fixes){try{const list=JSON.parse(saved.fixes);if(Array.isArray(list)&&(list.length||Date.now()-saved.updated_at<NONE_FOR))return list;}catch{}}
   const day='search:'+new Date().toISOString().slice(0,10),reserved=await db.prepare('INSERT INTO ai_daily_budget(day,calls) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1 WHERE calls<? RETURNING calls').bind(day,FIX_DAILY).first();
@@ -32,8 +33,7 @@ export async function corrections(db,env,query){
   const fixes=answer.value;
   await db.prepare('INSERT INTO search_fix_cache(query_key,fixes,updated_at) VALUES(?,?,?) ON CONFLICT(query_key) DO UPDATE SET fixes=excluded.fixes,updated_at=excluded.updated_at').bind(key,JSON.stringify(fixes),Date.now()).run().catch(()=>{});
   return fixes;
- })().catch(failedList).then(value=>{if(memo.size>=300)memo.delete(memo.keys().next().value);memo.set(key,{value,expires:Date.now()+(value.failed?FAILED_FOR:3600000)});return value;}).finally(()=>pending.delete(key));
- pending.set(key,task);return task;
+ })().catch(failedList).then(value=>{if(memo.size>=300)memo.delete(memo.keys().next().value);memo.set(key,{value,expires:Date.now()+(value.failed?FAILED_FOR:3600000)});return value;});
 }
 /** Other names to search when a query found nothing useful: Wikidata names first (exact, free), then the model. */
 export async function searchAlternatives(db,env,query,lookup){

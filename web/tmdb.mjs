@@ -55,9 +55,14 @@ export function selectImages(images,id,kind){
   backdropWidth:backdrop?.width||null};
 }
 
+/** A lookup still marked in flight after this long is taken as dead (its request was cancelled), never as running. */
+const ACTIVE_FOR=20000;
 /** Public artwork only. Both TMDB credential formats stay on this server. */
 export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={}){
- const memory=new Map(),pending=new Map();let blockedUntil=0;
+ // Only settled answers are shared across requests. A Worker request cannot await another request's I/O: it never settles
+ // once that request is cancelled (06.11 audit). `active` only counts lookups in flight (at most 12) and forgets a mark
+ // after ACTIVE_FOR, so a lookup that never finished cannot hold a place for the isolate's life.
+ const memory=new Map(),active=new Map();let blockedUntil=0;
  async function request(path,token,signal){
   // Workers accept only "follow" or "manual"; TMDB never redirects, so a 3xx is treated as a failure below.
   const credential=token.trim().replace(/^Bearer\s+/i,''),key=/^[a-f0-9]{32}$/i.test(credential);
@@ -92,8 +97,9 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
   const digest=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
   const key=new Request(new URL('/__artwork-cache/v3/'+digest,origin));
   const hit=memory.get(digest);if(hit&&hit.until>now())return hit.value;
-  if(pending.has(digest))return pending.get(digest);
-  if(pending.size>=12)return {configured:true,artwork:null,retryAfter:10};
+  for(const [mark,at] of active)if(now()-at>ACTIVE_FOR)active.delete(mark);
+  if(active.size>=12)return {configured:true,artwork:null,retryAfter:10};
+  const mark=Symbol(digest);active.set(mark,now());
   const work=(async()=>{
    if(cache)try{const cached=await cache.match(key);if(cached){const value=await cached.json();remember(value,Math.min(value.artwork?7*DAY:DAY/2,60000));return value;}}catch{}
    if(now()<blockedUntil)return {configured:true,artwork:null,retryAfter:60};
@@ -104,7 +110,7 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
    return value;
   })();
   function remember(value,ttl){if(memory.size>=MAX_ENTRIES)memory.delete(memory.keys().next().value);memory.set(digest,{value,until:now()+ttl});}
-  pending.set(digest,work);try{return await work;}finally{pending.delete(digest);}
+  try{return await work;}finally{active.delete(mark);}
  }
  return {lookup};
 }
