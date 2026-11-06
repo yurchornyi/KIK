@@ -109,3 +109,51 @@ test('at night popular and new titles without a logline get a PC job each, and f
   assert.ok(third.rejected>0);assert.equal(cache.size,before);
  }finally{globalThis.fetch=original;}
 });
+test('a night job never holds a viewer back, never blocks the title, and never replaces a viewer\'s logline',async()=>{
+ const original=globalThis.fetch,warn=console.warn;console.warn=()=>{};
+ const good='Біографічна драма про ченця Паїсія, який виростає серед вигнання й війни та шукає віру, якої йому бракує.';
+ const live='Драма про ченця, який крізь війну й вигнання шукає віру та стає старцем, до якого їдуть по пораду з усього світу.';
+ let job={state:'queued'},liveCalls=0,submits=0;
+ globalThis.fetch=async(url,init)=>{url=String(url);
+  if(url.endsWith('/v1/chat/completions')){liveCalls++;return Response.json({choices:[{message:{content:live}}]});}
+  if(url.endsWith('/v1/jobs')){submits++;return Response.json({id:'n1'},{status:202});}
+  if(url.includes('/v1/jobs/'))return Response.json(job);
+  if(url.endsWith('/v1/feedback'))return new Response(null,{status:204});
+  return new Response('?',{status:404});};
+ const cache=new Map(),jobs=new Map(),budget=new Map();
+ const db={prepare(sql){return {bind(...a){return {
+  async first(){
+   if(sql.startsWith('SELECT summary'))return cache.get(a[0])??null;
+   if(sql.startsWith('SELECT job_id,meta'))return jobs.get(a[0])??null;
+   if(sql.startsWith('SELECT 1 FROM synopsis_cache')){const row=jobs.get(a[1]);return cache.has(a[0])||(row&&!(row.meta==='night-skip'&&row.created_at<a[2]))?{1:1}:null;}
+   if(sql.startsWith('INSERT INTO ai_daily_budget')){const n=(budget.get(a[0])||0)+1;if(n>a[1])return null;budget.set(a[0],n);return {calls:n};}
+   return null;},
+  async run(){
+   if(sql.startsWith('INSERT INTO ai_jobs')&&sql.includes("'night-skip'"))jobs.set(a[0],{job_key:a[0],job_id:'',meta:'night-skip',created_at:a[1]});
+   else if(sql.startsWith('INSERT INTO ai_jobs')&&sql.includes("'night'"))jobs.set(a[0],{job_key:a[0],job_id:a[1],meta:'night',created_at:a[2]});
+   else if(sql.startsWith('INSERT INTO ai_jobs'))jobs.set(a[0],{job_key:a[0],job_id:a[1],meta:null,created_at:a[2]});
+   if(sql.startsWith('DELETE FROM ai_jobs'))jobs.delete(a[0]);
+   if(sql.startsWith('INSERT INTO synopsis_cache')&&!(sql.includes('DO NOTHING')&&cache.has(a[0])))cache.set(a[0],{summary:a[1],updated_at:a[2]});
+   if(sql.startsWith('UPDATE ai_daily_budget'))budget.set(a[1],Math.max(0,(budget.get(a[1])||0)-a[0]));}};},
+  async all(){return {results:[...jobs.values()].filter(row=>sql.includes("meta<>'night-skip'")?row.meta!=='night-skip':true)};}};}};
+ const env={SENTRA_URL:'https://sentra.test',SENTRA_TOKEN:'t'},short={...page,description:'Коротко.'};
+ const one=[{link}],night=(load=async()=>page)=>synopsisNight(db,env,{list:async()=>one,load,localize:async(d,f)=>f});
+ try{
+  // The night queues the title; a viewer opening it while the job waits gets the live logline at once.
+  assert.equal((await night()).queued,1);
+  const viewer=await synopsis(db,env,link,async()=>page,async(d,f)=>f);
+  assert.deepEqual([viewer.summary,liveCalls],[live,1]);
+  // The PC's answer comes later: the viewer's logline stays.
+  job={state:'done',result:{choices:[{message:{content:good}}]}};
+  assert.equal((await night()).saved,1);assert.equal([...cache.values()][0].summary,live);
+  // An unusable night answer: no empty summary, the title is not asked again at night, and a viewer gets the live call.
+  cache.clear();jobs.clear();job={state:'queued'};await night();
+  job={state:'done',result:{choices:[{message:{content:'Это история.'}}]}};
+  const out=await night();assert.equal(out.rejected,1);assert.equal(out.queued,0,'not queued again');assert.equal(cache.size,0);
+  const before=liveCalls;assert.equal((await synopsis(db,env,link,async()=>page,async(d,f)=>f)).summary,live);assert.equal(liveCalls,before+1);
+  // A description too short to write from is not read from the source again at night.
+  cache.clear();jobs.clear();let reads=0;
+  await night(async()=>{reads++;return short;});await night(async()=>{reads++;return short;});
+  assert.equal(reads,1);
+ }finally{globalThis.fetch=original;console.warn=warn;}
+});
