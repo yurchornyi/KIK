@@ -15,7 +15,7 @@ const MAX_STUDIOS=9;
  * Five candidates per page bound source traffic. Empty intermediate pages carry explicit continuation.
  */
 export function createStudioCatalogue({fetcher=globalThis.fetch,search,genres,film,now=Date.now}={}){
- const memo=new Map(),pending=new Map();
+ const memo=new Map();
  async function request(path,token){
   const credential=String(token||'').trim().replace(/^Bearer\s+/i,'');
   if(!credential)throw Error('Фільтр студій тимчасово недоступний. Спробуйте пізніше.');
@@ -25,8 +25,9 @@ export function createStudioCatalogue({fetcher=globalThis.fetch,search,genres,fi
   if(!r.ok)throw Error('Не вдалося завантажити студії. Спробуйте ще раз.');return r.json();
  }
  async function cached(key,fn){
-  const hit=memo.get(key);if(hit&&hit.until>now())return hit.value;if(pending.has(key))return pending.get(key);
-  const work=fn().then(value=>{if(memo.size>=200)memo.delete(memo.keys().next().value);memo.set(key,{value,until:now()+3600000});return value;}).finally(()=>pending.delete(key));pending.set(key,work);return work;
+  const hit=memo.get(key);if(hit&&hit.until>now())return hit.value;
+  // Only settled answers are shared: another request's promise never settles once that request is cancelled.
+  return fn().then(value=>{if(memo.size>=200)memo.delete(memo.keys().next().value);memo.set(key,{value,until:now()+3600000});return value;});
  }
  async function companies(studio,token){
   return cached('companies:'+studio.id,async()=>{

@@ -5,7 +5,6 @@ import {hash} from './auth.mjs';import {titleKey,canonicalLink} from './sync.mjs
 export const RECS_DAILY=40;
 /** Taste signals the model reads; tasteOf puts every kind among them. */
 export const TASTE_AI=15;
-const pending=new Map();
 const terms=s=>foldTitle(displayWords(s)).split(' ').filter(x=>x.length>2&&!['про','для','або','серія','фільм','серіал','2026','2025'].includes(x));
 const COUNTRIES=new Set([...Object.keys(COUNTRY_WORDS),...Object.values(COUNTRY_WORDS)]),RUN=/\d{4}\s*-\s*(?:\d{4}|\.\.\.)/;
 /** A catalogue line («2011, США, Комедии»; the TV sends «2011, Комедии, Драмы») as the model reads it: the genres and the first country in Ukrainian, no years. */
@@ -42,7 +41,8 @@ export async function recommendations(db,profile,items,env){const candidates=can
  // How much was watched changes by the minute while watching: the cache follows the weights, not those words.
  // An AI order for the same taste and the same candidates is kept for good; a changed one is ranked again at most every 30 minutes.
  const fingerprint=await hash(JSON.stringify({version:3,signals:taste.signals.map(({watched,...s})=>s),excluded:[...taste.excluded].sort(),candidates:base.map(c=>c.key)})),cached=await db.prepare('SELECT * FROM recommendation_cache WHERE profile_id=?').bind(profile.id).first();if(cached&&Date.now()-cached.updated_at<(cached.fingerprint===fingerprint&&cached.mode==='ai'?Infinity:1800000)){const available=new Set(base.map(c=>c.key)),order=JSON.parse(cached.ranking).filter(k=>available.has(k)),applied=cached.mode==='ai'&&order.length>=Math.min(3,base.length);return {keys:rankedKeys(base,order),mode:applied?'ai':'standard',enhanced:true,updated_at:cached.updated_at,status:applied?'ready':'temporary-fallback'};}
- if(pending.has(profile.id)){const result=await pending.get(profile.id),available=new Set(base.map(c=>c.key)),keys=result.keys.filter(k=>available.has(k));return {...result,keys:keys.length?keys:rankedKeys(base),mode:result.mode==='ai'&&keys.length>=Math.min(3,base.length)?'ai':'standard'};}const task=(async()=>{if(!aiReady(env))return {...standard(),status:'unavailable'};
+ // Each request ranks for itself: another request's promise never settles once that request is cancelled (06.11 audit).
+ return (async()=>{if(!aiReady(env))return {...standard(),status:'unavailable'};
   // A ranking the owner's PC is writing in the background (asked after a live answer failed), for this very taste and these
   // candidates (the fingerprint): taken when done, waited on while queued, forgotten when Sentra no longer has it.
   const saveRanking=async(keys,mode)=>{const now=Date.now();await db.prepare('INSERT INTO recommendation_cache(profile_id,fingerprint,ranking,mode,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET fingerprint=excluded.fingerprint,ranking=excluded.ranking,mode=excluded.mode,updated_at=excluded.updated_at').bind(profile.id,fingerprint,JSON.stringify(keys),mode,now).run();return now;};
@@ -67,4 +67,4 @@ export async function recommendations(db,profile,items,env){const candidates=can
    else if(ranked.why==='error'&&await reserve()){const id=await submitJob(env,{skill:'kik-recommendations',role:'quality',messages,maxTokens:256,temperature:.2,json:true,key:'kik-recs:'+(await hash(jobRow)).slice(0,64)});if(id)await db.prepare('INSERT INTO ai_jobs(job_key,job_id,meta,created_at) VALUES(?,?,?,?) ON CONFLICT(job_key) DO UPDATE SET job_id=excluded.job_id,meta=excluded.meta,created_at=excluded.created_at').bind(jobRow,id,String(options.length),Date.now()).run();else await giveBack(db,day);}}catch{console.warn('KIK recommendations: provider unavailable or invalid ranking');}
   // A switch changed during inference must not publish an obsolete result.
   const still=await db.prepare('SELECT enhanced_recs FROM profiles WHERE id=?').bind(profile.id).first();if(!still?.enhanced_recs)return {...standard(),enhanced:false,status:'disabled'};const now=Date.now();await db.prepare('INSERT INTO recommendation_cache(profile_id,fingerprint,ranking,mode,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(profile_id) DO UPDATE SET fingerprint=excluded.fingerprint,ranking=excluded.ranking,mode=excluded.mode,updated_at=excluded.updated_at').bind(profile.id,fingerprint,JSON.stringify(keys),mode,now).run();return {keys:rankedKeys(base,keys),mode:mode==='ai'?'ai':'standard',enhanced:true,status:mode==='ai'?'ready':'temporary-fallback',updated_at:now};
- })().finally(()=>pending.delete(profile.id));pending.set(profile.id,task);return task;}
+ })();}
