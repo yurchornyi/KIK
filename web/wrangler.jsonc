@@ -13,5 +13,7 @@
     { "name": "MEDIA_LIMIT", "namespace_id": "2303", "simple": { "limit": 600, "period": 60 } },
     { "name": "LOGIN_LIMIT", "namespace_id": "2304", "simple": { "limit": 10, "period": 60 } }
   ],
+  // Night loglines on the owner's PC (synopsis.mjs synopsisNight): 00:15–04:15 UTC, five runs of up to ten titles.
+  "triggers": { "crons": ["15 0-4 * * *"] },
   "observability": { "enabled": true }
 }
