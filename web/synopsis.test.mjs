@@ -102,5 +102,10 @@ test('at night popular and new titles without a logline get a PC job each, and f
   const second=await synopsisNight(db,env,{list,load,localize:async(d,f)=>f});
   assert.equal(second.saved,NIGHT_TITLES);assert.equal(second.queued,1);
   assert.equal(cache.get('films/drama/2-new.html').summary,good);
+  // A night answer that fails the checks leaves no row: the viewer's open asks live, as before.
+  done=false;const before=cache.size;
+  globalThis.fetch=async(url,init)=>{url=String(url);if(url.includes('/v1/jobs/'))return Response.json({state:'done',result:{choices:[{message:{content:'Это история.'}}]}});if(url.endsWith('/v1/jobs'))return Response.json({id:'x'},{status:202});return new Response('?',{status:404});};
+  const third=await synopsisNight(db,env,{list:async()=>[],load,localize:async(d,f)=>f});
+  assert.ok(third.rejected>0);assert.equal(cache.size,before);
  }finally{globalThis.fetch=original;}
 });

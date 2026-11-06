@@ -77,7 +77,8 @@ export async function synopsisNight(db,env,{list=catalogue,load=film,localize=lo
   const got=await jobAnswer(env,row.job_id);if(got.state==='queued'||got.state==='running')continue;
   await db.prepare('DELETE FROM ai_jobs WHERE job_key=?').bind(row.job_key).run();if(got.state!=='done')continue;
   const key=row.job_key.slice('synopsis:'.length),clean=cleanSynopsis(got.content);
-  if(clean){await saveSynopsis(db,key,clean);out.saved++;}else{await reportRejected(env,got.sample,'KIK synopsis: unusable logline');await saveSynopsis(db,key,'');out.rejected++;}
+  // An unusable night answer blocks nothing: the title stays without a row, so a viewer's open asks live as before.
+  if(clean){await saveSynopsis(db,key,clean);out.saved++;}else{await reportRejected(env,got.sample,'KIK synopsis: unusable logline');out.rejected++;}
  }
  const seen=new Set(),keys=[];
  for(const filter of ['popular','last']){
