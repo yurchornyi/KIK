@@ -14,12 +14,13 @@ import {storage} from './storage.js';
 import {beaconPayload,SYNC_BATCH} from './sync-queue.js';
 import {createCatalogueView,catalogueSelection,selectionQuery} from './catalogue-view.js';
 import {oops} from './oops.js';
+import {createDownloads,formatBytes,defaultDownloadQuality,DOWNLOAD_QUALITIES} from './downloads.js';
 const $=s=>document.querySelector(s),main=$('#main'),modal=$('#modal'),modalContent=$('#modal-content'),playerModal=$('#player-modal');
 // Like an app: no pinch zoom (Safari ignores user-scalable=no, so its gesture events are cancelled too).
 for(const t of ['gesturestart','gesturechange'])document.addEventListener(t,e=>e.preventDefault(),{passive:false});
 const state={user:null,profiles:[],profile:null,records:new Map(),pending:new Map(),since:0,pool:[],ukrainian:[],films:[],series:[],tab:'home',query:'',syncing:false,clockOffset:0,ready:false};
 let pageGeneration=0,modalGeneration=0,playGeneration=0,toastTimer,player=null;
-const pageTabs=['home','catalogue','later','history','settings','admin'];
+const pageTabs=['home','catalogue','later','history','downloads','settings','admin'];
 /** A page re-rendered in place (more data, a sync) stays still: only a page that newly opens plays its entrance. */
 /** The footer mark turns only while it is on screen. */
 if('IntersectionObserver' in window){const author=document.querySelector('.author');if(author)new IntersectionObserver(([e])=>author.classList.toggle('paused',!e.isIntersecting)).observe(author);}
@@ -30,6 +31,9 @@ Object.assign(state,readRoute());
 /** A title's key is asked for on every card, shelf and record compare: parsed once per link. */
 const keyCache=new Map();
 const keyOf=link=>{let key=keyCache.get(link);if(key===undefined){try{const u=new URL(link);key=(u.hostname==='uaserials.com'?'uaserials/':'')+u.pathname.slice(1);}catch{key='';}if(keyCache.size>3000)keyCache.clear();keyCache.set(link,key);}return key;},recId=r=>r.kind+'\n'+r.key;
+const baseTitle=document.title;
+const downloads=createDownloads({api,storage,keyOf,owner:()=>state.user?.id||null,onChange:()=>downloadsChanged(),onProgress:x=>paintDownload(x),
+ onDone:x=>toast('Завантажено: «'+x.title+'»'+(x.series?' · С'+x.season+' · Е'+x.episode:''))});
 const hoverable=matchMedia('(hover:hover)');
 function el(tag,attrs={},...children){const node=document.createElement(tag);for(const [k,v] of Object.entries(attrs)){if(k.startsWith('on'))node.addEventListener(k.slice(2).toLowerCase(),v);else if(k==='class')node.className=v;else if(v!==null&&v!==undefined)node.setAttribute(k,String(v));}for(const c of children.flat(Infinity)){if(c!=null)node.append(c instanceof Node?c:document.createTextNode(String(c)));}return node;}
 const button=(label,action,classes='pill')=>el('button',{class:classes,type:'button',onClick:e=>{try{Promise.resolve(action(e)).catch(error=>toast(error.message));}catch(error){toast(error.message);}}},label);
@@ -51,8 +55,8 @@ modal.querySelector('.close').onclick=()=>modal.close();playerModal.querySelecto
 /** Records changed behind a window (a title saved, rated, forgotten; progress): the page follows once the window closes.
  *  A card the keyboard is on stays put; the shelves keep their scroll. */
 let pageDirty=false;
-function refreshPage(){if(['home','later','history'].includes(state.tab))render();}
-modal.addEventListener('close',()=>{if(!modal.open)modalGeneration++;if(pageDirty&&!main.querySelector(':focus-visible'))refreshPage();});playerModal.addEventListener('close',()=>{if(!playerModal.open){playGeneration++;disposePlayer();}});
+function refreshPage(){if(['home','later','history','downloads'].includes(state.tab))render();}
+modal.addEventListener('close',()=>{if(!modal.open)modalGeneration++;if(pageDirty&&!main.querySelector(':focus-visible'))refreshPage();});playerModal.addEventListener('close',()=>{if(!playerModal.open){playGeneration++;disposePlayer();if(reloadWhenOnline)location.reload();}});
 for(const dialog of [modal,playerModal])dialog.addEventListener('toggle',()=>{document.documentElement.classList.toggle('modal-open',modal.open||playerModal.open);});
 for(const dialog of [modal,playerModal])dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
 const cacheKey=()=>`kik:${state.user?.id}:${state.profile?.id}`;
@@ -142,7 +146,7 @@ function upgradeHero(hero,item){
 /** Poster pictures already on screen, by title, while a page repaints: the new cards take them over, so nothing blinks. */
 const livePosters=new Map();
 function keepPosters(){livePosters.clear();for(const n of main.querySelectorAll('.poster[data-key] .poster-image img:not(.art-in)'))if(n.complete&&n.naturalWidth)livePosters.set(n.closest('.poster').dataset.key,n);}
-function card(item,progress=false,onClick){const image=el('div',{class:'poster-image'}),key=keyOf(item.link),a=artwork.get(key),known=a?.poster||sourcePosters.get(key),live=livePosters.get(key);paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);if(live&&live.dataset.poster===(known||item.poster)){livePosters.delete(key);image.append(live);if(!known)upgradePoster(image,item);}else if(known)image.append(posterImage(a,known,true));else{upgradePoster(image,item);if(item.poster)image.append(el('img',{src:item.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer','data-poster':item.poster}));}if(progress&&item.dur>0){const i=el('i');i.style.width=Math.max(0,Math.min(100,item.pos/item.dur*100))+'%';image.append(el('div',{class:'progress'},i),el('span',{class:'continue-label'},'▶ ',item.next?'Наступна серія':item.season?`С${item.season} · Е${item.episode}`:`${Math.floor(item.pos/60000)} хв`));}let dwell=0;const warm=()=>{if(item.link&&!item.external)getFilm(item).catch(()=>{});};
+function card(item,progress=false,onClick){const image=el('div',{class:'poster-image'}),key=keyOf(item.link),a=artwork.get(key),known=a?.poster||sourcePosters.get(key),live=livePosters.get(key);paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);if(downloads.supported&&downloads.forTitle(item.link).some(x=>x.status==='done'))image.append(el('span',{class:'dl-badge',title:'Завантажено на цей пристрій'},'⤓'));if(live&&live.dataset.poster===(known||item.poster)){livePosters.delete(key);image.append(live);if(!known)upgradePoster(image,item);}else if(known)image.append(posterImage(a,known,true));else{upgradePoster(image,item);if(item.poster)image.append(el('img',{src:item.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer','data-poster':item.poster}));}if(progress&&item.dur>0){const i=el('i');i.style.width=Math.max(0,Math.min(100,item.pos/item.dur*100))+'%';image.append(el('div',{class:'progress'},i),el('span',{class:'continue-label'},'▶ ',item.next?'Наступна серія':item.season?`С${item.season} · Е${item.episode}`:`${Math.floor(item.pos/60000)} хв`));}let dwell=0;const warm=()=>{if(item.link&&!item.external)getFilm(item).catch(()=>{});};
  // Details start loading on hover, focus or touch, so the window opens complete instead of growing from «Завантаження…».
  return el('button',{class:'poster',type:'button','aria-label':item.title,'data-key':key,onClick:onClick||(()=>openDetails(item)),onPointerenter:e=>{if(e.pointerType==='mouse'){clearTimeout(dwell);dwell=setTimeout(warm,150);}},onPointerleave:()=>clearTimeout(dwell),onPointerdown:warm,onFocus:()=>{clearTimeout(dwell);dwell=setTimeout(warm,250);},onBlur:()=>clearTimeout(dwell)},image,el('span',{class:'poster-title'},item.title),el('span',{class:'poster-info'},item.info||item.year||(progress?'Продовжити перегляд':'Фільми та серіали')));}
 function shelf(title,items,subtitle='',progress=false){if(!items.length)return null;return el('section',{class:'shelf'},el('div',{class:'shelf-head'},el('h2',{},title),el('span',{class:'subtle'},subtitle)),el('div',{class:'shelf-line'},items.slice(0,24).map(i=>card(i,progress))));}
@@ -247,7 +251,7 @@ navStrip.addEventListener('scroll',paintNavEdges,{passive:true});window.addEvent
 /** An account left without a profile (the TV asks for its name after creating the account) needs one before anything else. */
 function profileGate(){if(main.querySelector('.profile-gate'))return;main.replaceChildren(el('section',{class:'gate profile-gate'},el('div',{class:'gate-copy'},el('h1',{},'Створіть профіль, щоб дивитися'),el('div',{class:'actions'},button('Створити профіль',()=>newProfile(),'pill red'),button('Вийти',()=>logout(),'pill')))));}
 function gate(){if(main.querySelector('.gate:not(.profile-gate)'))return;main.replaceChildren(el('section',{class:'gate'},el('div',{class:'gate-copy'},el('div',{class:'eyebrow'},'ОДИН ПРОФІЛЬ. УСІ ВАШІ ПРИСТРОЇ.'),el('h1',{},'Увійдіть, щоб дивитися'),el('div',{class:'actions'},button('Увійти',()=>auth(),'pill red'),button('Створити обліковий запис',()=>auth(true),'pill')))));}
-function render(){pageDirty=false;document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmRelated();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
+function render(){pageDirty=false;document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='downloads'){renderDownloads();return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmRelated();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
  // A tap or click on the hero holds its slide for another turn, so a title just saved or opened never slips away under the finger.
  hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);const rows=el('div',{class:'rows'}),recent=continueItems(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:recommendations(),subtitle:ai?'Покращена добірка з урахуванням вашого смаку та AI':state.user?'На основі вашого смаку':'Час для хорошої історії'},{title:'Фільми на вечір',items:state.films.filter(i=>liked(i.link)>=0)},{title:'Ще одна серія?',items:state.series.filter(i=>liked(i.link)>=0)},{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);for(const r of shelves){const row=shelf(r.title,r.items,r.subtitle||'',r.progress);if(row)rows.append(row);}
  // The viewer's own rows stay when the source is down; the catalogue under them retries by itself.
@@ -321,8 +325,8 @@ function nod(b){b.classList.remove('nod');if(b.classList.contains('rated')){void
 async function openDetails(item){showModal(el('h2',{},item.title),el('p',{},'Завантаження деталей…'));if(!filmCache.has(keyOf(item.link)))modal.classList.add('detail-modal','detail-loading');const target=item.link,generation=modalGeneration;modalContent.dataset.link=target;try{const f=await getFilm(item);if(!modal.open||generation!==modalGeneration||modalContent.dataset.link!==target)return;const image=f.poster?el('img',{class:'detail-poster',src:f.poster,alt:'',referrerpolicy:'no-referrer'}):null,laterButton=button('＋',()=>{toggleLater(f);paintActions();},'round-action'),like=button('👍',()=>{rate(f,1);paintActions();nod(like);},'round-action'),dislike=button('👎',()=>{rate(f,-1);paintActions();nod(dislike);},'round-action'),playButton=f.external?el('span',{class:'pill unavailable'},'Перегляд поки недоступний'):button('▶ '+(latestFor(f.link)?.pos?'Продовжити':'Дивитися'),()=>{modal.close();play(f);},'pill primary');
  // The three round actions repaint in place: the window, its scroll and the keyboard focus stay where they are.
  function paintActions(){const saved=inList(f.link),v=liked(f.link);laterButton.textContent=saved?'✓':'＋';laterButton.classList.toggle('rated',saved);laterButton.setAttribute('aria-pressed',String(saved));laterButton.setAttribute('aria-label',saved?'У списку':'Мій список');laterButton.title=saved?'Прибрати з «Мого списку»':'Додати в «Мій список»';for(const [b,value,name] of [[like,1,'Подобається'],[dislike,-1,'Не подобається']]){const on=v===value;b.classList.toggle('rated',on);b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',name);b.title=name;}}
- paintActions();const actions=el('div',{class:'detail-actions'},playButton,laterButton,like,dislike);const forget=latestFor(f.link)?button('Прибрати з історії',()=>{for(const r of data('progress').filter(r=>keyOf(r.data.link)===keyOf(f.link)))change('progress',r.key,null);toast('Прибрано з історії');forget.remove();if(playButton.tagName==='BUTTON')playButton.textContent='▶ Дивитися';},'text-button'):null;const overview=el('p',{class:'detail-overview'},f.description||'Опис наразі недоступний.'),more=button('Детальніше',()=>{const open=overview.classList.toggle('open');more.textContent=open?'Згорнути':'Детальніше';},'text-button detail-more');more.hidden=true;modal.classList.remove('detail-loading');modal.classList.add('detail-modal');const backdrop=el('div',{class:'detail-backdrop'});if(f.poster)backdrop.style.backgroundImage='url('+JSON.stringify(f.poster)+')';modalContent.replaceChildren(backdrop,el('div',{class:'detail-body'},image,el('div',{class:'detail-info'},el('h2',{class:'detail-title'},f.title),el('div',{class:'detail-meta'},[f.year,f.rating?'★ '+f.rating:null,f.duration].filter(Boolean).map(t=>el('span',{},t)),f.genres.slice(0,3).map(g=>el('span',{class:'detail-genre'},g))),actions,overview,more,f.external?el('p',{class:'subtle'},'Зараз для цього фільму немає доступного відтворення у KIK.'):null,forget)),el('div',{id:'extra-metadata',class:'source-metadata'}),similarShelf(f,generation));requestAnimationFrame(()=>{more.hidden=overview.scrollHeight<=overview.clientHeight+2;});if(document.activeElement===modal||document.activeElement===document.body)actions.querySelector('button')?.focus({preventScroll:true});paintDetailStudios(item.studios);artworkFor(f).then(a=>{if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target)paintDetailStudios(a?.studios?.length?a.studios:item.studios);});enrichDetails(f,target,generation);}catch(e){if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target){modal.classList.remove('detail-loading');modalContent.replaceChildren(oops({error:e,retry:()=>openDetails(item),title:item.title,key:'film:'+keyOf(item.link)}));}}}
-function refreshAccount(){headerSearch.refresh();$('[data-tab=admin]').hidden=state.user?.role!=='admin';const name=state.profile?.name||'Увійти';$('#account-name').textContent=name;$('#account').setAttribute('aria-label',state.user?'Профіль: '+name:'Увійти до KIK');$('#account .avatar').replaceChildren(el('img',{src:avatarUrl(state.profile?.avatar),alt:state.profile?'Аватарка профілю':'Увійти'}));}
+ paintActions();const actions=el('div',{class:'detail-actions'},playButton,laterButton,like,dislike,downloadButton(f,item));const forget=latestFor(f.link)?button('Прибрати з історії',()=>{for(const r of data('progress').filter(r=>keyOf(r.data.link)===keyOf(f.link)))change('progress',r.key,null);toast('Прибрано з історії');forget.remove();if(playButton.tagName==='BUTTON')playButton.textContent='▶ Дивитися';},'text-button'):null;const overview=el('p',{class:'detail-overview'},f.description||'Опис наразі недоступний.'),more=button('Детальніше',()=>{const open=overview.classList.toggle('open');more.textContent=open?'Згорнути':'Детальніше';},'text-button detail-more');more.hidden=true;modal.classList.remove('detail-loading');modal.classList.add('detail-modal');const backdrop=el('div',{class:'detail-backdrop'});if(f.poster)backdrop.style.backgroundImage='url('+JSON.stringify(f.poster)+')';modalContent.replaceChildren(backdrop,el('div',{class:'detail-body'},image,el('div',{class:'detail-info'},el('h2',{class:'detail-title'},f.title),el('div',{class:'detail-meta'},[f.year,f.rating?'★ '+f.rating:null,f.duration].filter(Boolean).map(t=>el('span',{},t)),f.genres.slice(0,3).map(g=>el('span',{class:'detail-genre'},g))),actions,overview,more,f.external?el('p',{class:'subtle'},'Зараз для цього фільму немає доступного відтворення у KIK.'):null,forget)),el('div',{id:'extra-metadata',class:'source-metadata'}),similarShelf(f,generation));requestAnimationFrame(()=>{more.hidden=overview.scrollHeight<=overview.clientHeight+2;});if(document.activeElement===modal||document.activeElement===document.body)actions.querySelector('button')?.focus({preventScroll:true});paintDetailStudios(item.studios);artworkFor(f).then(a=>{if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target)paintDetailStudios(a?.studios?.length?a.studios:item.studios);});enrichDetails(f,target,generation);}catch(e){if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target){modal.classList.remove('detail-loading');modalContent.replaceChildren(oops({error:e,retry:()=>openDetails(item),title:item.title,key:'film:'+keyOf(item.link)}));}}}
+function refreshAccount(){headerSearch.refresh();$('[data-tab=admin]').hidden=state.user?.role!=='admin';const name=state.profile?.name||'Увійти';$('#account-name').textContent=name;$('#account').setAttribute('aria-label',state.user?'Профіль: '+name:'Увійти до KIK');$('#account .avatar').replaceChildren(el('img',{src:avatarUrl(state.profile?.avatar),alt:state.profile?'Аватарка профілю':'Увійти'}));paintDownloadNav();paintOffline();downloads.kick();}
 async function selectProfile(profile){resetEnhanced();management.reset();if(playerModal.open)playerModal.close();await sync();state.profile=profile;storage.setItem('kik-profile:'+state.user.id,profile.id);restore();await management.load();refreshAccount();render();await sync();}
 function account(){
  if(!state.user){auth();return;}
@@ -351,7 +355,7 @@ function newProfile(){let avatar='bear';const input=el('input',{required:true,ma
 
 async function logout(){if(player)playerModal.close();await sync();await api('/api/auth/logout',{});const prefixes=['kik:'+state.user.id+':','kik:search:'+state.user.id+':'];for(const k of storage.keys())if(prefixes.some(p=>k.startsWith(p))){
  // Changes that never reached the server (a revoked session, no connection) wait for this account's next sign-in; the rest goes.
- let pending=[];try{if(k.startsWith(prefixes[0]))pending=JSON.parse(storage.getItem(k)||'{}').pending||[];}catch{}if(pending.length)storage.setItem(k,JSON.stringify({records:[],pending,since:0}));else storage.removeItem(k);}resetEnhanced();management.reset();state.user=null;state.profiles=[];state.profile=null;state.records.clear();state.pending.clear();state.since=0;refreshAccount();modal.close();$('#sync-status').textContent='';render();}
+ let pending=[];try{if(k.startsWith(prefixes[0]))pending=JSON.parse(storage.getItem(k)||'{}').pending||[];}catch{}if(pending.length)storage.setItem(k,JSON.stringify({records:[],pending,since:0}));else storage.removeItem(k);}storage.removeItem('kik-me');resetEnhanced();management.reset();state.user=null;state.profiles=[];state.profile=null;state.records.clear();state.pending.clear();state.since=0;refreshAccount();modal.close();$('#sync-status').textContent='';render();}
 function pairDialog(){if(!state.user){auth();return;}if(!state.profile){newProfile();return;}const code=el('input',{class:'code-input',required:true,maxlength:12,placeholder:'ABCD EFGH',autocomplete:'off',spellcheck:'false','aria-label':'Код із TV'});const scanned=new URL(location.href).searchParams.get('pair')||'';code.value=scanned.length===8?scanned.slice(0,4)+' '+scanned.slice(4):scanned;const profiles=el('select',{'aria-label':'Профіль для TV'},state.profiles.map(p=>el('option',{value:p.id},p.name)));profiles.value=state.profile.id;const error=el('div',{class:'error'}),submit=el('button',{class:'pill red auth-submit',type:'submit'},scanned?'Підтвердити й прив’язати':'Прив’язати TV'),form=el('form',{},el('label',{class:'field'},'Код із екрана телевізора',code),selectField('Спільний профіль',profiles,{option:profileOption,preview:profileOption}),error,submit);showModal(el('h2',{},scanned?'Підключити цей TV?':'Ваш KIK на великому екрані'),el('p',{},scanned?'Ви відсканували QR-код із телевізора. Перевірте, що код збігається з кодом на екрані, виберіть профіль і підтвердіть. Історія й прогрес профілю об’єднаються.':'У застосунку на TV відкрийте Налаштування → Синхронізація профілю. Відскануйте QR-код камерою телефона або введіть код, який з’явиться на екрані. Історія й прогрес вибраного профілю об’єднаються.'),form);(scanned?submit:code).focus();form.onsubmit=async e=>{e.preventDefault();submit.disabled=true;try{await api('/api/pair/claim',{code:code.value,profile_id:profiles.value});history.replaceState(null,'',location.pathname+location.hash);showModal(el('h2',{},'TV прив’язано'),el('p',{},'Застосунок на телевізорі зараз підключиться. Ваша історія з’явиться тут після синхронізації.'),button('До перегляду',()=>modal.close(),'pill red'));setTimeout(sync,4000);}catch(e){error.textContent=e.message;}finally{submit.disabled=false;}};}
 function taste(){if(!state.user){auth();return;}const picks=new Map(),items=state.pool.slice(0,24);if(!items.length){toast('Спочатку завантажимо каталог');return;}const grid=el('div',{class:'taste-grid'}),save=button('Продовжити',()=>{for(const item of picks.values())change('rating',keyOf(item.link),{link:item.link,title:item.title,poster:item.poster,genre:item.info||'',value:1});modal.close();render();toast('Смак збережено');},'pill red');save.disabled=true;const count=el('span',{class:'subtle'},'Вибрано: 0');for(const item of items){const b=card(item,false,()=>{const key=keyOf(item.link);if(picks.has(key))picks.delete(key);else picks.set(key,item);b.classList.toggle('selected',picks.has(key));b.setAttribute('aria-pressed',String(picks.has(key)));count.textContent='Вибрано: '+picks.size;save.disabled=!picks.size;});b.setAttribute('aria-pressed','false');grid.append(b);}showModal(el('div',{class:'auth-kicker'},'ПРОФІЛЬ · '+state.profile.name),el('h2',{class:'onboarding-title'},'Що вам подобається?'),el('p',{},'Виберіть фільми й серіали, які вам близькі. Почнемо рекомендації з вашого смаку. Цей крок можна пропустити.'),grid,count,el('div',{class:'actions'},button('Пропустити',()=>modal.close()),save));modal.classList.add('wide-modal');}
 /** Explicit choice for this title in this profile, then the track last watched, then the best track: the server lists Ukrainian, then Russian, then the rest. */
@@ -380,8 +384,8 @@ function chime(){try{const ctx=new (window.AudioContext||window.webkitAudioConte
 function playIntro(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve();const node=el('div',{class:'intro','aria-hidden':'true'});const mark=kind=>`<svg class="mark ${kind}" viewBox="0 0 102 48" aria-hidden="true"><g fill="none" stroke-width="7.6" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M8,8L8,40"/><path pathLength="1" d="M29,8L8,24L29,40"/><path pathLength="1" d="M51,8L51,40"/><path pathLength="1" d="M73,8L73,40"/><path pathLength="1" d="M94,8L73,24L94,40"/></g></svg>`;
  // The glow and the flash are still copies whose opacity alone moves, so they stay smooth while the player loads.
  node.innerHTML='<div class="intro-logo">'+mark('glow')+mark('draw')+mark('flash')+'</div>'+'<span class="intro-credit"><svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="8" fill="none" stroke="currentColor" stroke-width="1"/><path d="M9 1a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Створено Чорним</span>';(player?.stage||playerModal).append(node);chime();const done=new Promise(r=>setTimeout(r,3250));done.then(()=>{node.remove();if(intro===done)intro=null;});return intro=done;}
-async function play(item){const generation=++playGeneration;await management.load();if(generation!==playGeneration)return;if(item.source==='uaserials'||new URL(item.link).hostname==='uaserials.com'){await openDetails(item);return;}if(!state.user){auth();return;}if(playerModal.open)disposePlayer();playerShell(item.title,item.poster,'Готуємо відео…','busy');if(!playerModal.open){playerModal.showModal();if(document.activeElement===playerModal.querySelector('.close')){playerModal.tabIndex=-1;playerModal.focus({preventScroll:true});}}try{const f=await getFilm(item);if(!playerModal.open||generation!==playGeneration)return;const previous=latestFor(f.link),explicit=chosenVoice(f.link),voice=bestVoice(f.voices,explicit||previous?.voice);if(!voice)throw Error('Немає доступного озвучення');const p={film:f,episodes:[],coverage:new Map(),userVoice:explicit||null,voice:voice.id,season:null,episode:null,quality:choicesFor(f.link).quality||management.settings.quality,watched:previous?.watched||0,lastSave:0,loadId:0};
- if(f.series){const own=(await api('/api/episodes',{link:f.link,voice:voice.id})).episodes;p.coverage.set(voice.id,own);p.episodes=mergeEpisodes(f.episodes,own);const at=p.episodes.findIndex(e=>e.season===previous?.season&&e.episode===previous?.episode),done=previous?.dur>0&&previous.pos/previous.dur>.93;const target=(at>=0&&done&&p.episodes[at+1])||p.episodes[at]||p.episodes[0];if(!target)throw Error('Серії наразі недоступні');p.voice=await voiceFor(p,target.season,target.episode)||voice.id;p.season=target.season;p.episode=target.episode;}
+async function play(item){const generation=++playGeneration;await management.load();if(generation!==playGeneration)return;if(item.source==='uaserials'||new URL(item.link).hostname==='uaserials.com'){await openDetails(item);return;}if(!state.user){auth();return;}if(playerModal.open)disposePlayer();playerShell(item.title,item.poster,'Готуємо відео…','busy');if(!playerModal.open){playerModal.showModal();if(document.activeElement===playerModal.querySelector('.close')){playerModal.tabIndex=-1;playerModal.focus({preventScroll:true});}}try{const f=await filmForPlay(item);if(!playerModal.open||generation!==playGeneration)return;const previous=latestFor(f.link),explicit=chosenVoice(f.link),voice=bestVoice(f.voices,explicit||previous?.voice);if(!voice)throw Error('Немає доступного озвучення');const p={film:f,offline:!!f.offline,episodes:[],coverage:new Map(),userVoice:explicit||null,voice:voice.id,season:null,episode:null,quality:choicesFor(f.link).quality||management.settings.quality,watched:previous?.watched||0,lastSave:0,loadId:0};
+ if(f.series){const own=f.offline?f.episodes:(await api('/api/episodes',{link:f.link,voice:voice.id})).episodes;p.coverage.set(voice.id,own);p.episodes=mergeEpisodes(f.episodes,own);const at=p.episodes.findIndex(e=>e.season===previous?.season&&e.episode===previous?.episode),done=previous?.dur>0&&previous.pos/previous.dur>.93;const asked=item.playEpisode&&p.episodes.find(e=>e.season===item.playEpisode.season&&e.episode===item.playEpisode.episode),target=asked||(at>=0&&done&&p.episodes[at+1])||p.episodes[at]||p.episodes[0];if(!target)throw Error('Серії наразі недоступні');p.voice=await voiceFor(p,target.season,target.episode)||voice.id;p.season=target.season;p.episode=target.episode;}
  if(!playerModal.open||generation!==playGeneration)return;player=p;buildPlayer();await loadStream();}catch(e){if(!playerModal.open||generation!==playGeneration)return;playerShell(item.title,item.poster,e,'error',()=>{playerModal.close();setTimeout(()=>play(item),0);});}}
 /** The player window at its final size before the stream is known: the title, the poster on a dark stage and what is going on,
  *  so the window never grows from a line of text into the picture. */
@@ -404,7 +408,7 @@ function option(value,label){return el('option',{value},label);}
 /** All seasons and episodes known for the title, whichever voice has them; source titles in Ukrainian. */
 function mergeEpisodes(...lists){const all=new Map();for(const list of lists)for(const e of list||[])all.set(e.season+':'+e.episode,{...e,title:/^Серия\s*\d+$/.test(e.title||'')?'Серія '+e.episode:e.title});return [...all.values()].sort((a,b)=>a.season-b.season||a.episode-b.episode);}
 /** Voices differ in which seasons they cover: the viewer's own choice first, then Ukrainian, then Russian, then the rest. */
-async function voiceFor(p,season,episode){const free=cleanVoices(p.film.voices),mine=free.find(v=>v.id===p.userVoice),order=[...(free.some(v=>v.id===p.userVoice)?[p.userVoice]:[]),...free.filter(v=>mine&&langOf(v)===langOf(mine)).map(v=>v.id),...free.slice().sort((a,b)=>voiceScore(b)-voiceScore(a)).map(v=>v.id)].filter((v,i,a)=>v&&a.indexOf(v)===i);
+async function voiceFor(p,season,episode){if(p.offline)return downloads.find(p.film.link,season,episode)?.voice||null;const free=cleanVoices(p.film.voices),mine=free.find(v=>v.id===p.userVoice),order=[...(free.some(v=>v.id===p.userVoice)?[p.userVoice]:[]),...free.filter(v=>mine&&langOf(v)===langOf(mine)).map(v=>v.id),...free.slice().sort((a,b)=>voiceScore(b)-voiceScore(a)).map(v=>v.id)].filter((v,i,a)=>v&&a.indexOf(v)===i);
  for(const id of order){let eps=p.coverage.get(id);if(!eps){try{eps=(await api('/api/episodes',{link:p.film.link,voice:id})).episodes||[];}catch{eps=[];}p.coverage.set(id,eps);p.episodes=mergeEpisodes(p.episodes,eps);}if(eps.some(e=>e.season===season&&e.episode===episode))return id;}return null;}
 async function goToEpisode(p,season,episode,shouldPlay=true){const changed=p.season!==season||p.episode!==episode,request=p.episodeRequest=(p.episodeRequest||0)+1;const id=await voiceFor(p,season,episode);if(player!==p||request!==p.episodeRequest)return;if(!id){note(p,'Для цієї серії немає доступного озвучення','error');p.retry.hidden=true;fillEpisodes(p);return;}if(changed)p.introPlayed=false;p.season=season;p.episode=episode;
  if(id&&id!==p.voice){p.voice=id;const v=p.film.voices.find(x=>x.id===id),wanted=langOf(p.film.voices.find(x=>x.id===p.userVoice))||langChoices(p.film)[0];if(langOf(v)!==wanted)toast(LANG_LABEL[wanted]+' озвучка для цієї серії недоступна. Увімкнено: '+LANG_LABEL[langOf(v)].toLowerCase()+'.');}
@@ -430,8 +434,8 @@ function sleepLabel(n){return n%60===0?n/60+' год':n>60?Math.floor(n/60)+','+
 function setSleep(p,value){clearTimeout(p.sleepTimer);clearTimeout(p.sleepWarn);const minutes=Number(value)||0,was=p.sleepOn;p.sleepAfterEpisode=value==='episode';p.sleepOn=p.sleepAfterEpisode||minutes>0;paintSleep(p);if(p.sleepAfterEpisode){toast('Плеєр зупиниться після цієї серії');return;}if(!minutes){if(was)toast('Таймер сну вимкнено');return;}toast('Відтворення зупиниться через '+sleepLabel(minutes));if(minutes>1)p.sleepWarn=setTimeout(()=>{if(player===p)toast('Таймер сну: ще хвилина');},(minutes-1)*60000);p.sleepTimer=setTimeout(()=>{if(player!==p)return;p.sleepOn=false;paintSleep(p);p.playWanted=false;p.video.pause();p.sleepSelect.value='0';saveProgress();toast('Таймер сну: відтворення зупинено');},minutes*60000);}
 /** The picture and its overlays go full screen (iPhone Safari only knows the video's own full screen). */
 function toggleFullscreen(p){const s=p.stage,v=p.video;if(document.fullscreenElement){document.exitFullscreen?.();return;}if(s.requestFullscreen)s.requestFullscreen().catch(()=>v.webkitEnterFullscreen?.());else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen();}
-async function fetchPlayback(p,attempt=0){const requestId=p.loadId;const result=await api('/api/stream',{link:p.film.link,voice:p.voice,season:p.season,episode:p.episode,recovery_attempt:attempt,direct:true},{signal:AbortSignal.timeout(25000)});if(player!==p||requestId!==p.loadId)return false;p.qualities=preferDirect(result.qualities);p.qualitySelect.replaceChildren(...result.qualities.map(q=>option(q.label,q.label)));return true;}
-async function loadStream(shouldPlay=true){const p=player;if(!p)return;const id=++p.loadId;clearTimeout(p.autoTimer);clearTimeout(p.recoveryTimer);p.recoveryTimer=null;p.recovery=new RecoveryPlan();p.recoverBusy=false;p.retry.hidden=true;note(p,'Підготовка відео…','busy');p.switching=true;p.mediaReady=false;p.video.pause();const old=latestFor(p.film.link,p.season,p.episode);p.resumePosition=old?.pos?old.pos/1000:0;p.watched=old?.watched||0;p.playWanted=shouldPlay;try{if(!await fetchPlayback(p)||player!==p||id!==p.loadId)return;loadAds(p);const chosen=p.recovery.next(p.qualities,p.quality);if(!chosen)throw Error('Немає доступного потоку');p.quality=chosen.quality;p.qualitySelect.value=p.quality;setSource(p,chosen.url,p.resumePosition,p.playWanted);}catch{if(player===p&&id===p.loadId)recoverPlayer(p);}}
+async function fetchPlayback(p,attempt=0){const requestId=p.loadId;const result=await api('/api/stream',{link:p.film.link,voice:p.voice,season:p.season,episode:p.episode,recovery_attempt:attempt,direct:true},{signal:AbortSignal.timeout(25000)});if(player!==p||requestId!==p.loadId)return false;p.local=null;p.qualities=preferDirect(result.qualities);p.qualitySelect.replaceChildren(...result.qualities.map(q=>option(q.label,q.label)));return true;}
+async function loadStream(shouldPlay=true){const p=player;if(!p)return;const id=++p.loadId;clearTimeout(p.autoTimer);clearTimeout(p.recoveryTimer);p.recoveryTimer=null;p.recovery=new RecoveryPlan();p.recoverBusy=false;p.retry.hidden=true;note(p,'Підготовка відео…','busy');p.switching=true;p.mediaReady=false;p.video.pause();const old=latestFor(p.film.link,p.season,p.episode);p.resumePosition=old?.pos?old.pos/1000:0;p.watched=old?.watched||0;p.playWanted=shouldPlay;try{if(await playLocal(p,id))return;if(!await fetchPlayback(p)||player!==p||id!==p.loadId)return;loadAds(p);const chosen=p.recovery.next(p.qualities,p.quality);if(!chosen)throw Error('Немає доступного потоку');p.quality=chosen.quality;p.qualitySelect.value=p.quality;setSource(p,chosen.url,p.resumePosition,p.playWanted);}catch{if(player===p&&id===p.loadId)recoverPlayer(p);}}
 function armRecovery(p){if(player!==p||p.recoveryTimer||p.video.ended)return;const source=p.sourceId;p.recoveryTimer=setTimeout(()=>{p.recoveryTimer=null;if(player!==p||source!==p.sourceId||p.video.ended)return;if(document.hidden||!p.playWanted){armRecovery(p);return;}recoverPlayer(p);},20000);}
 async function recoverPlayer(p){if(player!==p||p.recoverBusy)return;p.recoverBusy=true;p.recovery||=new RecoveryPlan();p.recovery.interrupted();clearTimeout(p.recoveryTimer);p.recoveryTimer=null;const id=++p.loadId;p.resumePosition=p.mediaReady&&Number.isFinite(p.video.currentTime)?(p.video.currentTime>0?p.video.currentTime:p.lastPosition??p.resumePosition??0):p.resumePosition||0;saveProgress();p.switching=true;p.mediaReady=false;p.video.pause();note(p,'Шукаємо резервний потік…','busy');p.retry.hidden=true;try{let next=p.recovery.next(p.qualities,p.quality);while(!next&&player===p&&id===p.loadId){if(p.recovery.refresh()){try{if(!await fetchPlayback(p,p.recovery.refreshes))return;}catch{}next=p.recovery.next(p.qualities,p.quality);continue;}const voice=p.recovery.voice(p.film.voices,p.voice);if(!voice)break;p.voice=voice.id;try{if(!await fetchPlayback(p,1))return;}catch{}next=p.recovery.next(p.qualities,p.quality);}if(player!==p||id!==p.loadId)return;if(!next){p.switching=false;const wait=Math.min(60,5*2**Math.min(4,p.autoRetries||0));p.autoRetries=(p.autoRetries||0)+1;note(p,'Потік тимчасово недоступний. Пробуємо знову за '+wait+' с…','error');p.retry.hidden=false;clearTimeout(p.autoTimer);p.autoTimer=setTimeout(()=>{if(player===p&&playerModal.open)loadStream(p.playWanted!==false);},wait*1000);return;}p.quality=next.quality;p.qualitySelect.value=p.quality;p.recovered=true;setSource(p,next.url,p.resumePosition,p.playWanted);}finally{if(player===p&&id===p.loadId)p.recoverBusy=false;}}
 /** Ad clips the scanner found in a sponsored voice track; asked only for those voices, once per episode. */
@@ -452,16 +456,230 @@ function setSource(p,url,position,shouldPlay){
 }
 function progressRecord(){const p=player;if(!p?.video||!p.mediaReady||!Number.isFinite(p.video.duration)||p.video.currentTime<.1)return null;return {kind:'progress',key:keyOf(p.film.link)+'|'+(p.season||'0')+':'+(p.episode||'0'),data:{link:p.film.link,title:p.film.title,poster:p.film.poster,season:p.season,episode:p.episode,voice:p.voice,voiceName:p.film.voices.find(v=>v.id===p.voice)?.name,pos:Math.floor(p.video.currentTime*1000),dur:Math.floor(p.video.duration*1000),watched:Math.floor(p.watched),observed:p.watched>30000},updated_at:Date.now()+state.clockOffset};}
 function saveProgress(){const r=progressRecord();if(!r)return;change(r.kind,r.key,r.data);player.lastSave=performance.now();}
-function disposePlayer(){const p=player;if(!p)return;if(p.onSkipKey)document.removeEventListener('keydown',p.onSkipKey);if(p.onFull)document.removeEventListener('fullscreenchange',p.onFull);if(document.fullscreenElement&&p.stage?.contains(document.fullscreenElement))document.exitFullscreen?.().catch(()=>{});saveProgress();clearTimeout(p.recoveryTimer);clearTimeout(p.restoreTimer);clearTimeout(p.autoTimer);clearTimeout(p.rateHide);clearTimeout(p.sleepTimer);clearTimeout(p.sleepWarn);p.loadId++;p.sourceId=(p.sourceId||0)+1;p.episodeRequest=(p.episodeRequest||0)+1;player=null;const v=p.video;v.onpause=v.onplay=v.ontimeupdate=v.onended=v.onerror=v.onwaiting=v.onstalled=v.onloadedmetadata=null;v.pause();p.hls?.destroy();v.removeAttribute('src');v.load();refreshPage();}
+function disposePlayer(){const p=player;if(!p)return;if(p.onSkipKey)document.removeEventListener('keydown',p.onSkipKey);if(p.onFull)document.removeEventListener('fullscreenchange',p.onFull);if(document.fullscreenElement&&p.stage?.contains(document.fullscreenElement))document.exitFullscreen?.().catch(()=>{});saveProgress();clearTimeout(p.recoveryTimer);clearTimeout(p.restoreTimer);clearTimeout(p.autoTimer);clearTimeout(p.rateHide);clearTimeout(p.sleepTimer);clearTimeout(p.sleepWarn);p.loadId++;p.sourceId=(p.sourceId||0)+1;p.episodeRequest=(p.episodeRequest||0)+1;player=null;const v=p.video;v.onpause=v.onplay=v.ontimeupdate=v.onended=v.onerror=v.onwaiting=v.onstalled=v.onloadedmetadata=null;v.pause();p.hls?.destroy();v.removeAttribute('src');v.load();if(p.blobUrl)URL.revokeObjectURL(p.blobUrl);refreshPage();}
 window.addEventListener('pagehide',()=>{const r=progressRecord();if(r){state.records.set(recId(r),r);state.pending.set(recId(r),r);store();}if(state.user&&state.profile&&state.pending.size)navigator.sendBeacon('/api/sync',beaconPayload(state.profile.id,[...state.pending.values()],r,state.since));});document.addEventListener('visibilitychange',()=>{if(document.hidden)saveProgress();else sync();});setInterval(()=>{if(!document.hidden)sync();},30000);window.addEventListener('online',sync);
 // Initial account loading must not replace a settings form the user has already started editing.
 /** Settles once the account is known (or 1.5 s have passed): the home's first paint waits for it. */
 let identityReady=Promise.resolve();
+/* Downloads: films and episodes saved on this PC, tablet or phone for watching without the internet (downloads.js keeps
+   the list and the files, download-worker.js writes them, sw.js opens the site offline). The TV app has none. */
+const DL_ICON={
+ down:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>',
+ done:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20h14"/><path d="m7 10.5 3.5 3.5L17 7"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="m6.5 7 1 12.5h9l1-12.5"/></svg>',
+ pause:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6v12M15 6v12"/></svg>',
+ play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
+ retry:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4.5H15"/></svg>',
+ close:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></svg>'};
+function iconButton(svg,label,action,classes='dl-icon'){const b=button([],action,classes);b.innerHTML=svg;b.setAttribute('aria-label',label);b.title=label;return b;}
+/** «1 серія», «3 серії», «5 серій». */
+function plural(n,one,few,many){const a=n%10,b=n%100;return n+' '+(a===1&&b!==11?one:a>=2&&a<=4&&(b<12||b>14)?few:many);}
+const offline=()=>!!state.offline||globalThis.navigator?.onLine===false;
+const touchDevice=()=>matchMedia('(pointer:coarse)').matches;
+function downloadQuality(){return downloads.quality()||defaultDownloadQuality(touchDevice());}
+const dlPercent=x=>x.total?Math.min(100,Math.floor(x.bytes/x.total*100)):0;
+function downloadState(x){
+ if(x.status==='done')return [x.quality,formatBytes(x.total||x.bytes)].filter(Boolean).join(' · ');
+ if(x.status==='active')return x.total?dlPercent(x)+'% · '+formatBytes(x.bytes)+' з '+formatBytes(x.total):'Починаємо…';
+ if(x.status==='queued')return x.retryAt>Date.now()?'Зв’язок перервався, зараз продовжимо…':x.bytes?'У черзі · '+dlPercent(x)+'%':'У черзі';
+ if(x.status==='waiting')return 'Чекає на інтернет'+(x.total?' · '+dlPercent(x)+'%':'');
+ if(x.status==='paused')return 'Пауза'+(x.total?' · '+dlPercent(x)+'%':'');
+ return x.error||'Не вдалося завантажити';
+}
+const episodeLabel=x=>'С'+x.season+' · Е'+x.episode+(x.episodeTitle&&!/^(Серія|Серия)\s*\d+$/.test(x.episodeTitle)?' · '+x.episodeTitle:'');
+function watchedFor(x){const r=latestFor(x.link,x.season||'',x.episode||'');return r?.dur>0?r.pos/r.dur:0;}
+/** The poster stays with the title while any of its files is on the device (the service worker shows it offline). */
+function tellWorker(type,url){const sw=globalThis.navigator?.serviceWorker;if(!url||!sw)return;sw.ready.then(r=>r.active?.postMessage({type,url})).catch(()=>{});}
+
+let downloadsTimer=0,detailDownload=null,wakeLock=null,wakePending=false,reloadWhenOnline=false;
+function downloadsChanged(){paintDownloadNav();paintOffline();detailDownload?.();clearTimeout(downloadsTimer);downloadsTimer=setTimeout(()=>{if(state.tab==='downloads')renderDownloads();},120);}
+function paintDownload(x){if(!x)return;paintDownloadNav();for(const n of document.querySelectorAll('[data-download="'+x.id+'"]'))fillDownloadRow(n,x);detailDownload?.();}
+/** The menu item shows how far the running download is; the tab title too, for a computer where the tab sits in the background. */
+function paintDownloadNav(){
+ const b=$('[data-tab=downloads]');if(b)b.hidden=!downloads.supported||!state.user;if(!downloads.supported||!b)return;
+ const s=downloads.summary();let badge=b.querySelector('.nav-badge');
+ if(s.count&&state.user){if(!badge)b.append(badge=el('span',{class:'nav-badge'}));badge.textContent=s.active?.total?dlPercent(s.active)+'%':String(s.count);}else badge?.remove();
+ document.title=s.active?.total?'↓ '+dlPercent(s.active)+'% · '+baseTitle:baseTitle;
+ holdScreen(!!s.active);
+}
+/** A phone stops a page whose screen went dark: while a download runs the screen stays on (only on touch devices, only while KIK is in front). */
+async function holdScreen(on){
+ const lock=globalThis.navigator?.wakeLock;if(!lock||!touchDevice())return;
+ if(on&&!wakeLock&&!wakePending&&!document.hidden){wakePending=true;try{wakeLock=await lock.request('screen');wakeLock.addEventListener('release',()=>{wakeLock=null;});}catch{}finally{wakePending=false;}}
+ else if(!on&&wakeLock){const l=wakeLock;wakeLock=null;l.release().catch(()=>{});}
+}
+function paintOffline(){offlineBar.hidden=!offline()||!state.user;offlineBar.querySelector('button').hidden=!downloads.supported||state.tab==='downloads';}
+const offlineBar=el('div',{class:'offline-bar',role:'status',hidden:true},el('span',{},'Немає інтернету'),button('Завантаження',()=>navigate('downloads'),'text-button'));
+document.body.append(offlineBar);
+
+/** A film from what is on this device, for the player when KIK's service cannot be reached. */
+function offlineFilm(link){
+ const xs=downloads.forTitle(link).filter(x=>x.status==='done');if(!xs.length)return null;const x=xs[0];
+ const voices=[...new Map(xs.map(d=>[d.voice,{id:d.voice,name:d.voiceName||'Озвучення',...(d.voiceLang?{lang:d.voiceLang}:{})}])).values()];
+ return {link:x.link,title:x.title,poster:x.poster,series:x.series,year:x.year,duration:x.duration,genres:[],related:[],voices,episodes:x.series?mergeEpisodes(xs.map(d=>({season:d.season,episode:d.episode,title:d.episodeTitle}))):[],offline:true};
+}
+async function filmForPlay(item){try{return await getFilm(item);}catch(e){const f=offlineFilm(item.link);if(f&&(e.offline||e.slow||offline()))return f;throw e;}}
+/** The saved copy of what the player is about to play: no link, no waiting, no traffic. Online only in the voice the player
+ *  chose (another voice streams); offline whatever is there. False when there is none and the stream should load. */
+async function playLocal(p,id){
+ if(!downloads.supported)return false;
+ const local=downloads.find(p.film.link,p.film.series?p.season:'',p.film.series?p.episode:'',p.offline?null:p.voice);if(!local)return false;
+ let file;try{file=await downloads.file(local.id);}catch{return false;}
+ if(player!==p||id!==p.loadId)return true;
+ if(p.blobUrl)URL.revokeObjectURL(p.blobUrl);p.blobUrl=URL.createObjectURL(file);
+ const label=local.quality||'Файл';p.local=local;p.voice=local.voice;p.qualities=[{label,url:p.blobUrl}];p.quality=label;
+ p.qualitySelect.replaceChildren(option(label,label+' · на пристрої'));p.qualitySelect.value=label;
+ p.ads=state.profile?.ad_skip&&sponsoredVoice(local.voiceName)?local.ads||null:null;
+ setSource(p,p.blobUrl,p.resumePosition,p.playWanted);return true;
+}
+function playDownload(x){play({link:x.link,title:x.title,poster:x.poster,playEpisode:x.series?{season:x.season,episode:x.episode}:null});}
+
+function downloadEntry(f,voiceId,e){
+ const v=f.voices.find(x=>x.id===voiceId);
+ return {link:f.link,title:f.title,poster:artwork.get(keyOf(f.link))?.poster||f.poster||'',series:!!f.series,season:e?.season||'',episode:e?.episode||'',episodeTitle:e?.title||'',
+  voice:voiceId,voiceName:v?.name||'',voiceLang:v?langOf(v):'',wanted:downloadQuality(),runtime:runtimeMs(f.duration),duration:f.duration||'',year:f.year||'',sponsored:sponsoredVoice(v?.name)};
+}
+/** ⤓ in the title window: a film starts at once in the voice it would play in; a series opens the episode list. */
+function downloadButton(f,item){
+ if(f.external||!downloads.supported)return null;
+ const b=iconButton(DL_ICON.down,'Завантажити',()=>downloadTitle(f,item),'round-action download-action');
+ const paint=()=>{
+  if(!modal.open||!b.isConnected){if(detailDownload===paint)detailDownload=null;return;}
+  const xs=downloads.forTitle(f.link),done=xs.filter(x=>x.status==='done'),busy=xs.find(x=>x.status==='active')||xs.find(x=>x.status==='queued'||x.status==='waiting'),failed=xs.find(x=>x.status==='error');
+  const label=busy?'Завантажується · '+dlPercent(busy)+'%':failed&&!f.series?'Не вдалося завантажити: спробувати ще':done.length?(f.series?'Завантажено: '+plural(done.length,'серія','серії','серій'):'Завантажено на цей пристрій'):f.series?'Завантажити серії':'Завантажити для перегляду без інтернету';
+  b.classList.toggle('busy',!!busy);b.classList.toggle('rated',!busy&&!!done.length);b.style.setProperty('--p',busy?dlPercent(busy):0);
+  b.innerHTML=busy?'<span class="download-ring"></span><span class="download-pct">'+dlPercent(busy)+'</span>':done.length?DL_ICON.done:DL_ICON.down;
+  if(f.series&&done.length&&!busy)b.append(el('span',{class:'download-count'},String(done.length)));
+  b.setAttribute('aria-label',label);b.title=label;
+ };
+ detailDownload=paint;queueMicrotask(paint);return b;
+}
+function downloadTitle(f,item){
+ if(!state.user){auth();return;}
+ if(f.series){episodePicker(f,item);return;}
+ const old=downloads.forTitle(f.link)[0];
+ if(old&&old.status!=='error'&&old.status!=='paused'){modal.close();navigate('downloads');return;}
+ const voice=bestVoice(f.voices,chosenVoice(f.link)||latestFor(f.link)?.voice);if(!voice){toast('Немає доступного озвучення');return;}
+ const entry=downloadEntry(f,voice.id);if(downloads.add([entry])){tellWorker('keep-poster',entry.poster);toast('Завантажуємо «'+f.title+'» · '+downloadQuality()+'. Прогрес — у «Завантаженнях».');}
+}
+/** Which episodes to save: a season at once, the next three from where the viewer stopped, or one by one. */
+async function episodePicker(f,item){
+ showModal(el('h2',{},'Завантажити серії'),el('p',{},'Шукаємо серії…'));const generation=modalGeneration;
+ const remembered=chosenVoice(f.link)||latestFor(f.link)?.voice,voice=bestVoice(f.voices,remembered);
+ if(!voice){modalContent.replaceChildren(el('h2',{},'Завантажити серії'),el('p',{},'Немає доступного озвучення.'));return;}
+ const p={film:f,userVoice:remembered||voice.id,coverage:new Map(),episodes:[]};
+ try{const own=(await api('/api/episodes',{link:f.link,voice:voice.id})).episodes||[];p.coverage.set(voice.id,own);p.episodes=mergeEpisodes(f.episodes,own);}
+ catch(e){if(modal.open&&generation===modalGeneration)modalContent.replaceChildren(oops({error:e,retry:()=>episodePicker(f,item),title:f.title,key:'download:'+keyOf(f.link)}));return;}
+ if(!modal.open||generation!==modalGeneration)return;
+ const back=button('← '+f.title,()=>openDetails(item),'text-button dl-back');
+ if(!p.episodes.length){modalContent.replaceChildren(back,el('h2',{},'Завантажити серії'),el('p',{},'Серії наразі недоступні.'));return;}
+ const k=e=>e.season+':'+e.episode,saved=e=>downloads.forTitle(f.link).find(x=>x.season===e.season&&x.episode===e.episode&&x.status!=='error'),chosen=new Set();
+ const seasons=[...new Set(p.episodes.map(e=>e.season))],last=latestFor(f.link);
+ const season=el('select',{'aria-label':'Сезон'},seasons.map(s=>option(s,'Сезон '+s)));season.value=seasons.includes(last?.season)?last.season:seasons[0];
+ const quality=el('select',{'aria-label':'Якість'},DOWNLOAD_QUALITIES.map(q=>option(q,q)));quality.value=downloadQuality();quality.onchange=()=>downloads.setQuality(quality.value);
+ const list=el('div',{class:'dl-episodes',role:'group','aria-label':'Серії'}),free=el('span',{class:'dl-meta'}),submit=button('Виберіть серії',()=>start(),'pill red');
+ downloads.usage().then(u=>{if(u.free!=null)free.textContent='Вільно для KIK ≈ '+formatBytes(u.free);});
+ function paintList(){list.replaceChildren(...p.episodes.filter(e=>e.season===season.value).map(e=>{const have=saved(e),box=el('input',{type:'checkbox'});box.checked=!!have||chosen.has(k(e));box.disabled=!!have;box.onchange=()=>{if(box.checked)chosen.add(k(e));else chosen.delete(k(e));paintSubmit();};
+  return el('label',{class:'dl-episode'+(have?' have':'')},box,el('span',{class:'dl-episode-name'},e.title||'Серія '+e.episode),el('span',{class:'dl-meta'},have?downloadState(have):''));}));paintSubmit();}
+ function paintSubmit(){const n=chosen.size;submit.disabled=!n;submit.textContent=n?'Завантажити '+plural(n,'серію','серії','серій'):'Виберіть серії';}
+ const open=list=>list.filter(e=>!saved(e));
+ const wholeSeason=button('Увесь сезон',()=>{for(const e of open(p.episodes.filter(e=>e.season===season.value)))chosen.add(k(e));paintList();},'pill small');
+ // From the episode after the last one finished (or the one stopped in), as «Продовжити перегляд» would play them.
+ const at=last?p.episodes.findIndex(e=>e.season===last.season&&e.episode===last.episode):-1,from=at<0?0:last.dur>0&&last.pos/last.dur>.93?at+1:at;
+ const nextThree=button(at<0?'Перші 3':'Наступні 3',()=>{const picked=open(p.episodes.slice(from)).slice(0,3);for(const e of picked)chosen.add(k(e));if(picked[0])season.value=picked[0].season;paintList();},'pill small');
+ const clear=button('Очистити',()=>{chosen.clear();paintList();},'text-button');
+ async function start(){
+  submit.disabled=true;submit.textContent='Готуємо…';const entries=[];let missing=0;
+  for(const key of chosen){const e=p.episodes.find(x=>k(x)===key);let id=null;try{id=await voiceFor(p,e.season,e.episode);}catch{}if(!modal.open||generation!==modalGeneration)return;if(id)entries.push(downloadEntry(f,id,e));else missing++;}
+  const added=downloads.add(entries);if(added)tellWorker('keep-poster',entries[0].poster);
+  toast(added?'Додано до завантажень: '+plural(added,'серія','серії','серій')+(missing?' · без озвучення: '+missing:''):'Ці серії вже завантажуються');
+  openDetails(item);
+ }
+ season.onchange=paintList;
+ modalContent.replaceChildren(el('div',{class:'dl-picker'},back,el('h2',{},'Завантажити серії'),
+  el('div',{class:'dl-picker-tools'},seasons.length>1?selectField('Сезон',season):null,selectField('Якість',quality)),
+  el('div',{class:'dl-quick'},wholeSeason,nextThree,clear),list,el('div',{class:'dl-picker-foot'},free,submit)));
+ paintList();
+}
+
+function fillDownloadRow(node,x){
+ const bar=node.querySelector('.dl-bar i');if(bar)bar.style.width=(x.status==='done'?Math.round(watchedFor(x)*100):dlPercent(x))+'%';
+ const s=node.querySelector('.dl-state');if(s)s.textContent=downloadState(x);
+}
+function downloadRow(x,film=false){
+ const watched=x.status==='done'?watchedFor(x):0;
+ const actions=x.status==='done'?[film?null:iconButton(DL_ICON.play,'Дивитися '+episodeLabel(x),()=>playDownload(x)),film?null:iconButton(DL_ICON.trash,'Видалити '+episodeLabel(x),()=>removeOne(x))]
+  :[x.status==='paused'||x.status==='error'?iconButton(x.status==='error'?DL_ICON.retry:DL_ICON.play,x.status==='error'?'Спробувати ще':'Продовжити',()=>downloads.resume(x.id)):iconButton(DL_ICON.pause,'Пауза',()=>downloads.pause(x.id)),
+   iconButton(DL_ICON.close,'Скасувати завантаження',()=>removeOne(x))];
+ const node=el(film?'div':'li',{class:'dl-row '+x.status+(watched>.93?' watched':''),'data-download':x.id},
+  film?null:el('span',{class:'dl-row-name'},episodeLabel(x)),
+  el('div',{class:'dl-progress'},el('div',{class:'dl-bar'+(x.status==='done'&&!watched?' empty':'')},el('i')),el('span',{class:'dl-state'})),
+  el('div',{class:'dl-row-actions'},actions));
+ fillDownloadRow(node,x);return node;
+}
+function downloadGroup(xs){
+ const x=xs[0],eps=x.series?xs.slice().sort((a,b)=>Number(a.season)-Number(b.season)||Number(a.episode)-Number(b.episode)):xs,done=eps.filter(d=>d.status==='done');
+ const size=xs.reduce((s,d)=>s+(d.status==='done'?d.total:d.bytes||0),0);
+ const stub=()=>el('div',{class:'dl-poster stub','aria-hidden':'true'},(x.title||'K').trim()[0]);
+ const poster=x.poster?el('img',{class:'dl-poster',src:x.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer',onError:e=>e.target.replaceWith(stub())}):stub();
+ const next=x.series?done.find(d=>watchedFor(d)<=.93)||done[0]:done[0];
+ const play=next?button(x.series?'▶ '+'С'+next.season+' · Е'+next.episode:'▶ '+(watchedFor(next)>.02&&watchedFor(next)<.93?'Продовжити':'Дивитися'),()=>playDownload(next),'pill primary small'):null;
+ const meta=x.series?[plural(done.length,'серія','серії','серій')+' на пристрої',formatBytes(size)]:x.status==='done'?[downloadState(x),watchedFor(x)>.93?'переглянуто':null,x.year]:[x.year];
+ const head=el('div',{class:'dl-title-head'},el('div',{class:'dl-title-copy'},el('h2',{},x.title),el('p',{class:'dl-meta'},meta.filter(Boolean).join(' · '))),
+  el('div',{class:'dl-actions'},play,iconButton(DL_ICON.trash,'Видалити «'+x.title+'» з пристрою',()=>removeDownloads(xs,'«'+x.title+'»'),'dl-icon dl-remove')));
+ const rows=x.series?el('ul',{class:'dl-rows'},eps.map(d=>downloadRow(d))):x.status!=='done'?el('div',{class:'dl-rows'},downloadRow(x,true)):null;
+ return el('article',{class:'dl-title'},poster,el('div',{class:'dl-title-body'},head,rows));
+}
+async function removeOne(x){await downloads.remove(x.id);if(!downloads.forTitle(x.link).length)tellWorker('drop-poster',x.poster);}
+/** Removing a whole title or every watched file asks first: it takes as long again to download. */
+function removeDownloads(xs,what){
+ const size=xs.reduce((s,d)=>s+(d.status==='done'?d.total:d.bytes||0),0);
+ showModal(el('h2',{},'Видалити з цього пристрою?'),el('p',{},what+(size?' · звільниться '+formatBytes(size):'')+'. На інших пристроях і в історії нічого не зміниться.'),
+  el('div',{class:'actions'},button('Видалити',async()=>{modal.close();const links=new Map(xs.map(d=>[d.link,d.poster]));await downloads.removeMany(xs.map(d=>d.id));for(const [link,poster] of links)if(!downloads.forTitle(link).length)tellWorker('drop-poster',poster);toast('Видалено з пристрою');},'pill red'),button('Скасувати',()=>modal.close(),'pill')));
+}
+function renderDownloads(){
+ artObserver?.disconnect();
+ const head=el('h1',{},'Завантаження');
+ if(!downloads.supported){main.replaceChildren(el('section',{class:'grid-page dl-page'},head,downloads.settled?el('div',{class:'grid-empty'},'Цей браузер не вміє зберігати відео для перегляду без інтернету. Відкрийте KIK у Chrome, Edge, Firefox або Safari.'):null));return;}
+ const items=downloads.items(),groups=new Map();
+ for(const x of items.slice().sort((a,b)=>(b.added||0)-(a.added||0))){if(!groups.has(x.key))groups.set(x.key,[]);groups.get(x.key).push(x);}
+ const quality=el('select',{'aria-label':'Якість нових завантажень'},DOWNLOAD_QUALITIES.map(q=>option(q,q)));quality.value=downloadQuality();quality.onchange=()=>{downloads.setQuality(quality.value);toast('Нові завантаження: '+quality.value);};
+ const usage=el('p',{class:'dl-meta dl-usage'});downloads.usage().then(u=>{usage.textContent=(u.used?'Зайнято '+formatBytes(u.used):'Поки нічого не збережено')+(u.free!=null?' · вільно ще ≈ '+formatBytes(u.free):'');});
+ const watched=items.filter(x=>x.status==='done'&&watchedFor(x)>.93);
+ const ios=/iP(hone|ad|od)/.test(globalThis.navigator?.userAgent||'')||globalThis.navigator?.platform==='MacIntel'&&globalThis.navigator?.maxTouchPoints>1,installed=matchMedia('(display-mode: standalone)').matches||globalThis.navigator?.standalone===true;
+ const running=items.some(x=>['active','queued','waiting'].includes(x.status));
+ const notes=[offline()?'Немає інтернету. Завантажене дивіться як завжди: прогрес збережеться тут і синхронізується, щойно з’явиться мережа.':null,
+  ios&&!installed?'На iPhone та iPad додайте KIK на початковий екран (Поділитися → «На початковий екран») і відкривайте звідти: так Safari не зітре завантаження.':null,
+  running&&touchDevice()?'Поки йде завантаження, тримайте KIK відкритим: у фоні телефон його призупиняє. Відкриєте знову — продовжиться з того ж місця.':null].filter(Boolean).map(t=>el('p',{class:'dl-note'},t));
+ const body=groups.size?el('div',{class:'dl-list'},[...groups.values()].map(downloadGroup))
+  :el('div',{class:'grid-empty'},'Тут будуть фільми й серії для перегляду без інтернету: у дорозі, в літаку, на дачі. Відкрийте фільм чи серіал і натисніть ',el('b',{},'⤓'),'.');
+ main.replaceChildren(el('section',{class:'grid-page dl-page'},el('div',{class:'page-head dl-head'},el('div',{},head,usage),
+  el('div',{class:'dl-head-tools'},selectField('Якість нових',quality),watched.length?button('Видалити переглянуті',()=>removeDownloads(watched,'Переглянуті: '+plural(watched.length,'файл','файли','файлів')),'pill small'):null)),notes,body));
+ paintOffline();
+}
+window.addEventListener('offline',()=>{paintOffline();if(state.tab==='downloads')renderDownloads();});
+// Opened without the internet: once it is back, KIK loads properly (after the film, if one is playing).
+window.addEventListener('online',()=>{paintOffline();if(!state.offline)return;if(playerModal.open)reloadWhenOnline=true;else location.reload();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)paintDownloadNav();});
+/** The account known last time, so KIK opens offline as the same person. No e-mail is kept. */
+function rememberIdentity(me){if(me.user)storage.setItem('kik-me',JSON.stringify({user:{id:me.user.id,role:me.user.role},profiles:me.profiles}));else storage.removeItem('kik-me');}
+function offlineIdentity(e){
+ if(!e?.offline)return false;let kept=null;try{kept=JSON.parse(storage.getItem('kik-me')||'null');}catch{}
+ if(!kept?.user?.id||!Array.isArray(kept.profiles))return false;
+ state.offline=true;state.user=kept.user;state.profiles=kept.profiles;state.profile=state.profiles.find(p=>p.id===storage.getItem('kik-profile:'+state.user.id))||state.profiles[0];restore();state.ready=true;return true;
+}
+function registerOffline(){
+ const sw=globalThis.navigator?.serviceWorker;if(!sw||!(location.protocol==='https:'||['localhost','127.0.0.1'].includes(location.hostname)))return;
+ const go=()=>sw.register('/sw.js').catch(()=>{});if(document.readyState==='complete')go();else window.addEventListener('load',go,{once:true});
+}
+registerOffline();
 async function init(){
  let failure=null;
- const identity=(async()=>{try{const me=await api('/api/me');state.clockOffset=me.server_time-Date.now();state.user=me.user;state.profiles=me.profiles;if(state.user){state.profile=state.profiles.find(p=>p.id===storage.getItem('kik-profile:'+state.user.id))||state.profiles[0];restore();}state.ready=true;return true;}catch(e){failure=e;return false;}})();
+ const identity=(async()=>{try{const me=await api('/api/me');state.clockOffset=me.server_time-Date.now();state.user=me.user;state.profiles=me.profiles;rememberIdentity(me);if(state.user){state.profile=state.profiles.find(p=>p.id===storage.getItem('kik-profile:'+state.user.id))||state.profiles[0];restore();}state.ready=true;return true;}catch(e){failure=e;return offlineIdentity(e);}})();
  identityReady=Promise.race([identity,new Promise(r=>setTimeout(r,1500))]);loadCatalogue();
  const known=await identity;
+ // Offline with films on this device: they open at once; the rest of KIK waits for the internet.
+ if(state.offline){await downloads.ready;if(!location.hash&&downloads.items().some(x=>x.status==='done'))state.tab='downloads';render();refreshAccount();management.load().catch(()=>{});return;}
  // No answer about the account (no connection, a rate limit, KIK restarting) is not «signed out»: the «Упс» screen asks again by itself.
  if(!known){main.replaceChildren(el('section',{class:'grid-page oops-holder'},oops({error:failure,retry:()=>location.reload(),key:'me',size:'page'})));return;}
  // Nothing is drawn before the account is known (render() waits for it), so the first paint is the gate or the viewer's own page.
