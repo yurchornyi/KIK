@@ -17,6 +17,9 @@ on:
       - scripts/build.sh
       - scripts/media3.sh
       - web/kik-intro.mp4
+  # By hand, and by merge-when-green.yml right after it merges a PR that touches the paths above: its merge is
+  # made with the workflow's token too, so it starts no push run, while a dispatch is the one event that token
+  # still starts (GitHub docs, «GITHUB_TOKEN»: workflow_dispatch and repository_dispatch always create runs).
   workflow_dispatch:
     inputs:
       dry_run:
@@ -34,7 +37,11 @@ concurrency:
 
 jobs:
   release:
-    if: github.actor != 'github-actions[bot]'
+    # The bot is the actor of every run the workflow's token starts, so a bare `github.actor != bot` also
+    # skipped merge-when-green's dispatch (12.11: PR #101 merged, 1.31 had to be released by hand). Dispatches
+    # always run; for a push the check stays as a guard against the release's own version commit, in case it is
+    # ever pushed with a token that does start workflows.
+    if: github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

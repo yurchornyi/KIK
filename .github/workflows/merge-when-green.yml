@@ -7,6 +7,11 @@ name: Merge when green
 on:
   check_run:
     types: [completed]
+  # A draft made ready after its checks passed gets no new check_run, so this event merges it. A run of this
+  # event belongs to the PR, so its token can write only for a PR from this repository (a fork's is read-only),
+  # and the job runs no code from the PR: it fetches main's script. Its own check on the PR is ignored by name.
+  pull_request:
+    types: [ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -21,6 +26,8 @@ jobs:
     if: >-
       vars.AUTO_MERGE != 'false' && (
         github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name == github.repository) ||
         (github.event_name == 'check_run' &&
          github.event.check_run.app.slug == 'cloudflare-workers-and-pages' &&
          github.event.check_run.conclusion == 'success'))

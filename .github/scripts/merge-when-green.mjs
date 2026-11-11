@@ -18,7 +18,7 @@ const SINCE = '2026-10-31T14:00:00Z';
 const IGNORED_CHECKS = new Set(['GitHub-hosted availability', 'Merge green pull requests']);
 const PASSED = new Set(['success', 'skipped', 'neutral']);
 const MIGRATION = /(?:^|\/)migrations\/|(?:^|\/)prisma\/schema/u;
-// A merge made with the workflow's token starts no push workflow: this one is started by hand.
+// A merge made with the workflow's token starts no push workflow, so release.yml is dispatched here.
 const releaseWorkflow = process.env.RELEASE_WORKFLOW ?? '';
 const releasePaths = process.env.RELEASE_PATHS ? new RegExp(process.env.RELEASE_PATHS, 'u') : null;
 
