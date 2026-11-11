@@ -288,6 +288,8 @@ changes.append('search:kik_provider')
 # nothing, and the periodic refresh runs as KIK's job.
 p=D/'AndroidManifest.xml';s=p.read_text()
 s=s.replace('    </application>','    <service android:name="kik.i18n.TvChannels$Job" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE"/>\n    </application>',1)
+# «Тимчасовий вхід» ends on time with KIK closed: a job wakes at the visit's deadline (TemporarySignIn).
+s=s.replace('    </application>','    <service android:name="kik.i18n.TemporarySignIn$Job" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE"/>\n    </application>',1)
 p.write_text(s)
 p=D/'smali/na7.smali';s=p.read_text()
 def body(name,sig,code):

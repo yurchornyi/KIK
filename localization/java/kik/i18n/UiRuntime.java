@@ -28,6 +28,7 @@ public final class UiRuntime {
   e.apply();
   AppUpdater.schedule(app);
   TemporarySignIn.install(app);
+  Account.retryLogouts(app);
  }
  public static String defaultQuality(){return app==null?"1080p":app.getSharedPreferences("settings",0).getString("default_quality","1080p");}
  public static boolean hideAction(String label) {return label!=null && Arrays.asList("Отзывы","Торренты","Поделиться","Внешний","Трейлер","Облако","Стартовая страница").contains(label);}

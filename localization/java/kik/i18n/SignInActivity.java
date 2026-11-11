@@ -20,7 +20,7 @@ import org.json.*;
  * The server decides which emails may enter. «Увійти з телефону» unfolds a code and a QR code instead: the viewer confirms
  * it on a phone already signed in to the website, and the TV signs in without a password typed on the remote.
  * {@link #addAccount} runs the same screens for a second account: its profiles join this TV's next to the first one's,
- * for good or, with «Тимчасовий вхід», only for this visit ({@link TemporarySignIn}).
+ * for good or, with «Тимчасовий вхід», only for a visit ({@link TemporarySignIn}).
  */
 public final class SignInActivity extends Activity {
  private static final int LOADING=0,EMAIL=1,PASSWORD=2,CREATE=3,PICK=4,NAME=5,AVATAR=6;
@@ -245,7 +245,7 @@ public final class SignInActivity extends Activity {
   final TextView box=text("",17);box.setTypeface(Typeface.DEFAULT_BOLD);box.setIncludeFontPadding(false);row.addView(box,new LinearLayout.LayoutParams(dp(26),dp(26)));
   LinearLayout copy=new LinearLayout(this);copy.setOrientation(1);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.leftMargin=dp(14);row.addView(copy,lp);
   TextView title=text("Тимчасовий вхід",17);title.setGravity(Gravity.START);title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);copy.addView(title);
-  TextView note=text("Вийде з TV сам, коли закриєте KIK або через "+TemporarySignIn.IDLE/60_000+" хв без дій.",14);note.setGravity(Gravity.START);note.setTextColor(0xffb5b1be);note.setLineSpacing(0,1.1f);copy.addView(note);
+  TextView note=text("Вийде з TV сам через "+TemporarySignIn.span(TemporarySignIn.IDLE)+" без дій або через "+TemporarySignIn.span(TemporarySignIn.LIFETIME)+" після входу.",14);note.setGravity(Gravity.START);note.setTextColor(0xffb5b1be);note.setLineSpacing(0,1.1f);copy.addView(note);
   final Runnable paint=()->{box.setText(temporary?"✓":"");box.setBackground(temporary?Ui.shape(Ui.RED,dp(6),0,0):Ui.shape(0,dp(6),dp(2),0xff8a8592));row.setContentDescription("Тимчасовий вхід, "+(temporary?"увімкнено":"вимкнено"));};
   paint.run();row.setOnClickListener(v->{temporary=!temporary;paint.run();});
   content.addView(row,new LinearLayout.LayoutParams(dp(480),-2));space(16);
