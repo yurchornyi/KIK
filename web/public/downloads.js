@@ -73,6 +73,8 @@ export function createDownloads({api,storage,keyOf,owner,onChange=()=>{},onProgr
   if(m.type==='done'){if(active===m.id)active=null;if(!x){await disk.remove(m.id);kick();return;}
    mutate(l=>{const y=l.find(z=>z.id===m.id);if(y)Object.assign(y,{status:'done',bytes:m.total,total:m.total,finished:now(),attempts:0,error:null,retryAt:0});});
    const y=item(m.id);if(y?.sponsored)api('/api/ad-breaks?'+new URLSearchParams({link:y.link,voice:y.voice,season:y.season||'',episode:y.episode||''})).then(ads=>mutate(l=>{const z=l.find(q=>q.id===m.id);if(z)z.ads=ads;})).catch(()=>{});
+   // Intro and credits travel with an episode too (episode-marks.js): offline the player still offers to skip them.
+   if(y?.series)api('/api/marks?'+new URLSearchParams({link:y.link,voice:y.voice,season:y.season,episode:y.episode})).then(marks=>{if(marks?.duration)mutate(l=>{const z=l.find(q=>q.id===m.id);if(z)z.marks=marks;});}).catch(()=>{});
    if(y)onDone(y);kick();return;}
   if(m.type==='stopped'){if(active===m.id)active=null;
    if(!x)await disk.remove(m.id);

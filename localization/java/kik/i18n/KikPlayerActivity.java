@@ -49,6 +49,9 @@ public final class KikPlayerActivity extends Activity {
  private ExoPlayer player;private SurfaceView surface;private FrameLayout screen;private float aspect;
  /** Ad clips of the playing file (AdBreaks): confirmed ones are jumped over, AI hints get the «Пропустити рекламу» button. */
  private double[] ads,hints;private long hintTo=-1;private TextView skipAd;
+ /** Intro and credits of the episode (EpisodeMarks): the opening logo is passed, an intro gets «Пропустити заставку» on the
+  *  same button, the credits «Наступна серія». */
+ private double[] marks;private boolean logoDone,nextDismissed;private long nextUntil=-1;private TextView nextCard;
  /** «Як вам?» at the credits (PlaybackPolicy.askRating): playback goes on, it hides by itself, each title is asked once. */
  private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
@@ -100,6 +103,8 @@ public final class KikPlayerActivity extends Activity {
   FrameLayout.LayoutParams sl=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);sl.bottomMargin=dp(48);root.addView(subtitle,sl);
   skipAd=Ui.text(this,"Пропустити рекламу",20,Color.BLACK);skipAd.setGravity(Gravity.CENTER);skipAd.setIncludeFontPadding(false);skipAd.setMinHeight(dp(52));skipAd.setPadding(dp(30),0,dp(30),0);skipAd.setBackground(Ui.shape(0xffffffff,dp(26),0,0));skipAd.setVisibility(View.GONE);
   FrameLayout.LayoutParams kl=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);kl.rightMargin=dp(56);kl.bottomMargin=dp(52);root.addView(skipAd,kl);
+  nextCard=Ui.text(this,"Наступна серія ▸",20,Color.BLACK);nextCard.setGravity(Gravity.CENTER);nextCard.setIncludeFontPadding(false);nextCard.setMinHeight(dp(52));nextCard.setPadding(dp(30),0,dp(30),0);nextCard.setBackground(Ui.shape(0xffffffff,dp(26),0,0));nextCard.setVisibility(View.GONE);
+  FrameLayout.LayoutParams nl=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);nl.rightMargin=dp(56);nl.bottomMargin=dp(52);root.addView(nextCard,nl);
   // KIK's waiting screen: the intro's settled frame (logo, «Створено Чорним» below), with what is happening under the logo.
   wait=new FrameLayout(this);wait.setBackgroundColor(Color.BLACK);ImageView mark=new ImageView(this);mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
   mark.setImageBitmap(asset("kik/wait.png"));wait.addView(mark,new FrameLayout.LayoutParams(-1,-1));
@@ -267,6 +272,9 @@ public final class KikPlayerActivity extends Activity {
      resumeAt=Math.max(resumeAt,PlaybackPolicy.introMs(playing.name));
      subGeneration++;cues.clear();subIndex=-1;subtitle.setText("");
      play();
+     marks=null;logoDone=false;nextDismissed=false;nextUntil=-1;showNext(null);
+     // Intro and credits for a profile with «Пропуск реклами й заставок»; asking for the next episode puts it in the scanner's queue too.
+     if(selectedFilm.series&&CloudSync.adSkip(this,profileId)){final String mv=playing.id,ml=selectedFilm.link;final Site.Episode after=next(selectedFilm,ss,ee);Ui.bg(()->{final double[] m=EpisodeMarks.get(this,ml,mv,ss,ee,profileId);if(after!=null)EpisodeMarks.get(this,ml,mv,after.season,after.episode,profileId);h.post(()->{if(!destroyed&&gen==generation)marks=m;});});}
      ads=null;hints=null;showHint(-1);if(CloudSync.adSkip(this,profileId)&&PlaybackPolicy.sponsoredVoice(playing.name)){final String vid=playing.id,link=selectedFilm.link;Ui.bg(()->{final double[][] a=AdBreaks.get(this,link,vid,ss,ee);h.post(()->{if(!destroyed&&gen==generation&&a!=null){ads=a[0];hints=a[1];}});});}
     });
    }catch(final Exception e){Log.w("KIK","Stream",e);h.post(()->{if(destroyed||gen!=generation)return;recovering=false;
@@ -680,7 +688,8 @@ public final class KikPlayerActivity extends Activity {
  }
  private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();int margin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);if(lp.bottomMargin!=margin){lp.bottomMargin=margin;subtitle.setLayoutParams(lp);}
   // The rating card rises above the open controls, as «Пропустити рекламу» does.
-  if(ask!=null){FrameLayout.LayoutParams al=(FrameLayout.LayoutParams)ask.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(28);if(al.bottomMargin!=at){al.bottomMargin=at;ask.setLayoutParams(al);}}}
+  if(ask!=null){FrameLayout.LayoutParams al=(FrameLayout.LayoutParams)ask.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(28);if(al.bottomMargin!=at){al.bottomMargin=at;ask.setLayoutParams(al);}}
+  if(nextCard!=null){FrameLayout.LayoutParams nl=(FrameLayout.LayoutParams)nextCard.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(52);if(nl.bottomMargin!=at){nl.bottomMargin=at;nextCard.setLayoutParams(nl);}}}
  private void fade(final View v,boolean on){
   v.animate().cancel();
   if(!Ui.animations()){v.setAlpha(on?1:0);v.setTranslationY(0);v.setVisibility(on?View.VISIBLE:View.GONE);return;}
@@ -689,7 +698,21 @@ public final class KikPlayerActivity extends Activity {
  }
  /** The «Пропустити рекламу» button for an AI hint: shown while playback is inside the clip, OK jumps to its end. */
  private void showHint(long to){hintTo=to;if(skipAd==null)return;int v=to>0?View.VISIBLE:View.GONE;if(skipAd.getVisibility()!=v)skipAd.setVisibility(v);}
- private void skipHint(){long to=hintTo;showHint(-1);if(player==null||to<=0)return;Log.d("KIK.Player","Ad hint skipped "+pos()+" -> "+to);resumeAt=to;seekAt=SystemClock.elapsedRealtime();lastMovement=seekAt;player.seekTo(to);}
+ private void showHint(long to,String label){if(skipAd!=null&&to>0&&!label.contentEquals(skipAd.getText()))skipAd.setText(label);showHint(to);}
+ private void skipHint(){long to=hintTo;showHint(-1);if(player==null||to<=0)return;Log.d("KIK.Player","Hint skipped ("+(skipAd==null?"":skipAd.getText())+") "+pos()+" -> "+to);resumeAt=to;seekAt=SystemClock.elapsedRealtime();lastMovement=seekAt;player.seekTo(to);}
+ /** «Наступна серія» from the credits, where «Пропустити рекламу» sits. After scanned credits it counts down in playback time
+  *  (a pause holds it) and goes on by itself when autoplay is on; over a guessed end it waits for OK. BACK keeps the credits. */
+ private void paintNext(long position){
+  Site.Episode n=film!=null&&film.series&&!nextDismissed&&!sleepAfterEpisode&&hintTo<=0?next(film,season,episode):null;long[] o=n==null?null:PlaybackPolicy.nextOffer(marks,dur());
+  if(o==null||position<o[0]){showNext(null);return;}
+  if(o[1]==1&&getSharedPreferences("settings",0).getBoolean("auto_play_next_episode",true)){
+   if(nextUntil<0)nextUntil=position+PlaybackPolicy.NEXT_COUNTDOWN_MS;long left=(nextUntil-position+999)/1000;
+   if(left<=0){goNext();return;}showNext("Наступна серія через "+left);
+  }else showNext("Наступна серія ▸");
+ }
+ private void showNext(String text){if(nextCard==null)return;if(text==null){if(nextCard.getVisibility()!=View.GONE)nextCard.setVisibility(View.GONE);return;}if(!text.contentEquals(nextCard.getText()))nextCard.setText(text);if(nextCard.getVisibility()!=View.VISIBLE)nextCard.setVisibility(View.VISIBLE);}
+ private boolean nextShown(){return nextCard!=null&&nextCard.getVisibility()==View.VISIBLE;}
+ private void goNext(){Site.Episode n=film!=null&&film.series?next(film,season,episode):null;showNext(null);if(n==null)return;Log.d("KIK.Player","Next episode from the credits S"+season+"E"+episode+" -> S"+n.season+"E"+n.episode);save();season=n.season;episode=n.episode;playIntro();start(true);}
  private void maybeAsk(long position){
   long d=dur();if(askChecked||d<=0||position<PlaybackPolicy.creditsAt(d)||!profileId.equals(ProfileStore.current(this)))return;askChecked=true;
   boolean last=film.series&&next(film,season,episode)==null;Progress.Entry saved=film.series?null:Progress.get(this,film.link);
@@ -749,9 +772,13 @@ public final class KikPlayerActivity extends Activity {
    }else if(state==Player.STATE_READY){
     // Jump over an ad clip spliced into a sponsored voice track; a plain seek, nothing is drawn.
     long skip=seeking?-1:PlaybackPolicy.adSkip(ads,position,dur());if(skip>0){Log.d("KIK.Player","Ad skipped "+position+" -> "+skip);resumeAt=skip;seekAt=now;lastMovement=now;player.seekTo(skip);Ui.toast(this,"Рекламу пропущено");return;}
-    // A clip only the AI saw is never skipped on its own: the viewer decides with OK.
-    showHint(seeking?-1:PlaybackPolicy.adSkip(hints,position,dur()));
+    // The channel logo an episode opens with (Netflix) is passed once, as a voice studio's ident is.
+    if(!logoDone&&marks!=null){logoDone=true;long logo=PlaybackPolicy.openingLogo(marks,dur());if(logo>0&&position<Math.min(3000,logo-500)){Log.d("KIK.Player","Opening logo skipped "+position+" -> "+logo);resumeAt=logo;seekAt=now;lastMovement=now;player.seekTo(logo);return;}}
+    // A clip only the AI saw is never skipped on its own: the viewer decides with OK. The same button offers to skip an intro.
+    long hint=seeking?-1:PlaybackPolicy.adSkip(hints,position,dur());
+    if(hint>0)showHint(hint,"Пропустити рекламу");else showHint(seeking?-1:PlaybackPolicy.introSkip(marks,position,dur()),"Пропустити заставку");
     if(!seeking)maybeAsk(position);
+    paintNext(position);
     if(position>lastPosition+50||position<lastPosition-500){lastMovement=now;lastPosition=position;recovery.progress(now);if(stableSince==0)stableSince=now;if(now-stableSince>30000){sameAttempt=0;voiceAttempt=0;failedVoices.clear();recoveryStarted=now;stableSince=now;}}
     else if(player.isPlaying()&&now-lastMovement>FROZEN_MS){Log.w("KIK.Player","Picture frozen at "+position);lastMovement=now;recover(null);}
    }
@@ -798,6 +825,8 @@ public final class KikPlayerActivity extends Activity {
   if(failed&&center&&menu==null&&focus==playIndex){autoRetry=0;offline=false;retryNow(true);return true;}
   // While «Пропустити рекламу» is on screen, OK always means it, whatever the controls have in focus.
   if(center&&hintTo>0&&menu==null&&!failed){skipHint();return true;}
+  // «Наступна серія» takes OK while the controls are hidden (the rating card, when it is up, comes first).
+  if(center&&nextShown()&&!visible&&!askOn&&menu==null&&!failed){goNext();return true;}
   // «Як вам?» takes ◀ ▶ and OK while the controls are hidden; ▲ ▼ still open them and playback goes on.
   if(askOn&&!visible&&menu==null&&!failed){
    if(k==KeyEvent.KEYCODE_DPAD_LEFT||k==KeyEvent.KEYCODE_DPAD_RIGHT){askFocus=Math.max(0,Math.min(askChoices.size()-1,askFocus+(k==KeyEvent.KEYCODE_DPAD_LEFT?-1:1)));paintAsk();askCountdown();return true;}
@@ -831,5 +860,5 @@ public final class KikPlayerActivity extends Activity {
  }
  /** Remote keys the player handles; any other key (volume, mute, power, home…) keeps its system behaviour. */
  private static boolean playerKey(int key){switch(key){case KeyEvent.KEYCODE_BACK:case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:case KeyEvent.KEYCODE_HEADSETHOOK:case KeyEvent.KEYCODE_SPACE:case KeyEvent.KEYCODE_MEDIA_PLAY:case KeyEvent.KEYCODE_MEDIA_PAUSE:case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:case KeyEvent.KEYCODE_MEDIA_REWIND:case KeyEvent.KEYCODE_DPAD_CENTER:case KeyEvent.KEYCODE_ENTER:case KeyEvent.KEYCODE_DPAD_LEFT:case KeyEvent.KEYCODE_DPAD_RIGHT:case KeyEvent.KEYCODE_DPAD_UP:case KeyEvent.KEYCODE_DPAD_DOWN:return true;default:return false;}}
- @Override public void onBackPressed(){if(menu!=null){closeMenu();return;}if(visible){show(false);return;}if(askOn){answer(0);return;}save();finish();}
+ @Override public void onBackPressed(){if(menu!=null){closeMenu();return;}if(visible){show(false);return;}if(nextShown()){nextDismissed=true;showNext(null);return;}if(askOn){answer(0);return;}save();finish();}
 }

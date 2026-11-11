@@ -1,12 +1,15 @@
 /** KIK ad scanner: runs on the always-on PC, finds ad clips in episodes somebody started and reports them to the Worker.
- *  node --import ./register.mjs scan.mjs            — loop forever (queue every 5 minutes)
+ *  It also finds the intro and the closing credits of series episodes (marks-detect.mjs, episode-marks.mjs).
+ *  node --import ./register.mjs scan.mjs            — loop forever (queues every 5 minutes)
  *  node --import ./register.mjs scan.mjs <link> <season> <episode> [voice]   — scan one episode now, print, do not report
+ *  node --import ./register.mjs scan.mjs marks <link> <season> <episode> <voice>   — intro and credits of one episode, print only
  *  Env: KIK_SCANNER_TOKEN (same secret as the Worker's AD_SCANNER_TOKEN), KIK_ORIGIN, KIK_SCANNER_DATA, FFMPEG, KIK_SCANNER_AI=0 to turn the AI check off,
  *  KIK_SCANNER_CA — a CA bundle when this FFmpeg build has no system certificates. */
 import {spawn} from 'node:child_process';import fs from 'node:fs';import path from 'node:path';import os from 'node:os';
 import {film,stream,voiceOrder} from '../catalogue.mjs';import {titleKey} from '../sync.mjs';
 import {fingerprint,RATE,toBase64,fromBase64} from '../ad-fingerprint.mjs';import {FPS,SIZE} from '../ad-align.mjs';
 import {fromLibrary,discover,fromReference,merge,suggest,IDENT,CREDITS} from '../ad-detect.mjs';import {SPONSORED} from '../ad-breaks.mjs';
+import {detectMarks,neighbours,START_WINDOW,END_WINDOW} from '../marks-detect.mjs';
 const ORIGIN=process.env.KIK_ORIGIN||'https://kiktv.pages.dev',TOKEN=process.env.KIK_SCANNER_TOKEN||'',FFMPEG=process.env.FFMPEG||'ffmpeg',CA=process.env.KIK_SCANNER_CA||'';
 if(new URL(ORIGIN).origin!==ORIGIN||!ORIGIN.startsWith('https://'))throw Error('KIK_ORIGIN must be an HTTPS origin');
 const AI=process.env.KIK_SCANNER_AI!=='0',DATA=process.env.KIK_SCANNER_DATA||path.join(os.homedir(),'.kik-ad-scanner'),POOL=40,IDLE=5*60_000;
@@ -85,8 +88,56 @@ async function analyse(item,f,key,e){
 async function call(p,body){const r=await fetch(ORIGIN+p,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:JSON.stringify(body),redirect:'manual',signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error(p+' '+r.status);return r.json();}
 const span=l=>l.map(([s,e])=>s.toFixed(1)+'–'+e.toFixed(1)).join(', ');
 const show=r=>`${titleKey(r.link)} ${r.season||'-'}x${r.episode||'-'} v${r.voice}: ${span(r.breaks)||'no ads'}${r.suggested?.length?' · AI hint '+span(r.suggested):''}`;
+
+// ---------- intro and credits: the first 10 and the last 7 minutes of an episode and of up to four neighbours ----------
+// Media links come from KIK (/api/marks/source): Cloudflare asks the source, this PC only reads the CDN.
+fs.mkdirSync(path.join(DATA,'marks'),{recursive:true});
+const MARKS_KEPT=400;
+/** 8 kHz mono PCM of one part of a file, and what FFmpeg said about it (its length). */
+function audioPart(url,before){return new Promise((resolve,reject)=>{
+ const args=['-nostdin','-loglevel','info','-rw_timeout','30000000','-protocol_whitelist','https,tls,tcp,crypto','-tls_verify','1',...(CA?['-ca_file',CA]:[]),...before,'-i',url,'-vn','-map','0:a:0','-ac','1','-ar',String(RATE),'-f','s16le','pipe:1'];
+ const p=spawn(FFMPEG,args,{stdio:['ignore','pipe','pipe'],timeout:10*60_000}),chunks=[];let err='';
+ p.stdout.on('data',d=>chunks.push(d));p.stderr.on('data',d=>{if(err.length<65536)err+=d;});
+ p.on('error',reject);p.on('close',code=>code?reject(Error('ffmpeg '+code+': '+err.slice(-300))):resolve({pcm:Buffer.concat(chunks),log:err}));});}
+const pcmFp=b=>fingerprint(new Int16Array(b.buffer,b.byteOffset,b.length>>1));
+/** Fingerprints of both edges of a file. A CDN node sometimes ends a part early without an error: such a part is fetched again. */
+async function edgesOfUrl(url){
+ const end=await audioPart(url,['-sseof','-'+END_WINDOW]),m=/Duration: (\d+):(\d+):([\d.]+)/.exec(end.log);if(!m)throw Error('no duration');
+ const duration=+m[1]*3600+ +m[2]*60+ +m[3],endSeconds=end.pcm.length/2/RATE;
+ if(endSeconds<Math.min(END_WINDOW,duration)*0.95)throw Error('short end part '+endSeconds.toFixed(0)+' s');
+ const start=await audioPart(url,['-t',String(START_WINDOW)]),startSeconds=start.pcm.length/2/RATE;
+ if(startSeconds<Math.min(START_WINDOW,duration)*0.95)throw Error('short start part '+startSeconds.toFixed(0)+' s');
+ return {duration,endFrom:Math.max(0,duration-endSeconds),start:pcmFp(start.pcm),end:pcmFp(end.pcm)};
+}
+const markFile=e=>path.join(DATA,'marks',poolName(e)+'.json');
+async function edgesOf(e){
+ const f=markFile(e);try{const c=JSON.parse(fs.readFileSync(f,'utf8'));return {...c,start:fromBase64(c.start),end:fromBase64(c.end)};}catch{}
+ const s=await retry(()=>call('/api/marks/source',{link:e.link,voice:e.voice,season:e.season,episode:e.episode})),q=smallest(s);if(!q)throw Error('no stream');
+ const urls=[...new Set([q.url,...q.alternatives||[]])].sort((a,b)=>Number(a.includes('.m3u8'))-Number(b.includes('.m3u8')));let got,last;
+ for(const u of urls){try{got=await retry(()=>edgesOfUrl(u),3);break;}catch(err){last=err;}}if(!got)throw last;
+ fs.writeFileSync(f,JSON.stringify({duration:got.duration,endFrom:got.endFrom,start:toBase64(got.start),end:toBase64(got.end)}));
+ const kept=fs.readdirSync(path.join(DATA,'marks')).map(n=>path.join(DATA,'marks',n)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs);
+ for(const old of kept.slice(MARKS_KEPT))fs.rmSync(old,{force:true});
+ return got;
+}
+async function markEpisode(item){
+ const key=titleKey(item.link),ep={...item,key},cur=await edgesOf(ep);
+ const list=(await retry(()=>call('/api/marks/source',{link:item.link,voice:item.voice,list:true}))).episodes,others=[];
+ const near=neighbours(list,item.season,item.episode);
+ for(const n of near)try{others.push(await edgesOf({...ep,season:n.season,episode:n.episode}));}catch(err){log('neighbour unavailable',key,n.season+'x'+n.episode,err.message.split('\n')[0]);}
+ // The CDN sometimes answers nobody for a while: with no episode to compare, the item stays queued (three tries) instead of
+ // being saved as «nothing found».
+ if(near.length&&!others.length)throw Error('no neighbour episode could be read');
+ const m=detectMarks(cur,others);return {...item,duration:cur.duration,intro:m.intro,credits:m.credits,compared:others.length};
+}
+const clock=t=>t==null?'—':Math.floor(t/60)+':'+(t%60).toFixed(1).padStart(4,'0');
+const showMarks=r=>`${titleKey(r.link)} ${r.season}x${r.episode} v${r.voice}: intro ${r.intro.map(([a,b])=>clock(a)+'–'+clock(b)).join(', ')||'—'} · credits ${clock(r.credits)} (${r.compared} compared)`;
+
+if(process.argv[2]==='marks'){if(!TOKEN){console.error('Set KIK_SCANNER_TOKEN');process.exit(1);}const [link,season,episode,voice]=process.argv.slice(3);log(showMarks(await markEpisode({link,voice,season,episode})));process.exit(0);}
 if(process.argv[2]){const [link,season='',episode='',voice='35']=process.argv.slice(2);for(const r of await scan({link,voice,season,episode}))log(show(r));process.exit(0);}
 if(!TOKEN){console.error('Set KIK_SCANNER_TOKEN');process.exit(1);}
-for(;;){let items=[];try{items=(await call('/api/ad-breaks/queue',{})).items;}catch(e){log('queue',e.message);}
+for(;;){let items=[],marks=[];try{items=(await call('/api/ad-breaks/queue',{})).items;}catch(e){log('queue',e.message);}
  for(const item of items)try{const t=Date.now(),reports=await scan(item);await call('/api/ad-breaks/report',{items:reports});for(const r of reports)log(show(r),Math.round((Date.now()-t)/1000)+'s');}catch(e){log('failed',item.link,item.season,item.episode,e.message);}
- if(!items.length)await new Promise(r=>setTimeout(r,IDLE));}
+ try{marks=(await call('/api/marks/queue',{})).items;}catch(e){log('marks queue',e.message);}
+ for(const item of marks)try{const t=Date.now(),r=await markEpisode(item);await call('/api/marks/report',{items:[r]});log(showMarks(r),Math.round((Date.now()-t)/1000)+'s');}catch(e){log('marks failed',item.link,item.season,item.episode,e.message);}
+ if(!items.length&&!marks.length)await new Promise(r=>setTimeout(r,IDLE));}
