@@ -282,3 +282,48 @@ dialog.detail-loading #modal-content{min-height:min(420px,70dvh);padding:36px 28
 @media (prefers-reduced-motion:reduce){.oops-mark img,.oops-mark::before,.oops-bar.busy>span{animation:none}.oops-bar>span{transition:none}}
 @media (max-width:650px){.oops-mark{width:108px;margin-bottom:28px}.oops-compact .oops-mark{width:64px;margin-bottom:16px}.player-status.oops-holder .oops-text{display:none}}
 .warning-box{margin:16px 0;padding:14px 16px;border:1px solid #ed303c55;border-radius:14px;background:#ed303c14;color:#ffd9dc}.warning-box strong{display:block;color:#ff9da3;font-size:14px;margin-bottom:6px}.warning-box p{margin:0;line-height:1.55;font-size:13.5px}.warning-box ul{margin:0;padding-left:18px;line-height:1.6;font-size:13.5px}.warning-box li+li{margin-top:4px}
+/* Downloads: the ⤓ button in a title window, the episode picker, the «Завантаження» page, the offline bar. */
+.nav-badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:750;line-height:16px;vertical-align:1px}
+.download-action{position:relative;color:inherit}.download-action svg{width:21px;height:21px}
+.download-action.busy{background:conic-gradient(#f1f1f3 calc(var(--p)*1%),#ffffff1f 0);border-color:transparent}
+.download-action .download-ring{position:absolute;inset:3px;border-radius:50%;background:#1b1b1f}
+.download-action .download-pct{position:relative;font-size:12px;font-weight:750;color:#fff}.download-action .download-pct::after{content:'%';font-size:9px;font-weight:650}
+.download-action .download-count{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:750;line-height:18px}
+.dl-badge{position:absolute;z-index:2;top:8px;right:8px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#000000b3;color:#fff;font-size:14px;font-weight:700;backdrop-filter:blur(4px)}
+.dl-meta{display:block;margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+.dl-back{display:inline-flex;margin-bottom:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-picker h2{margin:4px 0 6px}.dl-picker-tools{display:flex;gap:12px;flex-wrap:wrap}.dl-picker-tools .field{flex:1;min-width:140px;margin:6px 0}
+.dl-quick{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 12px}.dl-quick .pill{min-height:38px;padding:8px 16px;font-size:13px}
+.dl-episodes{display:flex;flex-direction:column;max-height:min(44vh,420px);overflow:auto;border:1px solid var(--line);border-radius:14px;overscroll-behavior:contain}
+.dl-episode{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+.dl-episode:last-child{border-bottom:0}.dl-episode:hover{background:#ffffff08}.dl-episode input{appearance:auto;-webkit-appearance:auto;min-height:20px;width:20px;height:20px;padding:0;margin:0;flex-shrink:0;accent-color:var(--red)}
+.dl-episode-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dl-episode.have{cursor:default;color:var(--muted)}.dl-episode.have:hover{background:none}
+.dl-picker-foot{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px}
+.dl-page{max-width:1100px;margin:0 auto}.dl-head{align-items:flex-end;flex-wrap:wrap;margin-bottom:22px}.dl-head h1{margin:0}.dl-usage{margin-top:6px}
+.dl-head-tools{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}.dl-head-tools .field{margin:0;min-width:150px;flex:0 1 auto}.dl-head-tools .pill{min-height:44px}
+.dl-note{margin:0 0 14px;padding:12px 16px;border-radius:12px;background:#ffffff0c;border:1px solid var(--line);color:#d4d4da;font-size:14px;line-height:1.55}
+.dl-list{display:flex;flex-direction:column;gap:14px}
+.dl-title{display:grid;grid-template-columns:96px minmax(0,1fr);gap:18px;padding:16px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.dl-poster{width:96px;aspect-ratio:2/3;object-fit:cover;border-radius:10px;background:#26262b}
+.dl-poster.stub{display:grid;place-items:center;font-size:32px;font-weight:750;color:#ffffff4d}
+.dl-title-head{display:flex;gap:14px;justify-content:space-between;align-items:flex-start}.dl-title-head h2{margin:2px 0 4px;font-size:19px;line-height:1.25}
+.dl-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}.dl-actions .pill{min-height:40px;padding:9px 18px}
+.dl-icon{width:40px;height:40px;flex-shrink:0;border-radius:50%;display:grid;place-items:center;background:#ffffff10;border:1px solid #ffffff14;color:#ececf0;transition:background .15s}
+.dl-icon:hover{background:#ffffff24}.dl-icon svg{width:18px;height:18px}
+.dl-rows{list-style:none;margin:12px 0 0;padding:0}
+.dl-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,260px) auto;gap:14px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
+.dl-row-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.dl-row.watched .dl-row-name{color:var(--muted)}
+.dl-progress{display:flex;flex-direction:column;gap:6px;min-width:0}.dl-bar{height:4px;border-radius:2px;background:#ffffff1f;overflow:hidden}.dl-bar.empty{visibility:hidden}
+.dl-bar i{display:block;height:100%;width:0;background:#f1f1f3;transition:width .4s linear}.dl-row.done .dl-bar i{background:var(--red)}
+.dl-state{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dl-row.error .dl-state{color:#ff8f8f}
+.dl-row-actions{display:flex;gap:6px}
+.offline-bar{position:fixed;z-index:60;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 18px;border-radius:24px;background:#26262bf2;border:1px solid var(--line);box-shadow:0 12px 32px #0009;font-size:14px;white-space:nowrap}
+.offline-bar .text-button{padding:0;color:#fff;font-weight:650;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:650px){
+ .dl-title{grid-template-columns:64px minmax(0,1fr);gap:12px;padding:12px}.dl-poster{width:64px}
+ .dl-title-head{flex-direction:column;gap:10px}.dl-title-head h2{font-size:17px}
+ .dl-row{grid-template-columns:minmax(0,1fr) auto;gap:8px 10px}.dl-row .dl-progress{grid-column:1/-1;grid-row:2}
+ div.dl-rows .dl-row .dl-progress{grid-column:1;grid-row:1}
+ .dl-head-tools{width:100%}.dl-head-tools .field{flex:1}
+}
