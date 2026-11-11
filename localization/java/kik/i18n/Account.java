@@ -31,7 +31,7 @@ public final class Account {
  /** A temporary one («Тимчасовий вхід») leaves the TV by itself: see {@link TemporarySignIn}. */
  static void save(Context c,String email,String token,boolean temporary){
   JSONArray a=accounts(c),out=new JSONArray();boolean placed=false;
-  try{JSONObject added=new JSONObject().put("email",email).put("token",token);if(temporary)added.put("temporary",true);
+  try{JSONObject added=new JSONObject().put("email",email).put("token",token);if(temporary)added.put("temporary",true).put("since",System.currentTimeMillis());
    for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o==null)continue;if(o.optString("email").equalsIgnoreCase(email)){if(!placed)out.put(added);placed=true;}else out.put(o);}
    if(!placed)out.put(added);}catch(JSONException ignored){}
   store(c,out);
@@ -39,6 +39,8 @@ public final class Account {
  /** The sign-ins added with «Тимчасовий вхід». */
  static java.util.List<String> temporaryTokens(Context c){java.util.List<String> out=new java.util.ArrayList<String>();JSONArray a=accounts(c);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&o.optBoolean("temporary")&&!o.optString("token").isEmpty())out.add(o.optString("token"));}return out;}
  static boolean temporary(Context c,String token){return !token.isEmpty()&&temporaryTokens(c).contains(token);}
+ /** When this temporary sign-in was made; 0 for one made before 1.31, which kept no time. */
+ static long since(Context c,String token){JSONArray a=accounts(c);for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&o.optString("token").equals(token))return o.optLong("since");}return 0;}
  /** The name the website shows for this TV's sign-ins, such as «XGIMI XK10T». */
  static String deviceName(){String maker=android.os.Build.MANUFACTURER==null?"":android.os.Build.MANUFACTURER.trim(),model=android.os.Build.MODEL==null?"":android.os.Build.MODEL.trim();
   String name=model.toLowerCase(java.util.Locale.ROOT).startsWith(maker.toLowerCase(java.util.Locale.ROOT))?model:(maker+" "+model).trim();return name.isEmpty()?"Android TV":name;}
@@ -71,9 +73,22 @@ public final class Account {
  public static void signOut(Context c){
   JSONArray a=accounts(c);store(c,new JSONArray());
   for(ProfileStore.Profile p:ProfileStore.list(c))if(CloudSync.linked(c,p.id))CloudSync.disconnect(c,p.id);
-  for(int i=0;i<a.length();i++){final String token=a.optJSONObject(i)==null?"":a.optJSONObject(i).optString("token");if(!token.isEmpty())logout(token);}
+  for(int i=0;i<a.length();i++){final String token=a.optJSONObject(i)==null?"":a.optJSONObject(i).optString("token");if(!token.isEmpty())logout(c,token);}
  }
- private static void logout(String token){Ui.bg(()->{try{CloudSync.request("/api/auth/logout",new JSONObject(),token);}catch(Exception ignored){}});}
+ /**
+  * Ends a sign-in on the server too. Without a network it waits in "revoke" and goes again on KIK's next start, so a
+  * sign-in that left this TV (a visit that ran out with the TV offline) does not stay usable on the server.
+  */
+ private static void logout(Context context,final String token){final Context c=context.getApplicationContext();revoking(c,token,true);Ui.bg(()->revoke(c,token));}
+ /** Sends the sign-outs the server has not confirmed yet; on every start of KIK. */
+ static void retryLogouts(Context context){final Context c=context.getApplicationContext();JSONArray a=revoking(c,null,false);if(a.length()>0)Ui.bg(()->{for(int i=0;i<a.length();i++)revoke(c,a.optString(i));});}
+ private static void revoke(Context c,String token){if(token.isEmpty())return;try{CloudSync.request("/api/auth/logout",new JSONObject(),token);revoking(c,token,false);}catch(Exception ignored){}}
+ /** Adds or removes a sign-out still to send; returns the ones left. */
+ private static synchronized JSONArray revoking(Context c,String token,boolean add){
+  JSONArray a;try{a=new JSONArray(prefs(c).getString("revoke","[]"));}catch(JSONException e){a=new JSONArray();}
+  if(token==null)return a;JSONArray out=new JSONArray();for(int i=0;i<a.length();i++)if(!token.equals(a.optString(i)))out.put(a.optString(i));if(add)out.put(token);
+  SharedPreferences.Editor e=prefs(c).edit();if(out.length()==0)e.remove("revoke");else e.putString("revoke",out.toString());e.commit();return out;
+ }
 
  /** «Вийти» for one account, saying what happens to its profiles. */
  public static void confirmLeave(Activity a,String token){
@@ -98,15 +113,16 @@ public final class Account {
   String current=ProfileStore.current(c);
   for(ProfileStore.Profile p:ProfileStore.list(c))if(token.equals(CloudSync.token(c,p.id)))ProfileStore.delete(c,p.id);
   if(ProfileStore.nameOf(c,current)==null)for(ProfileStore.Profile p:ProfileStore.list(c))if(CloudSync.linked(c,p.id)&&ProfileStore.use(c,p.id))break;
-  logout(token);
+  logout(c,token);
  }
  /**
   * A temporary sign-in ran out: the account leaves as with «Вийти», without asking. Its latest changes go up first,
   * then its profiles leave this TV even when it was the last account: a visitor's history stays only in their account.
+  * {@code then} runs on the main thread once it is gone, or at once when it already was.
   */
- static void expire(Context context,final String token){
-  final Context c=context.getApplicationContext();if(!accountsWith(c,token))return;final String email=emailOf(c,token);
-  CloudSync.flush(c,token,()->{if(!accountsWith(c,token))return;boolean watching=token.equals(CloudSync.token(c,ProfileStore.current(c)));drop(c,token);TemporarySignIn.ended(c,email,watching);});
+ static void expire(Context context,final String token,final Runnable then){
+  final Context c=context.getApplicationContext();if(!accountsWith(c,token)){if(then!=null)then.run();return;}final String email=emailOf(c,token);
+  CloudSync.flush(c,token,()->{if(accountsWith(c,token)){boolean watching=token.equals(CloudSync.token(c,ProfileStore.current(c)));drop(c,token);TemporarySignIn.ended(c,email,watching);}if(then!=null)then.run();});
  }
  /** The profile being watched has left: the home screen opens on the new current profile, with «Хто дивиться?» when there is a choice. */
  static void reopen(Context c){

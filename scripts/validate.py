@@ -29,6 +29,8 @@ assert activities(a)-activities(b)=={'rezkatv.web.app.MainActivity','rezkatv.web
 assert activities(b)-activities(a)=={'kik.i18n.'+n for n in ('BasicSettingsActivity','BrowseActivity','FilmActivity','HomeActivity','KikPlayerActivity','OpenTitleActivity','ProfilesActivity','SignInActivity','SyncActivity','TasteActivity')},activities(b)-activities(a)
 channels=b.find("./application/service[@"+ns+"name='kik.i18n.TvChannels$Job']")
 assert channels is not None and channels.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE'
+temporary=b.find("./application/service[@"+ns+"name='kik.i18n.TemporarySignIn$Job']")
+assert temporary is not None and temporary.get(ns+'permission')=='android.permission.BIND_JOB_SERVICE' and temporary.get(ns+'exported')=='false'
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.BasicSettingsActivity']") is not None
 assert b.find("./application/activity[@"+ns+"name='kik.i18n.ProfilesActivity']") is not None
 taste=b.find("./application/activity[@"+ns+"name='kik.i18n.TasteActivity']")
