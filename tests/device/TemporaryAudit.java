@@ -87,8 +87,9 @@ public final class TemporaryAudit extends Instrumentation {
    runOnMainSync(()->Ui.leaveApp(picker));SystemClock.sleep(1500);
    check("leaving KIK with Back keeps the visit",!over()&&((List<?>)call(Account.class,null,"temporaryTokens",new Class<?>[]{Context.class},c)).size()==1);
    setField(temporary,null,"active",0L);account.edit().putLong("temporary_active",now-idle+5*60_000).putInt("temporary_boot",account.getInt("temporary_boot",0)+1).putLong("temporary_left",now-10*60_000).commit();
+   setSince(account,second,now-idle+5*60_000);
    check("55 minutes after closing KIK, after a restart, it is still there",!over());
-   account.edit().putLong("temporary_active",now-idle-1000).commit();
+   account.edit().putLong("temporary_active",now-idle-1000).commit();setSince(account,second,now-idle-1000);
    check("an hour with no one there ends it",over());
    account.edit().putLong("temporary_active",now).commit();setField(temporary,null,"active",now);
    setSince(account,second,now-lifetime-1000);
@@ -96,10 +97,11 @@ public final class TemporaryAudit extends Instrumentation {
    setSince(account,second,now);
    check("used just now and signed in just now, it goes on",!over());
 
-   // The guest is watching when the visit runs out with KIK in the background: the job's check lets only the guest go.
+   // The guest is watching when the visit runs out with KIK closed: the background job lets only the guest go.
    profiles.edit().putString("current",guest).commit();
-   setField(temporary,null,"active",0L);account.edit().putLong("temporary_active",now-idle-1000).commit();
-   runOnMainSync(()->{try{call(temporary,null,"check",new Class<?>[]{Context.class,Runnable.class},c,null);}catch(Exception e){throw new RuntimeException(e);}});
+   setField(temporary,null,"active",0L);account.edit().putLong("temporary_active",now-idle-1000).commit();setSince(account,second,now-idle-1000);
+   check("KIK is closed and its job is waiting",jobs.getPendingJob(0x4b4954)!=null);
+   getUiAutomation().executeShellCommand("cmd jobscheduler run -f "+c.getPackageName()+" "+0x4b4954).close();
    long until=SystemClock.elapsedRealtime()+20000;while(ProfileStore.nameOf(c,guest)!=null&&SystemClock.elapsedRealtime()<until)SystemClock.sleep(200);
    runOnMainSync(()->{});// the profile goes and the clock is cleared in one step on the main thread: let it finish
    JSONArray left=(JSONArray)call(Account.class,null,"accounts",new Class<?>[]{Context.class},c);

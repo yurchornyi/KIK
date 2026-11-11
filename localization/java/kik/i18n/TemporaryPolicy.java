@@ -13,18 +13,20 @@ public final class TemporaryPolicy {
 
  /** The sign-in's start; a visit begun before 1.31 kept no start, so its last use stands in for it. */
  static long since(long since,long active){return since>0?since:active;}
- /** When the visit runs out if nobody uses KIK meanwhile; 0 when its times are unknown. */
+ /** The last use; the sign-in itself is one, so a use not saved yet does not count as unknown. */
+ static long used(long since,long active){return Math.max(since,active);}
+ /** When the visit runs out if nobody uses KIK meanwhile; 0 when neither time is known. */
  public static long deadline(long since,long active){
-  long start=since(since,active);if(active<=0||start<=0)return 0;
-  return Math.min(active+IDLE,start+LIFETIME);
+  long start=since(since,active),used=used(since,active);if(used<=0||start<=0)return 0;
+  return Math.min(used+IDLE,start+LIFETIME);
  }
  /**
-  * Whether the visit is over at {@code now}. Unknown times end it, and so does a clock far behind the saved ones (a TV
-  * that booted with a wrong date): how long it was cannot be told.
+  * Whether the visit is over at {@code now}. No time at all ends it, and so does a clock far behind the saved ones (a
+  * TV that booted with a wrong date): how long it was cannot be told.
   */
  public static boolean over(long now,long since,long active){
-  long start=since(since,active),due=deadline(since,active);if(due==0)return true;
-  if(now<active-SKEW||now<start-SKEW)return true;
+  long start=since(since,active),used=used(since,active),due=deadline(since,active);if(due==0)return true;
+  if(now<used-SKEW||now<start-SKEW)return true;
   return now>=due;
  }
  private TemporaryPolicy(){}

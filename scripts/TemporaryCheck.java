@@ -20,8 +20,10 @@ public final class TemporaryCheck {
   check(TemporaryPolicy.over(t0+12*H,t0,t0+12*H-M),"12 hours end it even while someone watches");
   // A visit from before 1.31 has no start: its last use stands in.
   check(TemporaryPolicy.deadline(0,used)==used+H&&!TemporaryPolicy.over(used+30*M,0,used)&&TemporaryPolicy.over(used+H,0,used),"no start kept");
-  // Unknown times, or a clock far behind them, cannot tell how long it was: the visit ends.
-  check(TemporaryPolicy.over(t0,t0,0)&&TemporaryPolicy.deadline(t0,0)==0,"no use kept");
+  // A use not saved yet: the sign-in itself counts as the last use.
+  check(!TemporaryPolicy.over(t0+59*M,t0,0)&&TemporaryPolicy.over(t0+H,t0,0)&&TemporaryPolicy.deadline(t0,0)==t0+H,"no use saved yet");
+  // No time at all, or a clock far behind the saved ones, cannot tell how long it was: the visit ends.
+  check(TemporaryPolicy.over(t0,0,0)&&TemporaryPolicy.deadline(0,0)==0,"no time kept");
   check(!TemporaryPolicy.over(used-30_000,t0,used),"a time sync a few seconds back");
   check(TemporaryPolicy.over(used-2*M,t0,used),"a clock 2 min behind the last use");
   check(TemporaryPolicy.over(t0-2*M,t0,t0-2*M),"a clock behind the sign-in");
