@@ -81,6 +81,7 @@ dialog:focus{outline:none}
 .detail-modal .detail-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;color:#c4c4cc;font-size:13px}
 .detail-genre{padding:3px 10px;border-radius:20px;background:#ffffff12;color:#d8d8de;font-size:12px}
 .detail-modal .detail-actions{display:flex;align-items:center;gap:10px;margin:22px 0 18px;clear:none}
+.detail-round{display:flex;gap:inherit;flex-shrink:0;align-items:center}
 .round-action{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#ffffff13;border:1px solid #ffffff1c;font-size:18px;line-height:1;transition:background .15s,transform .15s}
 .round-action:hover{background:#ffffff24;transform:translateY(-1px)}
 .round-action.rated{background:#f1f1f3;color:#131316;border-color:transparent}

@@ -144,9 +144,10 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
  .detail-info{display:contents}
  .detail-info>h2,.detail-info>.detail-meta{grid-column:2}
  .detail-modal .detail-poster{grid-row:1/span 2}
- .detail-modal .detail-actions{margin:4px 0 0;flex-wrap:wrap;justify-content:space-around;row-gap:14px}
+ .detail-modal .detail-actions{margin:4px 0 0;flex-wrap:wrap;row-gap:14px}
  /* «Дивитися» takes the whole row, the round actions share the next one evenly: none is ever left alone on a line. */
  .detail-modal .detail-actions>.pill{flex:1 1 100%}
+ .detail-modal .detail-round{flex:1 1 100%;justify-content:space-around}
  .detail-more,.detail-info>.text-button{justify-self:start}
  .detail-modal .source-metadata{margin:0 18px 20px}
 }
