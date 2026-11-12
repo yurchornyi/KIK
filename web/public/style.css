@@ -81,6 +81,7 @@ dialog:focus{outline:none}
 .detail-modal .detail-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;color:#c4c4cc;font-size:13px}
 .detail-genre{padding:3px 10px;border-radius:20px;background:#ffffff12;color:#d8d8de;font-size:12px}
 .detail-modal .detail-actions{display:flex;align-items:center;gap:10px;margin:22px 0 18px;clear:none}
+.detail-round{display:flex;gap:inherit;flex-shrink:0;align-items:center}
 .round-action{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#ffffff13;border:1px solid #ffffff1c;font-size:18px;line-height:1;transition:background .15s,transform .15s}
 .round-action:hover{background:#ffffff24;transform:translateY(-1px)}
 .round-action.rated{background:#f1f1f3;color:#131316;border-color:transparent}
@@ -381,3 +382,7 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 .next-card .next-go{min-height:46px;padding:0 24px;border-radius:28px;background:#f1f1f3;color:#131316;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;font-variant-numeric:tabular-nums}
 .next-card .next-stay{min-height:46px;padding:0 18px;border-radius:28px;background:#141418d9;color:#e8e8ec;font-size:13px;font-weight:600;border:1px solid #ffffff26}
 @media(max-width:650px){.next-card{right:10px;bottom:46px}.next-card .next-stay{display:none}}
+/* Smart downloads switch on the «Завантаження» page. */
+.dl-smart{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:12px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--line);cursor:pointer}
+.dl-smart input{appearance:auto;-webkit-appearance:auto;min-height:20px;width:20px;height:20px;padding:0;margin:2px 0 0;flex-shrink:0;accent-color:var(--red)}
+.dl-smart span{display:flex;flex-direction:column;gap:3px;font-size:14px;line-height:1.45}.dl-smart small{color:var(--muted);font-size:13px}

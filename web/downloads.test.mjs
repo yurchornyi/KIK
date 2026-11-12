@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createDownloads,chooseStream,looksLikePreview,formatBytes,defaultDownloadQuality} from './public/downloads.js';
+import {createDownloads,chooseStream,looksLikePreview,formatBytes,defaultDownloadQuality,watchedCopies,nextToSave} from './public/downloads.js';
 
 const MB=1<<20;
 const link='https://hdrezka.sh/films/drama/1-test.html',series='https://hdrezka.sh/series/drama/2-show.html';
@@ -135,4 +135,21 @@ test('only the offline service worker may fetch https images itself; pages keep 
  const sw=(await worker.fetch(new Request('https://kik.example/sw.js'),env,{})).headers.get('Content-Security-Policy');
  const page=(await worker.fetch(new Request('https://kik.example/'),env,{})).headers.get('Content-Security-Policy');
  assert.match(sw,/connect-src 'self' https:;/);assert.match(page,/connect-src 'self';/);assert.ok(sw.includes("script-src 'self'")&&sw.includes("worker-src 'self' blob:"));
+});
+
+test('smart downloads: a copy watched to the end after it was saved goes, the one playing stays, a rewatch is not cut short',()=>{
+ const items=[{id:'a',status:'done',finished:1000,season:'1',episode:'1'},{id:'b',status:'done',finished:1000,season:'1',episode:'2'},{id:'c',status:'done',finished:5000,season:'1',episode:'3'},
+  {id:'d',status:'active',finished:0,season:'1',episode:'4'},{id:'e',status:'done',finished:1000,season:'1',episode:'5'}];
+ const progress={a:{pos:1290e3,dur:1300e3,at:2000},b:{pos:1290e3,dur:1300e3,at:2000},c:{pos:1290e3,dur:1300e3,at:4000},d:{pos:1300e3,dur:1300e3,at:9000},e:{pos:600e3,dur:1300e3,at:2000}};
+ assert.deepEqual(watchedCopies(items,x=>progress[x.id]||null,'b').map(x=>x.id),['a'],'b plays now, c was watched before it was saved again, d is still downloading, e is half watched');
+ assert.deepEqual(watchedCopies(items,()=>null,null),[]);assert.deepEqual(watchedCopies(null,()=>null),[]);
+});
+
+test('smart downloads: the next episode to save is the first one past everything on the device',()=>{
+ const eps=[1,2,3,4,5].map(e=>({season:'1',episode:String(e),title:'Серія '+e})).concat([{season:'2',episode:'1'}]);
+ const items=[{season:'1',episode:'2'},{season:'1',episode:'3'}];
+ assert.equal(nextToSave(eps,items,{season:'1',episode:'2'}).episode,'4','episode 3 is already there');
+ assert.deepEqual(nextToSave(eps,[{season:'1',episode:'5'}],{season:'1',episode:'5'}),{season:'2',episode:'1'},'on to the next season');
+ assert.equal(nextToSave(eps,[{season:'2',episode:'1'}],{season:'2',episode:'1'}),null,'the last one: nothing');
+ assert.equal(nextToSave(null,[],{season:'1',episode:'1'}),null);
 });
