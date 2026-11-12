@@ -327,3 +327,9 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
  div.dl-rows .dl-row .dl-progress{grid-column:1;grid-row:1}
  .dl-head-tools{width:100%}.dl-head-tools .field{flex:1}
 }
+/* «Наступна серія» at the credits (episode-marks.js): where «Пропустити рекламу» sits, never at the same time. */
+.next-card{position:absolute;right:18px;bottom:52px;display:flex;gap:8px;align-items:center;animation:rate-in .38s cubic-bezier(.2,.8,.2,1)}
+.next-card[hidden]{display:none}
+.next-card .next-go{min-height:46px;padding:0 24px;border-radius:28px;background:#f1f1f3;color:#131316;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;font-variant-numeric:tabular-nums}
+.next-card .next-stay{min-height:46px;padding:0 18px;border-radius:28px;background:#141418d9;color:#e8e8ec;font-size:13px;font-weight:600;border:1px solid #ffffff26}
+@media(max-width:650px){.next-card{right:10px;bottom:46px}.next-card .next-stay{display:none}}

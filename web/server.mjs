@@ -16,7 +16,7 @@ import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
 import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {synopsis,synopsisNight} from "./synopsis.mjs";
-import {adBreaks,adScanner} from "./ad-breaks.mjs";
+import {adBreaks,adScanner} from "./ad-breaks.mjs";import {episodeMarks,marksScanner} from "./episode-marks.mjs";
 const artworkService=createArtworkService();
 const studioCatalogue=createStudioCatalogue({search:params=>catalogue(params,{bounded:true}),genres:category=>catalogueGenres(category,{bounded:true}),film:link=>film(link,{bounded:true})});
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
@@ -70,6 +70,12 @@ async function api(request,env,ctx){
  // Ad clips inside sponsored voice tracks: players read them, the scanner PC fills them in.
  if(path==="/api/ad-breaks"&&request.method==="GET")return json(await adBreaks(db,Object.fromEntries(url.searchParams),undefined,{queue:await signedIn()}));
  if(path.startsWith("/api/ad-breaks/"))return json(await adScanner(request,db,env,path,body));
+ // Intro and credits of series episodes. Only a profile with «Пропуск реклами й заставок» puts an episode in the scanner's
+ // queue (the PC downloads parts of five episodes for it); everybody reads what is already known.
+ if(path==="/api/marks"&&request.method==="GET"){const q=Object.fromEntries(url.searchParams);let queue=false;
+  if(q.profile_id&&await signedIn()){const p=await db.prepare("SELECT ad_skip FROM profiles WHERE id=? AND user_id=?").bind(String(q.profile_id),viewer.id).first();queue=p?.ad_skip===1;}
+  return json(await episodeMarks(db,q,undefined,{queue}));}
+ if(path.startsWith("/api/marks/"))return json(await marksScanner(request,db,env,path,body));
  // Other spellings for a search that found nothing useful: typos, wrong keyboard layout, names in another language.
  // Signed out, only the free lookups run: no env reaches the model, so Sentra is not asked.
  if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:null,query,aliases)}),r=>!r.aliases.failed);}
