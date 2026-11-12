@@ -14,15 +14,18 @@ export function defaultDownloadQuality(coarse){return coarse?'720p':'1080p';}
 /** Without premium the source's top quality («1080p Ultra») is a one-minute preview: a file that small for a title
  *  known to run 10+ minutes (or of unknown length) is not the film. */
 export function looksLikePreview(bytes,runtimeMs){return bytes>0&&bytes<35*MB&&!(runtimeMs>0&&runtimeMs<10*60000);}
+/** Only a whole MP4 file can be saved: an HLS playlist (.m3u8, which the source lists first) is a list of pieces, not a film. */
+const isMp4=u=>/\.mp4$/i.test(String(u||'').split(/[?#]/)[0]);
 /** The stream for one item: the quality already started (a resumed file must stay the same file), else the best one not
- *  above the wanted height and not known to be a preview. Each retry takes the next address of that quality. */
+ *  above the wanted height and not known to be a preview, among the qualities that have an MP4. Each retry takes the
+ *  next MP4 address of that quality. */
 export function chooseStream(qualities,{quality,wanted,avoid=[],attempts=0}={}){
- const all=(qualities||[]).filter(q=>q&&q.label&&q.url&&!avoid.includes(q.label)),plain=all.filter(q=>!/ultra/i.test(q.label)),list=plain.length?plain:all;
+ const all=(qualities||[]).filter(q=>q&&q.label&&!avoid.includes(q.label)).map(q=>({label:q.label,files:[...new Set([q.url,...(q.alternatives||[])])].filter(isMp4)})).filter(q=>q.files.length);
+ const plain=all.filter(q=>!/ultra/i.test(q.label)),list=plain.length?plain:all;
  if(!list.length)return null;
  const target=height(wanted)||1080,sorted=list.slice().sort((a,b)=>height(b.label)-height(a.label));
  const q=list.find(x=>x.label===quality)||sorted.find(x=>height(x.label)<=target)||sorted.at(-1);
- const urls=[...new Set([q.url,...(q.alternatives||[])])];
- return {label:q.label,url:urls[attempts%urls.length],lower:sorted.some(x=>height(x.label)<height(q.label))};
+ return {label:q.label,url:q.files[attempts%q.files.length],lower:sorted.some(x=>height(x.label)<height(q.label))};
 }
 const itemKey=(key,season,episode)=>key+'|'+(season||'0')+':'+(episode||'0');
 /** Smart downloads: the finished copies watched to the end after they were saved (here or on another device: progress
@@ -96,6 +99,7 @@ export function createDownloads({api,storage,keyOf,owner,onChange=()=>{},onProgr
  async function failed(id,m){
   const x=item(id);if(!x){await disk.remove(id);kick();return;}
   if(m.code==='changed'||m.code==='range'){mutate(l=>{const y=l.find(z=>z.id===id);if(y)Object.assign(y,{bytes:0,total:0,status:'queued',attempts:(y.attempts||0)+1});});kick();return;}
+  if(m.code==='format'){mutate(l=>{const y=l.find(z=>z.id===id);if(y)Object.assign(y,{avoid:[...(y.avoid||[]),y.quality].filter(Boolean),quality:null,bytes:0,total:0,status:'queued',attempts:(y.attempts||0)+1});});await disk.remove(id);kick();return;}
   if(m.code==='space'){mutate(l=>{const y=l.find(z=>z.id===id);if(y)Object.assign(y,{status:'error',error:'Недостатньо місця на пристрої'+(m.need?': потрібно ще '+formatBytes(m.need):'')});});kick();return;}
   if(m.status===401){mutate(l=>{const y=l.find(z=>z.id===id);if(y)Object.assign(y,{status:'error',error:'Увійдіть знову, щоб завантажити'});});return;}
   if(/createSyncAccessHandle/.test(m.message||'')){supported=false;mutate(l=>{const y=l.find(z=>z.id===id);if(y)Object.assign(y,{status:'error',error:'Цей браузер не вміє зберігати відео. Спробуйте Chrome, Edge, Firefox або Safari.'});});return;}
@@ -137,6 +141,10 @@ export function createDownloads({api,storage,keyOf,owner,onChange=()=>{},onProgr
  async function tidy(){
   // Files the browser no longer has (it may evict storage that was not persisted) and files nobody lists.
   const names=await disk.names();if(!names)return;const have=new Set(names);
+  // A «film» under 1 MB is an HLS playlist saved by mistake before 12.11.2026 (the source lists .m3u8 first): it is fetched again.
+  const broken=list.filter(x=>x.status==='done'&&have.has(x.id+'.mp4')&&(x.total||x.bytes||0)<MB).map(x=>x.id);
+  for(const id of broken)await disk.remove(id);
+  if(broken.length)mutate(l=>{for(const y of l)if(broken.includes(y.id))Object.assign(y,{status:'queued',bytes:0,total:0,quality:null,attempts:0});});
   const gone=list.filter(x=>x.status==='done'&&!have.has(x.id+'.mp4')).map(x=>x.id);
   if(gone.length)mutate(l=>{for(const y of l)if(gone.includes(y.id))Object.assign(y,{status:'queued',bytes:0,total:0});});
   const known=new Set(load().map(x=>x.id+'.mp4'));for(const n of names)if(!known.has(n)&&n.endsWith('.mp4'))await disk.remove(n.slice(0,-4));

@@ -19,6 +19,8 @@ async function run({id,url,total}){
   const r=await fetch(url,{headers:{Range:'bytes='+written+'-'},credentials:'same-origin',cache:'no-store',signal:controller.signal});
   if(r.status===416&&total&&written===total){out=['done',{total}];return;}
   if(!r.ok){let message='';try{message=(await r.json()).error||'';}catch{}out=['error',{code:'http',status:r.status,message}];return;}
+  // A playlist or an error page is never written into the film.
+  if(!/^(?:video\/|application\/octet-stream)/i.test(r.headers.get('Content-Type')||'video/mp4')){await r.body?.cancel();out=['error',{code:'format'}];return;}
   let size=0;
   if(r.status===206){const m=/^bytes (\d+)-\d+\/(\d+)$/.exec(r.headers.get('Content-Range')||'');if(!m||Number(m[1])!==written){await r.body?.cancel();await handle.truncate(written=0);out=['error',{code:'range'}];return;}size=Number(m[2]);}
   else{if(written)await handle.truncate(written=0);size=Number(r.headers.get('Content-Length'))||0;}

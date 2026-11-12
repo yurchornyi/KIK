@@ -32,15 +32,17 @@ function harness({qualities,owner='u1',online=true}={}){
 }
 const film={link,title:'Тест',voice:'1',voiceName:'Українська',wanted:'1080p',runtime:120*60000};
 
-test('a download takes the wanted quality, never the premium preview, and the next address on each retry',()=>{
- const qs=[{label:'1080p Ultra',url:'u'},{label:'1080p',url:'a',alternatives:['a','b']},{label:'720p',url:'c'},{label:'480p',url:'d'}];
- assert.deepEqual(chooseStream(qs,{wanted:'1080p'}),{label:'1080p',url:'a',lower:true});
+test('a download takes the wanted quality as an MP4, never the HLS playlist or the premium preview, and the next address on each retry',()=>{
+ const qs=[{label:'1080p Ultra',url:'u.m3u8',alternatives:['u.m3u8','u.mp4']},{label:'1080p',url:'a.m3u8',alternatives:['a.m3u8','a.mp4','b.mp4']},{label:'720p',url:'c.mp4'},{label:'480p',url:'d.m3u8',alternatives:['d.mp4']}];
+ assert.deepEqual(chooseStream(qs,{wanted:'1080p'}),{label:'1080p',url:'a.mp4',lower:true},'the source lists the playlist first; the MP4 is taken');
  assert.equal(chooseStream(qs,{wanted:'720p'}).label,'720p');
- assert.equal(chooseStream(qs,{wanted:'1080p',attempts:1}).url,'b','a retry tries the other CDN address');
+ assert.equal(chooseStream(qs,{wanted:'1080p',attempts:1}).url,'b.mp4','a retry tries the other MP4 address');
  assert.equal(chooseStream(qs,{wanted:'480p',quality:'720p'}).label,'720p','a started file keeps its quality');
  assert.equal(chooseStream(qs,{wanted:'1080p',avoid:['1080p']}).label,'720p');
- assert.equal(chooseStream(qs,{wanted:'240p'}).label,'480p','below every quality: the smallest one');
- assert.equal(chooseStream([{label:'1080p Ultra',url:'u'}],{wanted:'1080p'}).label,'1080p Ultra','only Ultra: still worth a try');
+ assert.equal(chooseStream(qs,{wanted:'240p'}).url,'d.mp4','below every quality: the smallest one');
+ assert.equal(chooseStream([{label:'1080p Ultra',url:'u.mp4'}],{wanted:'1080p'}).label,'1080p Ultra','only Ultra: still worth a try');
+ assert.equal(chooseStream([{label:'720p',url:'x.m3u8',alternatives:['x.m3u8']}],{wanted:'720p'}),null,'HLS only: nothing to save');
+ assert.equal(chooseStream([{label:'720p',url:'https://kik.example/api/media/a.b.mp4?x=1'}],{}).url,'https://kik.example/api/media/a.b.mp4?x=1');
  assert.equal(chooseStream([],{}),null);
 });
 
@@ -152,4 +154,16 @@ test('smart downloads: the next episode to save is the first one past everything
  assert.deepEqual(nextToSave(eps,[{season:'1',episode:'5'}],{season:'1',episode:'5'}),{season:'2',episode:'1'},'on to the next season');
  assert.equal(nextToSave(eps,[{season:'2',episode:'1'}],{season:'2',episode:'1'}),null,'the last one: nothing');
  assert.equal(nextToSave(null,[],{season:'1',episode:'1'}),null);
+});
+
+test('a playlist saved by mistake (under 1 MB) is fetched again; an answer that is not video drops that quality',async()=>{
+ const h=harness();h.storage.setItem('kik-downloads',JSON.stringify([{id:'broken1',owner:'u1',key:'films/drama/1-test.html',link,title:'Т',voice:'1',status:'done',bytes:4096,total:4096,finished:1,quality:'1080p',added:1}]));
+ h.files.set('broken1.mp4',4096);
+ const d=createDownloads({api:async()=>({qualities:[{label:'1080p',url:'/x.m3u8',alternatives:['/x.mp4']},{label:'720p',url:'/y.mp4'}]}),storage:h.storage,keyOf,owner:()=>'u1',locks:null,online:()=>true,events:null,
+  disk:{supported:async()=>true,file:async()=>({}),remove:async id=>{h.removed.push(id);h.files.delete(id+'.mp4');},names:async()=>[...h.files.keys()],estimate:async()=>null,persist:async()=>{}},
+  makeWorker:()=>h.worker={postMessage:m=>h.posted.push(m),onmessage:null}});
+ await d.ready;await tick();await tick();
+ assert.ok(h.removed.includes('broken1'),'the tiny file goes');assert.equal(h.last('start').url,'/x.mp4','and comes back as the MP4');
+ await h.worker.onmessage({data:{type:'error',id:'broken1',code:'format'}});await tick();await tick();
+ assert.deepEqual(d.get('broken1').avoid,['1080p']);assert.equal(h.last('start').url,'/y.mp4','a non-video answer moves to the next quality');
 });
