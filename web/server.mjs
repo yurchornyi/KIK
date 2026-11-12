@@ -138,11 +138,13 @@ async function api(request,env,ctx){
   return edgeCached(ctx,key,3600,async()=>({items:await localizedGenres(db,await catalogueGenres(category))}));
  }
  if(path==="/api/catalogue"){
-  const params=Object.fromEntries(url.searchParams);
+  const params=Object.fromEntries(url.searchParams),warm=params.warm==="1";delete params.warm;
   if(params.source&&!["rezka","uaserials"].includes(params.source))fail("Джерело недоступне");
   if(params.studio&&!env.TMDB_READ_TOKEN)fail('Фільтр студій тимчасово недоступний. Спробуйте пізніше.',503);
-  const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5");
-  return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
+  // `warm=1`: the home page fetching ahead (its taste rows). It only takes a source slot that is about to be free, so a title
+  // the viewer opens never waits behind it; the parameter is not part of the cached copy's address.
+  const search=new URLSearchParams(params).toString(),key=new Request(url.origin+path+(search?"?"+search+"&":"?")+"__presentation=uk5");
+  return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params,warm?{background:true}:{}))};return {...result,items:await localizedCards(db,result.items)};});
  }
  if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
@@ -150,7 +152,8 @@ async function api(request,env,ctx){
   // TMDB's picks are looked up on the source one search after another, which can take longer than a viewer waits. The
   // title page is read first; when the whole list is not ready in 9 seconds, the answer is what the page itself says
   // (its «see also», its franchise and genres, marked `partial`), and the whole list is finished and stored after it.
-  const page=await film(link),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:params=>catalogue(params,{background:true})});
+  // `warm=1` (the home's taste rows fetching ahead): the title page is background work, like the searches after it.
+  const page=await film(link,url.searchParams.get("warm")==="1"?{background:true}:{}),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:params=>catalogue(params,{background:true})});
   const answer=async(items,seconds)=>{const r=json({items:await localizedCards(db,items),picks:items.picks,parts:await localizedCards(db,items.parts),genres:items.genres,year:items.year,...(items.partial?{partial:true}:{})});r.headers.set("Cache-Control","public, max-age="+seconds);return r;};
   const items=await within(whole,9000);
   if(items){const r=await answer(items,items.partial?600:43200);ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
@@ -184,6 +187,11 @@ async function api(request,env,ctx){
   // server_time is read before the writes: the next sync's `since` then covers everything this one did not return.
   const b=await body(request),now=Date.now();const p=await owned(db,user,b.profile_id);return json({profile:p,records:await localizedRecords(db,(await exchange(db,p.id,b.records||[],b.since??null,now)).filter(r=>b.source_schema>=2||!r.key.startsWith("uaserials/"))),server_time:now,delta:Number.isSafeInteger(b.since)&&b.since>0});
  }
+ // An episode list is the same for everybody: it is kept at the edge and refreshed behind the answer after half an hour,
+ // so opening a series again (web or TV) asks the source nothing, and a new episode shows within about 30 minutes.
+ if(path==="/api/episodes"&&request.method==="POST"){const b=await body(request,8192);if(!b.recovery_attempt){const key=new Request(url.origin+"/api/episodes?link="+encodeURIComponent(canonicalLink(titleKey(String(b.link||""))))+"&voice="+encodeURIComponent(String(b.voice))+"&__v=1");
+  return edgeCached(ctx,key,1800,()=>resolvePlayback(b.link,String(b.voice),"","",{attempt:0,method:"episodes"}),v=>Array.isArray(v.episodes)&&v.episodes.length>0);}
+  return json(await resolvePlayback(b.link,String(b.voice),"","",{attempt:b.recovery_attempt??0,method:"episodes"}));}
  if(path==="/api/episodes"||path==="/api/stream"){
   if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),result=await resolvePlayback(b.link,String(b.voice),String(b.season||""),String(b.episode||""),{attempt:b.recovery_attempt??0,method:path.endsWith("episodes")?"episodes":"stream"});return json(path==="/api/stream"?await protectPlayback(result,request,env,Date.now(),{direct:b.direct===true}):result);
  }
