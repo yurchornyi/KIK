@@ -170,3 +170,10 @@ test('a playlist saved by mistake (under 1 MB) is fetched again; an answer that 
  const before=posted.length;await worker.onmessage({data:{type:'error',id:'broken1',code:'format'}});for(let i=0;i<5&&posted.length===before;i++)await tick();
  assert.deepEqual(d.get('broken1').avoid,['1080p']);assert.equal(lastStart().url,'/y.mp4','a non-video answer moves to the next quality');
 });
+
+test('a page loading posters makes the running download wait; the offline copy is wanted only while something is saved',async()=>{
+ const h=harness();await h.downloads.ready;
+ assert.equal(h.downloads.any(),false);h.downloads.quiet(8000);assert.equal(h.posted.length,0,'nothing runs: nothing to tell');
+ h.downloads.add([film]);await tick();assert.equal(h.downloads.any(),true);
+ h.downloads.quiet(8000);assert.deepEqual(h.posted.at(-1),{type:'quiet',ms:8000});
+});
