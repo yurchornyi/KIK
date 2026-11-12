@@ -86,7 +86,6 @@ public final class BasicSettingsActivity extends Activity {
   action(updates,"Перевірити оновлення",()->AppUpdater.manual(this));action(updates,"Дозвіл на встановлення",()->AppUpdater.permission(this));
 
   LinearLayout about=card(right,"Про KIK","Українська → російська · Вбудований плеєр");
-  action(about,"Джерела даних",()->FreeSources.credits(this));
   action(about,"Очистити кеш зображень",()->Ui.dialog(this).setTitle("Очистити кеш зображень?").setMessage("Обране та історія перегляду збережуться.").setNegativeButton("Скасувати",null).setPositiveButton("Очистити",(dialog,which)->Ui.bg(()->{clearImages(getCacheDir());HomeActivity.Images.clear();runOnUiThread(()->Ui.toast(this,"Кеш зображень очищено"));})).show());
   TextView author=Ui.text(this,"◐  Створено Чорним",13,Ui.GREY);author.setPadding(0,dp(8),0,0);about.addView(author);
   linkColumn(right);
