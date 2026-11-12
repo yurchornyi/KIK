@@ -104,7 +104,25 @@ dialog:focus{outline:none}
 .settings-card .manage-row{padding:12px 0}
 .settings-card .actions{margin-top:12px}
 .setting-toggle.in-grid{align-self:end;min-height:46px;margin:10px 0}
-/* Admin accounts: one aligned button column per row, facts in plain words. */
+/* Admin panel and settings: one layout system for every size.
+   - A row shows its facts on the left and its actions on the right. From tablet width down the actions move under
+     the facts and line up in equal columns.
+   - On a phone an action group is one row that fills the card or dialog width; it wraps only when the buttons
+     really don't fit (the narrowest phones), and then every line fills the width too.
+   - The main action comes first; the one that takes something away (Видалити, Скинути пароль) comes last, apart.
+   - Every control is at least 44px tall, and empty error lines take no space. */
+.settings-grid{align-items:start}
+@media(min-width:801px){.settings-grid>.settings-wide{grid-column:1/-1;order:1}.settings-grid>.settings-card:last-child:nth-child(even){grid-column:1/-1}}
+.settings-card .pill,.manage-row .pill{min-height:44px}
+.manage-row .pill{font-size:13px}
+.manage-page .error:empty,dialog .error:empty{min-height:0;margin:0}
+.settings-grid form>.pill{margin-top:14px}
+/* A field and its button share one line and one height (46px); on a phone the button goes under the field. */
+.manage-page .search-form{align-items:center}
+.manage-page .search-form input{height:46px}
+.manage-page .search-form .pill,.access-form .pill{min-height:46px}
+.access-form .field{margin:0}
+@media(min-width:651px){.access-form .field{flex:1 1 260px}}
 .member-row{align-items:flex-start}
 .member-row .row-copy{flex:1}
 .member-title{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
@@ -112,14 +130,44 @@ dialog:focus{outline:none}
 .role-badge{padding:3px 10px;border-radius:20px;background:#ffffff12;color:#c9c9d1;font-size:11px;font-weight:600}
 .role-badge.self{background:#74c89b1c;color:#8dd5ae}
 .member-facts{margin:6px 0 0}
-.usage-chip{gap:7px;flex-wrap:wrap;text-align:left}
-.usage-sep{opacity:.5}
-.usage-more{color:#d8d8de;text-decoration:underline;text-underline-offset:3px;margin-left:4px}
-.site-state .site-when{color:var(--muted)}
-.site-state .site-when:before{content:'· ';opacity:.6}
-.member-actions{display:grid;grid-template-columns:108px 156px 112px;gap:8px;flex-shrink:0;align-items:center;justify-content:end}
-.member-actions .pill{width:100%;min-height:40px;padding:9px 12px;font-size:13px}
-@media(max-width:720px){.member-row{flex-direction:column}.member-actions{width:100%;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:stretch}.member-actions .pill{padding-inline:8px}}
+/* Usage: facts wrap as whole phrases; no separator is left hanging at a line end. */
+.usage-chip{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 12px;width:fit-content;max-width:100%;min-height:36px;margin-top:10px;padding:8px 12px;border-radius:12px;line-height:1.45;text-align:left}
+.usage-sep{display:none}
+.usage-more{margin-left:0;color:#d8d8de;text-decoration:underline;text-underline-offset:3px}
+@media(pointer:coarse){.usage-chip{min-height:44px}}
+/* TV state: the dot stays with the first line; time and failed hosts sit under the text, aligned with it. */
+.site-state{display:grid;grid-template-columns:7px minmax(0,1fr);gap:2px 8px;align-items:start;margin:10px 0 0;line-height:1.45}
+.site-state:before{grid-row:1;margin-top:5px}
+.site-state>span{grid-column:2}
+.site-state .site-when,.site-state .site-detail{color:var(--muted)}
+/* Account actions: one aligned column per action on wide screens (empty cells keep the columns). */
+.member-actions{display:grid;grid-template-columns:112px 160px 112px;gap:8px;flex-shrink:0;align-items:center;justify-content:end}
+.member-actions .pill{width:100%;padding:9px 12px;font-size:13px}
+/* Password and its «Показати» stay on one line; a quiet destructive action closes the dialog's row, at its far end. */
+.inline-input.keep-inline{flex-wrap:nowrap}
+.inline-input.keep-inline input{min-width:0}
+.inline-input.keep-inline .pill{width:auto;padding-inline:16px}
+dialog .actions .danger-quiet:last-child{margin-left:auto}
+/* Profile switches: the explanation lines up with the switch's text; switches are divided. */
+.admin-profile .profile-heading{margin-bottom:4px}
+.admin-profile .setting-toggle{min-height:44px;margin:6px 0 0;font-weight:600}
+.admin-profile .setting-toggle input{margin:0}
+.admin-profile .setting-toggle~.setting-toggle{margin-top:12px;padding-top:8px;border-top:1px solid var(--line)}
+.admin-profile .setting-toggle+.subtle{margin:0 0 2px 32px;line-height:1.5}
+@media(max-width:900px){
+ .member-row{flex-direction:column;align-items:stretch;gap:14px}
+ .member-actions{width:100%;max-width:560px;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:stretch}
+ .member-actions>span[aria-hidden]{display:none}
+}
+@media(max-width:650px){
+ .manage-page .member-actions,.manage-page .access-row .row-actions,.manage-page .settings-card .actions,dialog .actions{display:flex;flex-wrap:wrap;gap:8px;width:100%;max-width:none}
+ .member-actions .pill,.access-row .row-actions .pill,.settings-card .actions>.pill,dialog .actions .pill{flex:1 1 auto;width:auto;padding-inline:6px}
+ dialog .actions .danger-quiet:last-child{margin-left:0}
+ .access-row{flex-direction:column;align-items:stretch;gap:12px}
+ .access-form .pill,.settings-grid form>.pill,.settings-card>.pill,.profile-avatar-editor>.pill{width:100%}
+ .manage-page .search-form input{flex-basis:100%}
+ .manage-page .search-form .pill{flex:1 1 0}
+}
 /* Search window: wide, with recent queries, recently watched and suggestions under the field. */
 dialog.search-modal{width:min(980px,94vw)}
 .search-modal .search-form{margin-bottom:6px}
