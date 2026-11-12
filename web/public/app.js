@@ -6,6 +6,7 @@ import {adSkip} from './ad-skip.js';
 import {introSkip,nextOffer,openingLogo,NEXT_COUNTDOWN} from './episode-marks.js';
 import {creditsAt,askRating,asked,markAsked,said,LIKED,DISLIKED} from './rate-prompt.js';
 import {engagement,engagementWeight,engagementLabel,byTitle as titleGroups} from './watching.js';
+import {facetsOf,tasteModel,tastePages,rankByTaste,similarity,titleId,fade,devotion} from './taste.js';
 import {uniqueTitles,uniqueShelves} from './catalogue-identity.js';
 import {searchMatches,itemScore} from './search-match.js';
 import {AVATARS,avatarUrl} from './avatars.js';
@@ -158,30 +159,86 @@ function hiddenCountries(){try{const v=JSON.parse(storage.getItem('kik-hidden-co
 function allowed(items){const hidden=new Set(hiddenCountries());if(hidden.has('Беларусь'))hidden.add('Белоруссия');if(hidden.has('Россия'))hidden.add('Российская Федерация');return uniqueTitles(items||[]).filter(i=>!i.external&&!(i.sourceInfo||i.info||'').split(',').some(p=>hidden.has(p.trim())));}
 function applyCatalogue(){const [all=[],films=[],series=[]]=state.catalogue||[];state.films=allowed(films);state.series=allowed(series);state.ukrainian=allowed(state.ukrainianRaw||[]);const unique=new Map();for(const item of allowed([...all,...films,...series,...(state.ukrainianRaw||[])]))unique.set(keyOf(item.link),item);state.pool=[...unique.values()];headerSearch.refresh();}
 function countriesDialog(){const hidden=new Set(hiddenCountries()),list=el('div',{class:'country-list'},COUNTRIES.map(([id,label])=>{const box=el('input',{type:'checkbox'});box.checked=hidden.has(id);box.onchange=()=>{box.checked?hidden.add(id):hidden.delete(id);storage.setItem('kik-hidden-countries',JSON.stringify([...hidden]));applyCatalogue();render();};return el('label',{class:'country'},box,' '+label);}));showModal(el('h2',{},'Приховати фільми з країн'),list,el('p',{class:'muted'},'Позначені країни не показуються в каталозі, пошуку й рекомендаціях. Історія та «Мій список» не змінюються.'));}
-const related=new Map(),relatedLoading=new Set();
-function facets(info){const parts=(info||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean),year=/^\d{4}/.test(parts[0]||'')?parts.shift():'';return {genres:parts.slice(1).length?parts.slice(1):parts.slice(-1),country:parts.length>1?parts[0]:'',year:Number((year||'').slice(0,4))||0};}
+/**
+ * What the home rows know beyond the popular pages, about the titles a taste rests on most (its seeds): what viewers of a
+ * seed also watch (`picks`: TMDB's, from /api/similar), the parts of its franchise and its genres. The source's own «see
+ * also» is not read here: it names titles by a shared word («Перрі Мейсон» for a film about Меттью Перрі), not by taste.
+ * Public catalogue facts, the same for every profile: kept in this browser for three days, 24 titles at most.
+ */
+const SEEDS_KEY='kik-taste-seeds:v1',SEED_TTL=3*864e5,seedFacts=new Map(),seedLoading=new Set(),genrePages=new Map(),pageLoading=new Set();
+try{const now=Date.now();for(const [key,facts] of JSON.parse(storage.getItem(SEEDS_KEY)||'[]'))if(facts?.keep&&now-facts.at<SEED_TTL&&Array.isArray(facts.picks)&&Array.isArray(facts.parts))seedFacts.set(key,facts);}catch{}
+function saveSeeds(){storage.setItem(SEEDS_KEY,JSON.stringify([...seedFacts].filter(([,f])=>f.keep).sort((a,b)=>b[1].at-a[1].at).slice(0,24)));}
+const slim=c=>({link:c.link,title:c.title,poster:c.poster,info:c.info,sourceInfo:c.sourceInfo,sourceTitle:c.sourceTitle});
+/** Of a franchise only the title's own part and the six after it are kept: the home offers what comes next. */
+function laterParts(parts){const own=parts.find(p=>p.current);return own?parts.filter(p=>p.current||p.num>own.num).sort((a,b)=>a.num-b.num).slice(0,7).map(p=>({...slim(p),num:p.num,current:!!p.current})):[];}
 function infoOf(link){const k=keyOf(link);return state.pool.find(i=>keyOf(i.link)===k)?.info||'';}
-function tasteSignals(){const now=Date.now(),out=[],decay=at=>1/(1+Math.min(8,Math.max(0,now-at)/(7*864e5))*.25),rated=new Set();
- for(const r of data('rating')){rated.add(r.key);if(r.data.value>=-1)out.push({link:r.data.link,info:r.data.genre||infoOf(r.data.link),w:r.data.value>0?LIKED:DISLIKED});}
- // Real watching per title (watching.js): to the end is a mild like, given up early a mild dislike.
- for(const list of [...titleGroups(data('progress'),keyOf).values()].sort((a,b)=>Math.max(...b.map(r=>r.updated_at))-Math.max(...a.map(r=>r.updated_at))).slice(0,20)){const e=engagement(list),w=engagementWeight(e),link=list[0].data.link;if(w&&!rated.has(keyOf(link)))out.push({link,info:infoOf(link),w:w*decay(e.updated_at)});}
- for(const r of data('later').slice(0,20))if(!rated.has(r.key))out.push({link:r.data.link,info:r.data.genre||infoOf(r.data.link),w:2*decay(r.updated_at)});return out;}
-/** Loads the source's "see also" titles for the strongest recent seeds; the home row picks them up on the next render. */
-async function warmRelated(){if(!state.user)return;const seeds=tasteSignals().filter(s=>s.w).sort((a,b)=>Math.abs(b.w)-Math.abs(a.w)).map(s=>s.link).filter(l=>!related.has(keyOf(l))&&!relatedLoading.has(keyOf(l))).slice(0,4);if(!seeds.length)return;
- await Promise.all(seeds.map(async link=>{relatedLoading.add(keyOf(link));try{related.set(keyOf(link),allowed((await api('/api/film?link='+encodeURIComponent(link))).related));}catch{related.set(keyOf(link),[]);}}));if(state.tab==='home')backgroundRender();}
-function baseRecommendations(){const signals=tasteSignals(),genre=new Map(),country=new Map(),boost=new Map(),excluded=new Set(),add=(m,k,w)=>k&&m.set(k,(m.get(k)||0)+w);
+/**
+ * The profile's taste for the ranker (taste.js): ratings, real watching and «Мій список», one signal per title. Watching
+ * keeps no genres, so a title's line comes from its own page (a seed), from its rating or its save, or from the catalogue.
+ */
+function tasteSignals(){const out=[],seen=new Set(),noted=new Map();
+ for(const r of [...data('rating'),...data('later')])if(r.data.genre&&!noted.has(r.key))noted.set(r.key,r.data.genre);
+ const signal=(d,key,w,at)=>({link:d.link,title:String(d.displayTitle||d.title||'').split(/\s+\/\s+/)[0],info:seedFacts.get(key)?.info||noted.get(key)||infoOf(d.link),w,at});
+ for(const r of data('rating')){seen.add(r.key);if(r.data.value>=-1)out.push({...signal(r.data,r.key,r.data.value>0?LIKED:DISLIKED),rated:true});}
+ // Real watching per title (watching.js): to the end is a mild like, given up early a mild dislike; hours with a title add to a like.
+ const watched=[...titleGroups(data('progress'),keyOf)].map(([key,list])=>({key,d:list[0].data,e:engagement(list)})).filter(x=>x.e&&engagementWeight(x.e)&&!seen.has(x.key)).sort((a,b)=>b.e.updated_at-a.e.updated_at).slice(0,30);
+ for(const {key,d,e} of watched){const w=engagementWeight(e);seen.add(key);out.push(signal(d,key,w>0?w*devotion(e.watched):w,e.updated_at));}
+ for(const r of data('later').sort((a,b)=>b.updated_at-a.updated_at).slice(0,20))if(!seen.has(r.key)){seen.add(r.key);out.push(signal(r.data,r.key,2,r.updated_at));}
+ return out;}
+const strength=s=>s.w*(s.at?fade(s.at):1);
+/** The titles whose facts are worth a request: the six the taste rests on most, and the two latest dislikes (what is like them goes down). */
+function tasteSeeds(signals){const own=signals.filter(s=>!keyOf(s.link).startsWith('uaserials/'));return [...own.filter(s=>s.w>0).sort((a,b)=>strength(b)-strength(a)).slice(0,6),...own.filter(s=>s.w<=DISLIKED).slice(0,2)];}
+/** The catalogue pages a taste asks for: what is popular in the genres it watches most (taste.js tastePages), and what is new in the two it watches most. */
+function wantedPages(model){const pages=tastePages(model);return [...pages.map(page=>page+'/popular'),...pages.slice(0,2).map(page=>page+'/last')];}
+/** True once everything the taste asks for has arrived (or failed): the AI order is asked for only then, once, with all the candidates. */
+function tasteSettled(signals){return tasteSeeds(signals).every(s=>seedFacts.has(keyOf(s.link)))&&wantedPages(tasteModel(signals)).every(page=>genrePages.has(page));}
+/** Loads what the taste asks for: the facts of its seeds and its catalogue pages. The home rows repaint when they arrive. */
+async function warmTaste(){if(!state.user||!state.profile)return;const signals=tasteSignals(),jobs=[];
+ for(const s of tasteSeeds(signals)){const key=keyOf(s.link);if(seedFacts.has(key)||seedLoading.has(key))continue;seedLoading.add(key);
+  jobs.push(api('/api/similar?link='+encodeURIComponent(s.link))
+   // An answer without TMDB's part (it failed) or of the old shape (the browser's own cache) serves this visit and is asked again on the next.
+   .then(r=>seedFacts.set(key,{at:Date.now(),keep:Array.isArray(r.parts)&&!r.partial,info:(r.genres||[]).join(', '),picks:(r.items||[]).slice(0,r.picks||0).map(slim),parts:laterParts(r.parts||[])}),()=>seedFacts.set(key,{at:Date.now(),keep:false,info:'',picks:[],parts:[]})).finally(()=>seedLoading.delete(key)));}
+ for(const page of wantedPages(tasteModel(signals))){if(genrePages.has(page)||pageLoading.has(page))continue;pageLoading.add(page);const [category,genre,filter]=page.split('/');
+  jobs.push(api('/api/catalogue?category='+category+'&genre='+genre+'&filter='+filter).then(r=>genrePages.set(page,r.items||[]),()=>genrePages.set(page,[])).finally(()=>pageLoading.delete(page)));}
+ if(!jobs.length)return;await Promise.all(jobs);saveSeeds();recsMemo=null;if(state.tab==='home')backgroundRender();recommendations();}
+/**
+ * The regular ranking of everything KIK can offer this profile now (taste.js): the popular pages, the taste's genre pages
+ * (popular and new; a title found on one has that genre too, which its catalogue card does not say) and what the seeds
+ * name. One title is one candidate under any address the source gives it. Kept for the current turn of the page: one
+ * render asks several times.
+ */
+let recsMemo=null;
+function tasteRanking(){if(recsMemo)return recsMemo;
+ const signals=tasteSignals(),model=tasteModel(signals),excluded=new Set(),pool=new Map(),ids=new Map(),boost=new Map(),sequels=new Map();
+ const keyIn=link=>{const k=keyOf(link),id=titleId(k);return id&&ids.get(id)||k;},add=(item,also)=>{const k=keyIn(item.link),id=titleId(k),had=pool.get(k);if(id&&!ids.has(id))ids.set(id,k);if(!had)pool.set(k,also?{...item,also:[also]}:item);else if(also&&!had.also?.includes(also))pool.set(k,{...had,also:[...(had.also||[]),also]});return k;};
  for(const [k,list] of titleGroups(data('progress'),keyOf))if(engagementWeight(engagement(list)))excluded.add(k);
  for(const r of [...data('rating'),...data('later')])excluded.add(r.key);
- const pool=new Map(state.pool.map(i=>[keyOf(i.link),i]));
- for(const s of signals){const f=facets(s.info);for(const g of f.genres)add(genre,g,s.w);add(country,f.country,s.w*.15);for(const r of related.get(keyOf(s.link))||[]){add(boost,keyOf(r.link),s.w);if(s.w>0&&!pool.has(keyOf(r.link)))pool.set(keyOf(r.link),r);}}
- const total=signals.reduce((n,s)=>n+Math.abs(s.w),0)||1,order=[...pool.keys()];
- const scored=[...pool.entries()].filter(([k])=>!excluded.has(k)).map(([k,item])=>{const f=facets(item.info),g=f.genres.reduce((n,x)=>n+(genre.get(x)||0),0)/Math.max(1,f.genres.length);
-  return {item,f,score:g/total+(country.get(f.country)||0)/total+.35*Math.max(-1,Math.min(1,(boost.get(k)||0)/6))+.05/(1+order.indexOf(k)*.1)};}).filter(x=>x.score>-.4);
- // Greedy pick with a penalty for repeating the same main genre, so one taste does not fill the whole row.
- const out=[],used=new Map();while(scored.length&&out.length<72){let best=0,bestScore=-Infinity;scored.forEach((x,i)=>{const v=x.score-.08*(used.get(x.f.genres[0])||0);if(v>bestScore){bestScore=v;best=i;}});const [x]=scored.splice(best,1);out.push(x.item);used.set(x.f.genres[0],(used.get(x.f.genres[0])||0)+1);}return out;}
+ const gone=new Set([...excluded].map(k=>titleId(k)||k));
+ // A title new in a favourite genre gets a small lift over the long-popular ones around it.
+ state.pool.forEach(item=>add(item));for(const page of wantedPages(model))for(const item of allowed(genrePages.get(page)||[])){const k=add(item,page.split('/')[1]);if(page.endsWith('/last'))boost.set(k,(boost.get(k)||0)+1);}
+ for(const s of signals){const facts=seedFacts.get(keyOf(s.link));if(!facts)continue;
+  // What viewers of this title also watch goes up for a liked title and down for a disliked one.
+  for(const item of allowed(facts.picks)){const k=s.w>0?add(item):keyIn(item.link);boost.set(k,(boost.get(k)||0)+strength(s));}
+  // The next part of a franchise the profile watched or liked goes first, the one after it follows.
+  const own=s.w>=3&&facts.parts.find(p=>p.current);if(own)allowed(facts.parts.filter(p=>p.num>own.num&&!gone.has(titleId(keyOf(p.link))||keyOf(p.link)))).slice(0,2).forEach((p,i)=>{const k=add(p);sequels.set(k,Math.max(sequels.get(k)||0,i?.35:1));});}
+ recsMemo={signals,ranked:rankByTaste([...pool.values()],model,{keyOf:i=>keyIn(i.link),excluded,boost,sequels,limit:72})};setTimeout(()=>{recsMemo=null;},0);return recsMemo;}
 let enhanced={profile:'',signature:'',keys:[],mode:'standard',busy:false};
-function resetEnhanced(){enhanced={profile:'',signature:'',keys:[],mode:'standard',busy:false};}
-function recommendations(){const base=uniqueTitles(baseRecommendations());if(!state.user||!state.profile?.enhanced_recs)return base.slice(0,20);const owner=state.user.id+':'+state.profile.id,signature=owner+'|'+JSON.stringify([...data('rating'),...data('later'),...data('progress')].map(r=>[r.kind,r.key,r.updated_at]))+'|'+base.map(i=>keyOf(i.link)).join(',');if(!enhanced.busy&&enhanced.signature!==signature&&base.length>=3){enhanced.busy=true;enhanced.signature=signature;enhanced.profile=owner;api('/api/recommendations',{profile_id:state.profile.id,items:base.slice(0,72).map(i=>({link:i.link,title:i.title,original:i.original,info:i.info,sourceInfo:i.sourceInfo,year:i.year,description:i.description}))}).then(r=>{if(state.user?.id+':'+state.profile?.id!==owner)return;enhanced.keys=r.keys||[];enhanced.mode=r.mode==='ai'&&(r.keys||[]).filter(k=>base.some(i=>keyOf(i.link)===k)).length>=3?'ai':'standard';if(state.tab==='home')backgroundRender();}).catch(()=>{}).finally(()=>{if(enhanced.profile===owner)enhanced.busy=false;});}if(enhanced.profile!==owner||enhanced.mode!=='ai')return base.slice(0,20);const byKey=new Map(base.map(i=>[keyOf(i.link),i])),ordered=[];for(const key of enhanced.keys){const item=byKey.get(key);if(item){ordered.push(item);byKey.delete(key);}}return [...ordered,...byKey.values()].slice(0,20);}
+function resetEnhanced(){enhanced={profile:'',signature:'',keys:[],mode:'standard',busy:false};recsMemo=null;}
+/**
+ * «Для вас»: the regular ranking; for a profile with enhanced recommendations, the AI's order of it once that has arrived,
+ * the next parts of the profile's franchises still first. The AI is asked once the profile's records are in (the first
+ * sync on a new device) and the taste has all its candidates: an earlier ask would rank a pool the next minute replaces.
+ */
+function recommendations(){const {signals,ranked}=tasteRanking(),base=uniqueTitles(ranked.map(x=>x.item));if(!state.user||!state.profile?.enhanced_recs)return base.slice(0,20);const owner=state.user.id+':'+state.profile.id,signature=owner+'|'+JSON.stringify([...data('rating'),...data('later'),...data('progress')].map(r=>[r.kind,r.key,r.updated_at]))+'|'+base.map(i=>keyOf(i.link)).join(',');if(!enhanced.busy&&enhanced.signature!==signature&&base.length>=3&&state.since&&tasteSettled(signals)){enhanced.busy=true;enhanced.signature=signature;enhanced.profile=owner;api('/api/recommendations',{profile_id:state.profile.id,items:base.slice(0,72).map(i=>({link:i.link,title:i.title,original:i.original,info:i.info,sourceInfo:i.sourceInfo,year:i.year,description:i.description}))}).then(r=>{if(state.user?.id+':'+state.profile?.id!==owner)return;enhanced.keys=r.keys||[];enhanced.mode=r.mode==='ai'&&(r.keys||[]).filter(k=>base.some(i=>keyOf(i.link)===k)).length>=3?'ai':'standard';if(state.tab==='home')backgroundRender();}).catch(()=>{}).finally(()=>{if(enhanced.profile===owner)enhanced.busy=false;});}if(enhanced.profile!==owner||enhanced.mode!=='ai')return base.slice(0,20);const byKey=new Map(base.map(i=>[keyOf(i.link),i])),ordered=[],take=key=>{const item=byKey.get(key);if(item){ordered.push(item);byKey.delete(key);}};for(const x of ranked)if(x.next>=1)take(x.key);for(const key of enhanced.keys)take(key);return [...ordered,...byKey.values()].slice(0,20);}
+/**
+ * «Тому що ви дивилися …»: up to two rows, each around one title the taste rests on most: what its viewers also watch
+ * and what the catalogue has like it, of one kind per row and without the titles of «Для вас».
+ */
+function becauseRows(taken){const {signals,ranked}=tasteRanking(),rows=[],used=new Set(taken.map(i=>keyOf(i.link))),kinds=new Set();
+ for(const s of tasteSeeds(signals)){if(s.w<3||!s.title)continue;const facts=seedFacts.get(keyOf(s.link));if(!facts)continue;const f=facetsOf(s),kind=f.section+'/'+f.slug;if(kinds.has(kind))continue;
+  const named=new Set(facts.picks.map(x=>keyOf(x.link))),items=ranked.filter(x=>!used.has(x.key)).map(x=>({x,v:(named.has(x.key)?1:0)+similarity(x.f,f)})).filter(y=>y.v>=.4).sort((a,b)=>b.v-a.v).slice(0,12).map(y=>y.x.item);
+  if(items.length<4)continue;kinds.add(kind);for(const i of items)used.add(keyOf(i.link));rows.push({title:(s.rated?'Тому що вам сподобалося «':'Тому що ви дивилися «')+s.title+'»',items});if(rows.length===2)break;}
+ return rows;}
 
 /** The home hero is a slideshow, as on the TV: the titles still to finish first, then recommendations, up to 10 slides
  *  turning every 9 s. It pauses under the pointer, while a hero button has the keyboard focus, and while the page is hidden. */
@@ -193,7 +250,8 @@ function heroSlides(){
  const add=(item,resume)=>{const key=keyOf(item.link);if(!key||seen.has(key)||picks.length>=16||liked(item.link)<0||!allowed([item]).length)return;seen.add(key);picks.push({...item,resume});};
  for(const x of recent.slice(0,3))add(x,true);for(const x of recommendations())add(x,false);
  if(!picks.length){const x=state.pool.find(i=>liked(i.link)>=0);if(x)add(x,false);}
- const waiting=picks.filter(p=>!artwork.has(keyOf(p.link))).map(p=>artworkFor(p));if(waiting.length)Promise.all(waiting).then(refreshSlides);
+ // The slides are arranged again only when a picture arrived: with artwork off or failing nothing changed, and asking again would never end.
+ const waiting=picks.filter(p=>!artwork.has(keyOf(p.link))).map(p=>artworkFor(p));if(waiting.length)Promise.all(waiting).then(found=>{if(found.some(Boolean))refreshSlides();});
  const wide=picks.filter(p=>artwork.get(keyOf(p.link))?.backdrop);return (wide.length>=3?wide:picks).slice(0,10);
 }
 /** The same picks keep the slide on screen and its timer while the page re-renders; a changed set keeps the current title when it is still among them. */
@@ -252,9 +310,9 @@ navStrip.addEventListener('scroll',paintNavEdges,{passive:true});window.addEvent
 /** An account left without a profile (the TV asks for its name after creating the account) needs one before anything else. */
 function profileGate(){if(main.querySelector('.profile-gate'))return;main.replaceChildren(el('section',{class:'gate profile-gate'},el('div',{class:'gate-copy'},el('h1',{},'Створіть профіль, щоб дивитися'),el('div',{class:'actions'},button('Створити профіль',()=>newProfile(),'pill red'),button('Вийти',()=>logout(),'pill')))));}
 function gate(){if(main.querySelector('.gate:not(.profile-gate)'))return;main.replaceChildren(el('section',{class:'gate'},el('div',{class:'gate-copy'},el('div',{class:'eyebrow'},'ОДИН ПРОФІЛЬ. УСІ ВАШІ ПРИСТРОЇ.'),el('h1',{},'Увійдіть, щоб дивитися'),el('div',{class:'actions'},button('Увійти',()=>auth(),'pill red'),button('Створити обліковий запис',()=>auth(true),'pill')))));}
-function render(){pageDirty=false;document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='downloads'){renderDownloads();return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmRelated();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
+function render(){pageDirty=false;document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='downloads'){renderDownloads();return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmTaste();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
  // A tap or click on the hero holds its slide for another turn, so a title just saved or opened never slips away under the finger.
- hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);const rows=el('div',{class:'rows'}),recent=continueItems(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:recommendations(),subtitle:ai?'Покращена добірка з урахуванням вашого смаку та AI':state.user?'На основі вашого смаку':'Час для хорошої історії'},{title:'Фільми на вечір',items:state.films.filter(i=>liked(i.link)>=0)},{title:'Ще одна серія?',items:state.series.filter(i=>liked(i.link)>=0)},{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);for(const r of shelves){const row=shelf(r.title,r.items,r.subtitle||'',r.progress);if(row)rows.append(row);}
+ hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку та AI':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),{title:'Фільми на вечір',items:state.films.filter(i=>liked(i.link)>=0)},{title:'Ще одна серія?',items:state.series.filter(i=>liked(i.link)>=0)},{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);for(const r of shelves){const row=shelf(r.title,r.items,r.subtitle||'',r.progress);if(row)rows.append(row);}
  // The viewer's own rows stay when the source is down; the catalogue under them retries by itself.
  if(state.catalogueError)rows.append(oops({error:state.catalogueFailure,retry:loadCatalogue,key:'home',size:'compact'}));
  // A shelf the viewer has scrolled along keeps its place through a repaint (a sync, a closed window).
@@ -715,6 +773,7 @@ window.addEventListener('popstate',()=>{Object.assign(state,readRoute());pageGen
 const management=createManagement({state,api,el,button,toast,showModal,modal,main,navigate,account,newProfile,pairDialog,taste,countriesDialog,logout,refreshAccount,chooseAvatar,onProfileUpdate:profile=>{if(state.profile?.id===profile.id){Object.assign(state.profile,profile);resetEnhanced();}}});
 init();
 
-async function enrichDetails(f,target,generation){if(!f.imdb)return;try{const m=await api('/api/metadata?imdb='+encodeURIComponent(f.imdb)+'&kind='+(f.series?'tv':'movie'));if(!modal.open||generation!==modalGeneration||modalContent.dataset.link!==target)return;const box=$('#extra-metadata');if(!box)return;if(m.title&&!f.external)modalContent.querySelector('.detail-title').textContent=m.title;if(m.overview){const overview=modalContent.querySelector('.detail-overview');if(overview){overview.textContent=m.overview;const more=modalContent.querySelector('.detail-more');if(more)more.hidden=!overview.classList.contains('open')&&overview.scrollHeight<=overview.clientHeight+2;}}if(m.nextEpisode){const n=m.nextEpisode;box.append(el('p',{},'Наступна серія: '+n.airdate+' · S'+n.season+'E'+n.episode),el('p',{class:'subtle'},'Дата виходу не гарантує наявності українського озвучення.'));}if(m.credits?.some(c=>c.name==='TMDB'))box.append(el('img',{src:'/tmdb-logo.svg',width:90,height:20,alt:'TMDB'}));if(m.credits?.length)box.append(el('div',{class:'metadata-credits'},'Дані: ',m.credits.map(c=>el('a',{href:c.url,target:'_blank',rel:'noopener noreferrer'},c.name+(c.license?' · '+c.license:'')))));}catch{}}
+/** Extra facts for a title page. No outside provider is named on it (owner, 12.11: the screens say only KIK); they are credited on «Джерела даних». */
+async function enrichDetails(f,target,generation){if(!f.imdb)return;try{const m=await api('/api/metadata?imdb='+encodeURIComponent(f.imdb)+'&kind='+(f.series?'tv':'movie'));if(!modal.open||generation!==modalGeneration||modalContent.dataset.link!==target)return;const box=$('#extra-metadata');if(!box)return;if(m.title&&!f.external)modalContent.querySelector('.detail-title').textContent=m.title;if(m.overview){const overview=modalContent.querySelector('.detail-overview');if(overview){overview.textContent=m.overview;const more=modalContent.querySelector('.detail-more');if(more)more.hidden=!overview.classList.contains('open')&&overview.scrollHeight<=overview.clientHeight+2;}}if(m.nextEpisode){const n=m.nextEpisode;box.append(el('p',{},'Наступна серія: '+n.airdate+' · S'+n.season+'E'+n.episode),el('p',{class:'subtle'},'Дата виходу не гарантує наявності українського озвучення.'));}}catch{}}
 
 function paintDetailStudios(ids){modalContent.querySelector('.detail-studios')?.remove();const studios=[...new Set(ids||[])].map(studioById).filter(Boolean);if(!studios.length)return;const row=el('div',{class:'detail-studios'},studios.map(s=>el('span',{class:'detail-studio'},studioBadge([s.id]),s.name)));modalContent.querySelector('.detail-meta')?.after(row);}

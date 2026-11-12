@@ -11,7 +11,7 @@ import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata} from "./metadata.mjs";
 import {searchAlternatives} from "./search-fix.mjs";
-import {similar} from "./similar.mjs";
+import {similar,within} from "./similar.mjs";
 import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
 import {createArtworkService} from "./tmdb.mjs";
 import {createStudioCatalogue} from './studio-catalogue.mjs';
@@ -144,10 +144,18 @@ async function api(request,env,ctx){
   const key=new Request(url.origin+path+url.search+(url.search?"&":"?")+"__presentation=uk5");
   return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params))};return {...result,items:await localizedCards(db,result.items)};});
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;return localizedFilm(db,f);});}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
- if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=1"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
-  const items=await similar(link,{token:env.TMDB_READ_TOKEN,load:film,search:params=>catalogue(params,{background:true})}),r=json({items:await localizedCards(db,items)});r.headers.set("Cache-Control","public, max-age="+(items.partial?600:43200));ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
+ if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=2"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
+  // TMDB's picks are looked up on the source one search after another, which can take longer than a viewer waits. The
+  // title page is read first; when the whole list is not ready in 9 seconds, the answer is what the page itself says
+  // (its «see also», its franchise and genres, marked `partial`), and the whole list is finished and stored after it.
+  const page=await film(link),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:params=>catalogue(params,{background:true})});
+  const answer=async(items,seconds)=>{const r=json({items:await localizedCards(db,items),picks:items.picks,parts:await localizedCards(db,items.parts),genres:items.genres,year:items.year,...(items.partial?{partial:true}:{})});r.headers.set("Cache-Control","public, max-age="+seconds);return r;};
+  const items=await within(whole,9000);
+  if(items){const r=await answer(items,items.partial?600:43200);ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
+  ctx?.waitUntil?.(whole.then(async list=>caches.default.put(key,await answer(list,list.partial?600:43200))).catch(()=>{}));
+  return answer(await similar(link,{token:"",load:async()=>page,search:async()=>[]}).then(list=>Object.assign(list,{partial:true})),60);}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env,{waitUntil:p=>ctx.waitUntil(p)});}
  if(path==="/api/diagnostics/site"&&request.method==="POST"){const b=await body(request,2048),result=await siteReport(db,user,b);

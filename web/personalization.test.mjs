@@ -40,7 +40,8 @@ test('the request is genres, country, kind and loglines with empty fields left o
  assert.match(body.messages[0].content,/6 = liked, 4 = watched to the end, 3 = watching, 2 = saved to «My list», -2 = dropped early, -6 = disliked; "watched"/);
  const film=request.candidates.find(c=>c.title==='Space drama');assert.deepEqual(film,{id:film.id,title:'Space drama',year:'2020',kind:'film',genres:'Драми',country:'США',about:logline});
  assert.ok(request.candidates.every(c=>!('about' in c)||c===film));assert.ok(!/""/.test(body.messages[1].content),'no empty fields');
- assert.deepEqual(request.taste,[{title:'Space story',genres:'Космос, Драма',affinity:6},{title:'Watching now',affinity:3,watched:'Переглянуто 20 хв',about:logline}]);
+ // A watched title keeps no genres of its own: it gets the main genre of its address, its year and kind, and its logline.
+ assert.deepEqual(request.taste,[{title:'Space story',year:'2020',kind:'film',genres:'Космос, Драма',affinity:6},{title:'Watching now',year:'2020',kind:'film',genres:'Драми',affinity:3,watched:'Переглянуто 20 хв',about:logline}]);
  list[1]={...list[1],data:{...list[1].data,pos:1800000,watched:1800000}};assert.equal((await recommendations(db,profile,candidates,env)).mode,'ai');assert.equal(sent.length,1,'more minutes of the same watching keep the AI answer');
 }));
 test('a ranking Sentra could not give in time is made by the PC in the background, without the profile ID, and used next time',()=>{let jobState='queued';return viaSentra((n)=>null,async(env,sent)=>{
@@ -55,3 +56,28 @@ test('a ranking Sentra could not give in time is made by the PC in the backgroun
   jobState='done';const r=await recommendations(db,profile,candidates,env);assert.equal(r.mode,'ai');assert.equal(jobs.size,0);assert.equal(db.state.cache.mode,'ai');
  }finally{globalThis.fetch=original;}
 });});
+
+// The household behind this test (11.11 audit): Harry Potter, Home Alone and the Grinch watched to the end and saved, one melodrama saved since.
+const watchedAndSaved=(link,title,genre,at)=>[{kind:'later',updated_at:at,data:{link,title,genre}},{kind:'progress',updated_at:at,data:{link,title,pos:5700000,dur:6000000,watched:5700000,observed:true}}];
+const home=[...watchedAndSaved('https://hdrezka.sh/films/comedy/833-odin-doma-1990-latest.html','Сам удома','Комедії, Сімейні, Закордонні',Date.now()-14*864e5),...watchedAndSaved('https://hdrezka.sh/films/fantasy/1044-garri-potter-i-taynaya-komnata-2002-latest.html','Гаррі Поттер та Таємна кімната','Фентезі, Пригоди, Детективи, Сімейні, Зарубіжне кіно',Date.now()-13*864e5),{kind:'later',updated_at:Date.now()-3600000,data:{link:'https://hdrezka.sh/films/melodrama/86799-lyubi-menya-2026.html',title:'Кохай мене',genre:'Мелодрами, Драми, Зарубіжне кіно'}}];
+test('a watched title takes its genres from its save or rating, so the taste is the whole household, not the last title saved',()=>{
+ const taste=tasteOf(home),potter=taste.signals.find(s=>s.key.includes('garri-potter'));assert.equal(potter.weight,4);assert.equal(potter.info,'Фентезі, Пригоди, Детективи, Сімейні, Зарубіжне кіно');assert.equal(potter.series,false);
+ const pool=candidatesOf([{link:'https://hdrezka.sh/films/drama/18585-dyavol-vo-ploti-1986.html',title:'Диявол у плоті',info:'1986, Італія, Драми'},{link:'https://hdrezka.sh/films/action/15151-tokiyskiy-kulak-1995.html',title:'Токійський кулак',info:'1995, Японія, Бойовики'},{link:'https://hdrezka.sh/films/erotic/999-ne-dlya-ditey-2019.html',title:'Не для дітей',info:'2019, Франція, Еротика'},{link:'https://hdrezka.sh/films/comedy/5001-beethoven-1992.html',title:'Бетховен',info:'1992, США, Комедії'},{link:'https://hdrezka.sh/films/fantasy/1045-garri-potter-i-uznik-azkabana-2004.html',title:'Гаррі Поттер і в\'язень Азкабану',info:'2004, США, Фентезі'},{link:'https://hdrezka.sh/films/family/5002-paddington-2014.html',title:'Паддінгтон',info:'2014, Велика Британія, Сімейні'}]);
+ const order=baselineRank(pool,taste).map(c=>c.title);
+ // Sent after them, a family comedy still leads and every family title is ahead of the action film; a drama keeps a place
+ // (one was saved); an erotic title reaches no taste without one.
+ assert.equal(order[0],'Бетховен');for(const title of ['Гаррі Поттер і в\'язень Азкабану','Паддінгтон'])assert.ok(order.indexOf(title)<order.indexOf('Токійський кулак'),title);assert.ok(!order.includes('Не для дітей'));assert.ok(order.includes('Диявол у плоті'));
+});
+test('the model gets the candidates shuffled, its IDs are read back to the same titles, and their order alone asks nothing new',()=>viaSentra(()=>sentraReply('{"order":[5,3,1,0,2,4]}'),async(env,sent)=>{
+ const cards=[1,2,3,4,5,6,7,8].map(n=>({link:`https://hdrezka.sh/films/${n%2?'comedy':'fantasy'}/${n}-film-${2000+n}.html`,title:'Title '+n,info:(2000+n)+', США, '+(n%2?'Комедії':'Фентезі')})),db=database(home),profile={id:'shuffle',enhanced_recs:1};
+ const first=await recommendations(db,profile,cards,env);assert.equal(first.mode,'ai');const request=JSON.parse(JSON.parse(sent[0].opts.body).messages[1].content);
+ assert.deepEqual(request.candidates.map(c=>c.id),[0,1,2,3,4,5,6,7]);const regular=baselineRank(candidatesOf(cards),tasteOf(home)).map(c=>c.title);assert.notDeepEqual(request.candidates.map(c=>c.title),regular,'not in the regular order');
+ const titleOf=key=>cards.find(c=>c.link.endsWith(key)).title;assert.deepEqual(JSON.parse(db.state.cache.ranking).map(titleOf),[5,3,1,0,2,4].map(id=>request.candidates[id].title));
+ // The same candidates in another order are the same question: the stored answer serves them.
+ assert.equal((await recommendations(db,profile,[...cards].reverse(),env)).mode,'ai');assert.equal(sent.length,1);
+ assert.match(JSON.parse(sent[0].opts.body).messages[0].content,/The candidates come in random order\..*a sequel or the next part.*nothing erotic, brutal or frightening/);
+}));
+test('the AI\'s picks keep their order, with at most two of one kind side by side',()=>{
+ const key=(section,genre,n)=>`${section}/${genre}/${n}-x-2020.html`,docs=[1,2,3,4,5].map(n=>key('series','documentary',n)),comedy=key('series','comedy',6),cartoon=key('cartoons','comedy',7),base=[...docs,comedy,cartoon].map(k=>({key:k}));
+ assert.deepEqual(rankedKeys(base,[...docs,comedy,cartoon]),[docs[0],docs[1],comedy,docs[2],docs[3],cartoon,docs[4]]);
+});

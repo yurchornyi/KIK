@@ -99,8 +99,15 @@ export function parseFilm(link,h){const info=one(h,/<table class="b-post__info">
  const tl=one(h,/id="translators-list"[^>]*>(.*?)<\/ul>/s)||"",seen=new Set();for(const m of tl.matchAll(/<li([^>]*)>(.*?)<\/li>/gs)){const attrs=m[1]+" "+(one(m[2],/^\s*<a([^>]*)>/)||""),id=one(attrs,/data-translator_id="(\d+)"/);if(!id||seen.has(id))continue;seen.add(id);let name=text(one(attrs,/title="([^"]*)"/)||m[2]);const lang=one(m[2],/alt="([^"]+)"/);if(lang&&!name.includes("("))name+=" ("+lang+")";f.voices.push({id,name,premium:attrs.includes("b-prem_translator"),camrip:/data-camrip="1"/.test(attrs),ads:/data-ads="1"/.test(attrs),director:/data-director="1"/.test(attrs)});}
  if(!f.voices.length&&f.defaultVoice)f.voices.push({id:f.defaultVoice,name:f.defaultVoiceName||"Основна доріжка",camrip:f.defaultFlags[0],ads:f.defaultFlags[1],director:f.defaultFlags[2]});f.voices.sort((a,b)=>voiceOrder(a)-voiceOrder(b));for(const v of f.voices)v.lang=voiceLang(v.name);
  const side=h.indexOf('class="b-sidelist"');f.related=side<0?[]:parseCards(h.slice(side).replace(/https?:\/\/[^/"]+\/(films|series|cartoons|animation|documentary)\//g,"https://hdrezka.sh/$1/")).filter(c=>titleKey(c.link)!==titleKey(link)).slice(0,12);
- f.episodes=parseEpisodes(h);return f;
+ f.parts=parseParts(link,h);f.episodes=parseEpisodes(h);return f;
 }
+/** «Все части …»: the title's franchise as the source lists it, oldest part first, each with its number; the title's own row (`current`) has no address there. */
+export function parseParts(link,h){const at=h.indexOf('class="b-post__partcontent"');if(at<0)return [];const out=[];
+ for(const chunk of h.slice(at,at+80000).split('class="b-post__partcontent_item').slice(1,61)){const head=chunk.slice(0,chunk.indexOf(">")+1),current=/^\s+current\b/.test(head),num=Number(one(chunk,/class="td num">\s*(\d+)/)),title=text(one(chunk,/class="td title">\s*(?:<a[^>]*>)?(.*?)<\/(?:a|div)>/s));
+  let url=current?link:one(head,/data-url="([^"]+)"/);if(!url||!title||!num)continue;
+  try{url="https://hdrezka.sh/"+titleKey(url.replace(/^https?:\/\/[^/]+\//,"https://hdrezka.sh/"));}catch{continue;}
+  out.push({link:url,title,info:one(chunk,/class="td year">\s*(\d{4})/)||"",num,...(current?{current:true}:{})});}
+ return out.length>1&&out.some(p=>p.current)?out.sort((a,b)=>a.num-b.num):[];}
 /** What only a title's own page has: its player, its voices, its facts table or its title block. */
 const TITLE_PAGE=/initCDN(?:Series|Movies)Events|id="translators-list"|class="b-post__(?:info|title)"/;
 /**
@@ -110,8 +117,14 @@ const TITLE_PAGE=/initCDN(?:Series|Movies)Events|id="translators-list"|class="b-
  */
 export function readFilm(link,html){
  if(!TITLE_PAGE.test(html))throw Object.assign(Error("Такої назви немає в джерелі"),{status:404});
- const f=parseFilm(link,html);f.imdb=one(html,/imdb\.com\/title\/(tt\d+)/);if(!f.id||!f.title)throw Error("Не вдалося прочитати сторінку фільму");return f;
+ const f=parseFilm(link,html);f.imdb=one(html,/imdb\.com\/title\/(tt\d+)/);f.imdbRef=f.imdb||hiddenImdb(html);if(!f.id||!f.title)throw Error("Не вдалося прочитати сторінку фільму");return f;
 }
+/**
+ * The source hides outside addresses behind /help/<base64 of the URL-encoded address>/, so a title page has no plain IMDb
+ * link (11.11 audit: `imdb` was empty for every title, and «Вам може сподобатися» never reached TMDB). The id read from
+ * there is `imdbRef`, for the server's own lookups (similar.mjs); `imdb` stays what the page says openly.
+ */
+export function hiddenImdb(html){for(const m of String(html).matchAll(/\/help\/([A-Za-z0-9+\/_=-]{24,600})\/?"/g)){try{const id=decodeURIComponent(atob(m[1].replace(/\/+$/,"").replace(/-/g,"+").replace(/_/g,"/"))).match(/imdb\.com\/title\/(tt\d+)/)?.[1];if(id)return id;}catch{}}return null;}
 export async function film(link,options={}){
  // HDRezka's own 404 for the address means the same as its home page: no such title.
  const key=titleKey(link),r=await page("/"+key,120000,options).catch(e=>{throw / HTTP 404 /.test(e.message)?Object.assign(Error("Такої назви немає в джерелі"),{status:404,cause:e}):e;});
