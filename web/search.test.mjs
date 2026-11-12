@@ -44,15 +44,20 @@ test('alternatives prefer exact Wikidata names, then swapped layout, then the mo
  assert.deepEqual(await searchAlternatives(fakeDb(),env,'vfnhbwf',async q=>q==='матрица'?['The Matrix']:[]),['матрица','The Matrix']);
  assert.deepEqual(await searchAlternatives(fakeDb(),env,'интерстелар фильм',async()=>[]),['Интерстеллар']);
 }));
-import {similar,sameWork} from './similar.mjs';
+import {similar,sameWork,within} from './similar.mjs';
 test('similar titles: TMDB recommendations found on the catalogue first, then the source «see also»',async()=>{
  const page={link:'https://hdrezka.sh/series/thriller/646-vo-vse-tyazhkie-2008.html',imdb:'tt0903747',series:true,related:[{link:'https://hdrezka.sh/films/drama/1-war-and-peace-2016.html',title:'Война и мир',info:'2016, Великобритания, Драмы'},{link:'https://hdrezka.sh/series/thriller/646-vo-vse-tyazhkie-2008.html',title:'Во все тяжкие',info:'2008'}]};
  const tmdbCalls=[],fetcher=async url=>{tmdbCalls.push(url);const body=url.includes('/find/')?{tv_results:[{id:1396}]}:url.includes('/recommendations')?{results:[{id:60059,name:'Лучше звоните Солу',original_name:'Better Call Saul',first_air_date:'2015-02-08'},{id:1,name:'Нет на сайте',first_air_date:'2010-01-01'},{id:2,name:'Озарк',original_name:'Ozark',first_air_date:'2017-07-21'},{id:3,name:'Озарк',first_air_date:'1990-01-01'}]}:{results:[{id:4,name:'Нарко',original_name:'Narcos',first_air_date:'2015-08-28'}]};return new Response(JSON.stringify(body));};
  const catalogue={'Лучше звоните Солу':[{link:'https://hdrezka.sh/series/drama/1-luchshe-zvonite-solu-2015.html',title:'Лучше звоните Солу',info:'2015-2022, США, Драмы'}],'Озарк':[{link:'https://hdrezka.sh/films/drama/9-ozark-2017.html',title:'Озарк',info:'2017, США'},{link:'https://hdrezka.sh/series/drama/2-ozark-2017.html',title:'Озарк',info:'2017-2022, США, Драмы'}],'Нарко':[{link:'https://hdrezka.sh/series/drama/3-narko-2015.html',title:'Нарко',info:'2015-2017'}]};
  const items=await similar(page.link,{token:'a'.repeat(32),load:async()=>page,search:async({query})=>catalogue[query]||[],fetcher});
  assert.deepEqual(items.map(i=>i.title),['Лучше звоните Солу','Озарк','Нарко','Война и мир']);
+ // For the home rows: how many of the titles are TMDB's own picks, and the title's franchise, genres and year.
+ assert.equal(items.picks,3);assert.deepEqual(items.parts,[]);assert.deepEqual(items.genres,[]);
+ const part={link:'https://hdrezka.sh/films/drama/5-el-kamino-2019.html',title:'Путь',info:'2019',num:2},withParts=await similar(page.link,{token:'',load:async()=>({...page,parts:[part],genres:['Триллеры','Драмы'],year:'2008'}),search:async()=>[]});assert.equal(withParts.picks,0);assert.deepEqual(withParts.parts,[part]);assert.deepEqual(withParts.genres,['Триллеры','Драмы']);assert.equal(withParts.year,'2008');
  assert.ok(tmdbCalls.every(u=>u.startsWith('https://api.themoviedb.org/3/')&&u.includes('api_key=')));
  assert.deepEqual((await similar(page.link,{token:'',load:async()=>page,search:async()=>[]})).map(i=>i.title),['Война и мир']);
+ // The id the source hides (catalogue.mjs imdbRef) reaches TMDB as well as an open one.
+ assert.deepEqual((await similar(page.link,{token:'a'.repeat(32),load:async()=>({...page,imdb:null,imdbRef:'tt0903747'}),search:async({query})=>catalogue[query]||[],fetcher})).map(i=>i.title).slice(0,3),['Лучше звоните Солу','Озарк','Нарко']);
  assert.equal(sameWork({name:'Озарк',first_air_date:'2017',media_type:'tv'},{link:'https://hdrezka.sh/films/drama/9-ozark-2017.html',title:'Озарк',info:'2017'}),false);
  assert.equal(sameWork({name:'Ван Пис',first_air_date:'1999',media_type:'tv'},{link:'https://hdrezka.sh/animation/adventures/10-van-pis-1999.html',title:'Ван Пис',info:'1999'}),true);
  assert.equal(sameWork({title:'Ван Пис',release_date:'1999',media_type:'movie'},{link:'https://hdrezka.sh/series/comedy/11-van-pis-1999.html',title:'Ван Пис',info:'1999'}),false);
@@ -79,4 +84,10 @@ test('search fixes are not cached twice by Sentra; a failure is not kept as «no
   assert.equal(JSON.parse(JSON.parse(sent[0].body).messages[1].content).query,'сентра збій');assert.deepEqual(saved,[]);assert.equal(budget.calls,1);
   status=429;assert.deepEqual(await corrections(db,env,'ліміт сентри'),[]);assert.equal(budget.calls,1);assert.deepEqual(saved,[]);
  }finally{globalThis.fetch=original;}
+});
+
+test('a list that takes too long is answered without: the wait ends at the limit and the list is still made',async()=>{
+ let finish;const slow=new Promise(resolve=>{finish=resolve;}),started=Date.now();
+ assert.equal(await within(slow,30),null);assert.ok(Date.now()-started<1000);finish(['late']);assert.deepEqual(await slow,['late']);
+ assert.deepEqual(await within(Promise.resolve(['ready']),30),['ready']);await assert.rejects(within(Promise.reject(Error('source down')),30),/source down/);
 });
