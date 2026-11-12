@@ -190,6 +190,10 @@ export function createDownloads({api,storage,keyOf,owner,onChange=()=>{},onProgr
   async usage(){const e=await disk.estimate(),used=list.reduce((s,x)=>s+(x.bytes||0),0);return {used,free:e?.quota?Math.max(0,e.quota-e.usage):null};},
   quality(){const q=storage.getItem(QUALITY_KEY);return DOWNLOAD_QUALITIES.includes(q)?q:null;},
   setQuality(q){if(DOWNLOAD_QUALITIES.includes(q))storage.setItem(QUALITY_KEY,q);},
+  /** The page is loading posters: the running download yields the connection for `ms`. */
+  quiet(ms){if(worker&&active)worker.postMessage({type:'quiet',ms});},
+  /** Anything on this device, of any account: only then does the site keep its offline copy (sw.js). */
+  any(){return list.length>0;},
   /** What runs now for this account: for the tab title and the badge in the menu. */
   summary(){const xs=mine().filter(x=>x.status==='active'||x.status==='queued'||x.status==='waiting'),total=xs.reduce((s,x)=>s+(x.total||0),0),bytes=xs.reduce((s,x)=>s+(x.bytes||0),0);return {count:xs.length,active:xs.find(x=>x.status==='active')||null,percent:total?Math.floor(bytes/total*100):0};},
   kick

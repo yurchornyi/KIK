@@ -3,8 +3,9 @@
  *  posted only after the file is closed: the page may delete or reopen it as soon as it hears. */
 'use strict';
 const DIR='kik-downloads',FLUSH=8<<20;
-let job=null;
-self.onmessage=e=>{const m=e.data||{};if(m.type==='stop'){if(job&&job.id===m.id)job.controller.abort();}else if(m.type==='start')run(m);};
+let job=null,quietUntil=0;
+// «quiet»: the page is loading posters, so the transfer stops pulling bytes for a moment and the pictures get the connection first.
+self.onmessage=e=>{const m=e.data||{};if(m.type==='stop'){if(job&&job.id===m.id)job.controller.abort();}else if(m.type==='quiet')quietUntil=Math.max(quietUntil,Date.now()+Math.min(30000,Number(m.ms)||0));else if(m.type==='start')run(m);};
 async function run({id,url,total}){
  job?.controller.abort();
  const controller=new AbortController(),me=job={id,controller};let handle=null,written=0,out=null;
@@ -29,7 +30,8 @@ async function run({id,url,total}){
   if(size){const est=await navigator.storage.estimate().catch(()=>null);if(est&&est.quota-est.usage<size-written+(64<<20)){await r.body?.cancel();out=['error',{code:'space',total:size,need:size-written}];return;}}
   post('progress',{total:size});
   const reader=r.body.getReader();let unflushed=0,shown=0;
-  for(;;){const {done,value}=await reader.read();if(done)break;await handle.write(value,{at:written});written+=value.byteLength;unflushed+=value.byteLength;
+  for(;;){while(quietUntil>Date.now()&&!controller.signal.aborted)await new Promise(r=>setTimeout(r,Math.min(500,quietUntil-Date.now())));
+   const {done,value}=await reader.read();if(done)break;await handle.write(value,{at:written});written+=value.byteLength;unflushed+=value.byteLength;
    if(unflushed>=FLUSH){await handle.flush();unflushed=0;}const now=Date.now();if(now-shown>400){shown=now;post('progress',{total:size});}}
   out=size&&written<size?['error',{code:'short',total:size}]:['done',{total:size||written}];
  }catch(error){
