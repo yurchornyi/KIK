@@ -25,6 +25,16 @@ export function chooseStream(qualities,{quality,wanted,avoid=[],attempts=0}={}){
  return {label:q.label,url:urls[attempts%urls.length],lower:sorted.some(x=>height(x.label)<height(q.label))};
 }
 const itemKey=(key,season,episode)=>key+'|'+(season||'0')+':'+(episode||'0');
+/** Smart downloads: the finished copies watched to the end after they were saved (here or on another device: progress
+ *  syncs), except the one the player is on. `progress(x)` gives {pos, dur, at} (ms, ms, record time) or null. */
+export function watchedCopies(items,progress,playingId){
+ return (items||[]).filter(x=>{if(x.status!=='done'||x.id===playingId)return false;const r=progress(x);return !!r&&r.dur>0&&r.pos/r.dur>0.93&&r.at>(x.finished||0);});
+}
+/** The episode a series saves next instead of one watched: the first one past everything the title has on the device. */
+export function nextToSave(episodes,items,x){
+ const n=e=>Number(e.season)*10000+Number(e.episode),have=new Set((items||[]).map(d=>d.season+':'+d.episode)),far=Math.max(n(x),...(items||[]).map(n));
+ return (episodes||[]).filter(e=>e&&e.season!=null&&e.episode!=null).slice().sort((a,b)=>n(a)-n(b)).find(e=>n(e)>far&&!have.has(e.season+':'+e.episode))||null;
+}
 const valid=x=>x&&typeof x.id==='string'&&/^[\w-]{6,64}$/.test(x.id)&&typeof x.link==='string'&&typeof x.owner==='string';
 const randomId=()=>{try{return crypto.randomUUID().replace(/-/g,'');}catch{return Date.now().toString(36)+Math.random().toString(36).slice(2,12);}};
 
