@@ -157,13 +157,16 @@ test('smart downloads: the next episode to save is the first one past everything
 });
 
 test('a playlist saved by mistake (under 1 MB) is fetched again; an answer that is not video drops that quality',async()=>{
- const h=harness();h.storage.setItem('kik-downloads',JSON.stringify([{id:'broken1',owner:'u1',key:'films/drama/1-test.html',link,title:'Т',voice:'1',status:'done',bytes:4096,total:4096,finished:1,quality:'1080p',added:1}]));
- h.files.set('broken1.mp4',4096);
- const d=createDownloads({api:async()=>({qualities:[{label:'1080p',url:'/x.m3u8',alternatives:['/x.mp4']},{label:'720p',url:'/y.mp4'}]}),storage:h.storage,keyOf,owner:()=>'u1',locks:null,online:()=>true,events:null,
-  disk:{supported:async()=>true,file:async()=>({}),remove:async id=>{h.removed.push(id);h.files.delete(id+'.mp4');},names:async()=>[...h.files.keys()],estimate:async()=>null,persist:async()=>{}},
-  makeWorker:()=>h.worker={postMessage:m=>h.posted.push(m),onmessage:null}});
- await d.ready;await tick();await tick();
- assert.ok(h.removed.includes('broken1'),'the tiny file goes');assert.equal(h.last('start').url,'/x.mp4','and comes back as the MP4');
- await h.worker.onmessage({data:{type:'error',id:'broken1',code:'format'}});await tick();await tick();
- assert.deepEqual(d.get('broken1').avoid,['1080p']);assert.equal(h.last('start').url,'/y.mp4','a non-video answer moves to the next quality');
+ // Its own list, disk and worker: one manager only, so nothing races it for the item.
+ const memory=new Map(),storage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>{memory.set(k,v);return true;}};
+ storage.setItem('kik-downloads',JSON.stringify([{id:'broken1',owner:'u1',key:'films/drama/1-test.html',link,title:'Т',voice:'1',status:'done',bytes:4096,total:4096,finished:1,quality:'1080p',added:1}]));
+ const files=new Map([['broken1.mp4',4096]]),removed=[],posted=[];let worker=null;
+ const d=createDownloads({api:async()=>({qualities:[{label:'1080p',url:'/x.m3u8',alternatives:['/x.mp4']},{label:'720p',url:'/y.mp4'}]}),storage,keyOf,owner:()=>'u1',locks:null,online:()=>true,events:null,
+  disk:{supported:async()=>true,file:async()=>({}),remove:async id=>{removed.push(id);files.delete(id+'.mp4');},names:async()=>[...files.keys()],estimate:async()=>null,persist:async()=>{}},
+  makeWorker:()=>worker={postMessage:m=>posted.push(m),onmessage:null}});
+ const lastStart=()=>posted.filter(m=>m.type==='start').at(-1);
+ await d.ready;for(let i=0;i<5&&!lastStart();i++)await tick();
+ assert.ok(removed.includes('broken1'),'the tiny file goes');assert.equal(lastStart().url,'/x.mp4','and comes back as the MP4');
+ const before=posted.length;await worker.onmessage({data:{type:'error',id:'broken1',code:'format'}});for(let i=0;i<5&&posted.length===before;i++)await tick();
+ assert.deepEqual(d.get('broken1').avoid,['1080p']);assert.equal(lastStart().url,'/y.mp4','a non-video answer moves to the next quality');
 });
