@@ -38,7 +38,7 @@ public final class FilmActivity extends Activity {
   backdrop=new ImageView(this);backdrop.setScaleType(ImageView.ScaleType.FIT_XY);root.addView(backdrop,new FrameLayout.LayoutParams(-1,h));
   page=new Glide.Page(this);page.setVerticalScrollBarEnabled(false);root.addView(page,new FrameLayout.LayoutParams(-1,-1));
   body=new LinearLayout(this);body.setOrientation(1);body.setClipChildren(false);body.setClipToPadding(false);body.setPadding(dp(40),dp(24),dp(40),dp(40));page.addView(body,new ScrollView.LayoutParams(-1,-2));
-  body.addView(Brand.logo(this,56,26));Ui.space(body,16);
+  body.addView(HolidayMark.logo(this,56,26));Ui.space(body,16);
   name=Ui.bold(this,title==null?"":title,34);name.setLetterSpacing(-0.01f);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
   meta=Ui.text(this,"",15,0xffd8d8dc);meta.setTypeface(Ui.MEDIUM);body.addView(meta);Ui.space(body,12);

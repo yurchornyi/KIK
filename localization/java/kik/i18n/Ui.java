@@ -49,7 +49,9 @@ public final class Ui {
  public static void focus(View v,boolean on,float scale){v.animate().cancel();if(!animations()){v.setScaleX(on?scale:1f);v.setScaleY(on?scale:1f);return;}v.animate().setStartDelay(0).scaleX(on?scale:1f).scaleY(on?scale:1f).setDuration(160).setInterpolator(EASE).start();}
  /** The red ring over a focused poster. It fades in and out, and as one stroke it needs no offscreen layer for that
   *  (hasOverlappingRendering): two of them fade at every step along a row. */
- static View ring(Context c,int radius){View ring=new View(c){@Override public boolean hasOverlappingRendering(){return false;}};ring.setBackground(shape(0,radius,dp(c,3),RED));ring.setAlpha(0f);return ring;}
+ static View ring(Context c,int radius){return ring(c,radius,RED);}
+ /** The same ring in another colour: on a holiday Home's posters take its accent (Holidays.accent). */
+ static View ring(Context c,int radius,int color){View ring=new View(c){@Override public boolean hasOverlappingRendering(){return false;}};ring.setBackground(shape(0,radius,dp(c,3),color));ring.setAlpha(0f);return ring;}
  public static TextView text(Context c,String s,int size,int color){TextView t=new TextView(c);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
  public static TextView bold(Context c,String s,int size){TextView t=text(c,s,size,Color.WHITE);t.setTypeface(Typeface.DEFAULT_BOLD);return t;}
  public static void space(LinearLayout l,int h){l.addView(new View(l.getContext()),new LinearLayout.LayoutParams(1,dp(l.getContext(),h)));}

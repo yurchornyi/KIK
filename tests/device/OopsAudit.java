@@ -85,7 +85,7 @@ public final class OopsAudit extends Instrumentation {
    set(KikPlayerActivity.class,"openingFilm",fake);set(KikPlayerActivity.class,"openingVoice",v1);
    final KikPlayerActivity p=player=(KikPlayerActivity)startActivitySync(new Intent(c,KikPlayerActivity.class).putExtra("title","Перевірка Упс").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
    ui(()->{set(p,"generation",(Integer)get(p,"generation")+1);return null;});
-   check("player_intro_over",await(()->ui(()->get(p,"intro")==null),10000));SystemClock.sleep(800);
+   check("player_intro_over",await(()->ui(()->get(p,"intro")==null&&get(p,"holidayIntro")==null),10000));SystemClock.sleep(800);
    // Baseline: KIK's own waiting frame, which already breathes and has passed on this projector.
    result.put("player_wait_frames",frames("player_wait",4000));
    ui(()->{call(p,"failure",new Class[]{String.class,boolean.class},OopsPolicy.SOURCE,true);return null;});

@@ -2,7 +2,7 @@
  * The holidays KIK dresses up for, counted on the device, the same days as the TV (localization/java/kik/i18n/Holidays.java).
  * On the day itself: the holiday logo, the holiday intro before a video and a few quiet touches on the home page. A week or so
  * before and on the day: a shelf of films for it. Easter comes twice when the Western and the Orthodox dates differ.
- * The «Свята» switch (pref `holidays`, on by default) turns all of it off and follows the profile across devices.
+ * The owner's «Свята» switch (admin panel «Для всіх», flags.js; on by default) turns all of it off for everyone.
  */
 export const HOLIDAYS=['nick','xmas','ny','val','easter','ind','hw'];
 /** Days before a holiday its film shelf comes; St Nicholas, Christmas and New Year share December between them. */

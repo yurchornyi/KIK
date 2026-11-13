@@ -69,6 +69,8 @@ public final class KikPlayerActivity extends Activity {
  private List<Object[]> cues=new ArrayList<Object[]>();private int subIndex=-1;
  private ConnectivityManager.NetworkCallback network;
  private Oops oops;private ExoPlayer intro;private SurfaceView introSurface;private final Runnable introTimeout=this::endIntro;
+ /** On a holiday the intro is the holiday's own, drawn natively (HolidayIntro), in place of the clip. */
+ private HolidayIntro holidayIntro;
  private final Handler h=new Handler(Looper.getMainLooper());
  private final Runnable hide=()->{if(!visible)return;if(prepared&&!seeking&&playWhenReady)show(false);else if(playWhenReady&&!failed)h.postDelayed(this.hide,1000);},tick=new Runnable(){public void run(){update();h.postDelayed(this,500);}},saver=new Runnable(){public void run(){if(active){save();if(player!=null&&player.isPlaying())TemporarySignIn.touch(KikPlayerActivity.this);}h.postDelayed(this,5000);}};
  private int dp(float n){return Ui.dp(this,n);}
@@ -128,8 +130,8 @@ public final class KikPlayerActivity extends Activity {
  private Loudness loudness;
  private ExoPlayer createPlayer(){
   DefaultLoadControl load=new DefaultLoadControl.Builder().setBufferDurationsMs(MIN_BUFFER,MAX_BUFFER,START_BUFFER,REBUFFER).setTargetBufferBytes(BUFFER_BYTES).setPrioritizeTimeOverSizeThresholds(false).build();
-  // «Однакова гучність фільмів» (settings, on by default): the sound passes through Loudness on its way out.
-  final boolean even=getSharedPreferences("settings",0).getBoolean(Loudness.PREF,true);loudness=even?new Loudness():null;
+  // «Однакова гучність фільмів» (on unless the owner's admin panel turns it off for everyone, AppFlags): the sound passes through Loudness on its way out.
+  final boolean even=AppFlags.loudness(this);loudness=even?new Loudness():null;
   DefaultRenderersFactory renderers=new DefaultRenderersFactory(this){@Override protected AudioSink buildAudioSink(Context c,boolean floatOutput,boolean playbackParams){
    if(loudness==null)return super.buildAudioSink(c,floatOutput,playbackParams);
    return new DefaultAudioSink.Builder(c).setEnableFloatOutput(floatOutput).setEnableAudioTrackPlaybackParams(playbackParams).setAudioProcessors(new AudioProcessor[]{loudness}).build();
@@ -226,7 +228,7 @@ public final class KikPlayerActivity extends Activity {
   long actions=android.media.session.PlaybackState.ACTION_PLAY|android.media.session.PlaybackState.ACTION_PAUSE|android.media.session.PlaybackState.ACTION_PLAY_PAUSE|android.media.session.PlaybackState.ACTION_STOP;
   session.setPlaybackState(new android.media.session.PlaybackState.Builder().setActions(actions).setState(state,pos(),state==android.media.session.PlaybackState.STATE_PLAYING?speed:0f).build());
  }
- @Override protected void onDestroy(){if(resumeReceiver!=null){try{unregisterReceiver(resumeReceiver);}catch(Exception ignored){}resumeReceiver=null;}if(film!=null&&voice!=null&&isFinishing())LauncherReport.stopped(this);/* Android taking the player away in the background is no close: the launcher's Continue reopens the title */if(session!=null){try{session.setActive(false);session.release();}catch(Exception ignored){}session=null;}destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
+ @Override protected void onDestroy(){if(resumeReceiver!=null){try{unregisterReceiver(resumeReceiver);}catch(Exception ignored){}resumeReceiver=null;}if(film!=null&&voice!=null&&isFinishing())LauncherReport.stopped(this);/* Android taking the player away in the background is no close: the launcher's Continue reopens the title */if(session!=null){try{session.setActive(false);session.release();}catch(Exception ignored){}session=null;}destroyed=true;TvChannels.stopped(this);CloudSync.playing(profileId,false);generation++;h.removeCallbacksAndMessages(null);if(intro!=null){intro.release();intro=null;}if(holidayIntro!=null){holidayIntro.stop();holidayIntro=null;}if(breathing!=null){breathing.cancel();breathing=null;}if(turning!=null){turning.cancel();turning=null;}if(network!=null)try{((ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE)).unregisterNetworkCallback(network);}catch(Exception ignored){}if(player!=null){player.release();player=null;}super.onDestroy();}
 
  private long pos(){return player==null?0:Math.max(0,player.getCurrentPosition());}
  /** For the device audits: position, duration and whether frames are advancing right now. */
@@ -401,9 +403,20 @@ public final class KikPlayerActivity extends Activity {
  private void applySpeed(){if(player!=null)player.setPlaybackSpeed(speed);Log.d("KIK.Player","Speed="+speed);}
  private void seek(long delta){if(!prepared||player==null)return;long d=dur(),t=Math.max(0,pos()+delta);if(d>0)t=Math.min(Math.max(0,d-1500),t);resumeAt=t;seekAt=SystemClock.elapsedRealtime();lastMovement=seekAt;Log.d("KIK.Player","Seek requested="+t);player.seekTo(t);update();}
  private void toggle(){if(!prepared||player==null)return;playWhenReady=!playWhenReady;player.setPlayWhenReady(wanted());lastMovement=SystemClock.elapsedRealtime();update();show(true);Log.d("KIK.Player","Playing="+playWhenReady+" position="+pos());}
- /** The KIK ident plays above everything while the stream loads underneath; the video starts when it ends. */
+ /** The KIK ident plays above everything while the stream loads underneath; the video starts when it ends. The owner's admin
+  *  panel turns it off for everyone (AppFlags.intro). On a holiday it is the holiday's own intro, drawn natively. */
  private void playIntro(){
-  if(intro!=null||!getSharedPreferences("settings",0).getBoolean("intro",true))return;
+  if(introOn()||!AppFlags.intro(this))return;
+  String day=AppFlags.today(this);
+  if(day!=null){
+   try{
+    holidayIntro=new HolidayIntro(this,day,this::endIntro);
+    // Above the video's surface and every control, as the clip's own surface is (setZOrderOnTop); lifted without a shadow.
+    holidayIntro.setOutlineProvider(null);holidayIntro.setTranslationZ(dp(100));root.addView(holidayIntro,new FrameLayout.LayoutParams(-1,-1));paintWait();
+    h.postDelayed(introTimeout,6000);h.postDelayed(introWatch,100);
+   }catch(Exception e){Log.w("KIK.Player","Holiday intro",e);endIntro();}
+   return;
+  }
   try{
    introSurface=new SurfaceView(this);introSurface.setZOrderOnTop(true);root.addView(introSurface,new FrameLayout.LayoutParams(-1,-1));
    intro=new ExoPlayer.Builder(this).build();intro.setVideoSurfaceView(introSurface);
@@ -415,9 +428,10 @@ public final class KikPlayerActivity extends Activity {
    h.postDelayed(introTimeout,6000);h.postDelayed(introWatch,100);
   }catch(Exception e){Log.w("KIK.Player","Intro",e);endIntro();}
  }
+ private boolean introOn(){return intro!=null||holidayIntro!=null;}
  private void endIntro(){
-  if(intro==null&&introSurface==null)return;h.removeCallbacks(introTimeout);
-  if(intro!=null){intro.release();intro=null;}paintWait();if(introSurface!=null){root.removeView(introSurface);introSurface=null;}
+  if(intro==null&&introSurface==null&&holidayIntro==null)return;h.removeCallbacks(introTimeout);
+  if(intro!=null){intro.release();intro=null;}HolidayIntro drawn=holidayIntro;holidayIntro=null;paintWait();if(introSurface!=null){root.removeView(introSurface);introSurface=null;}if(drawn!=null){drawn.stop();root.removeView(drawn);}
   if(player!=null&&!destroyed)player.setPlayWhenReady(wanted());lastMovement=SystemClock.elapsedRealtime();
  }
  /** Without premium the source serves a one-minute preview for its top quality: drop it and play the next one down (RecoveryPolicy.preview says when a short stream is one). */
@@ -450,8 +464,8 @@ public final class KikPlayerActivity extends Activity {
  private void waiting(boolean on,boolean branded){waitOn=on;waitBranded=branded;paintWait();}
  /** The intro runs first; the waiting screen only takes over from it, never shows before it. */
  private void paintWait(){
-  if(oops!=null)oops.setVisibility(intro==null?View.VISIBLE:View.GONE);
-  boolean on=waitOn&&intro==null;if(on&&loading.getVisibility()!=View.VISIBLE){loading.setAlpha(0f);loading.animate().alpha(1f).setDuration(350).start();}
+  if(oops!=null)oops.setVisibility(introOn()?View.GONE:View.VISIBLE);
+  boolean on=waitOn&&!introOn();if(on&&loading.getVisibility()!=View.VISIBLE){loading.setAlpha(0f);loading.animate().alpha(1f).setDuration(350).start();}
   loading.setVisibility(on?View.VISIBLE:View.GONE);boolean show=on&&waitBranded;wait.setVisibility(show?View.VISIBLE:View.GONE);dots.setVisibility(show&&!failed?View.VISIBLE:View.GONE);
   // On the KIK screen the line reads like the credit below it (small caps, wide tracking, its grey); over the picture it needs a shadow.
   boolean quiet=show&&!failed;loading.setAllCaps(quiet);loading.setLetterSpacing(quiet?0.22f:0.02f);loading.setTextColor(quiet?0xff9d9aa6:0xffe6e3ea);loading.setTextSize(quiet?13:17);
@@ -461,8 +475,9 @@ public final class KikPlayerActivity extends Activity {
    turning=android.animation.ObjectAnimator.ofFloat(emblem,View.ROTATION,0f,360f);turning.setDuration(6000);turning.setRepeatCount(android.animation.ValueAnimator.INFINITE);turning.setInterpolator(new android.view.animation.LinearInterpolator());turning.start();}
   else if(!show&&breathing!=null){breathing.cancel();breathing=null;if(turning!=null){turning.cancel();turning=null;}pulse.setAlpha(1f);pulse.setScaleX(1f);pulse.setScaleY(1f);pulse.setLayerType(View.LAYER_TYPE_NONE,null);}
  }
- /** Cut the intro on its settled frame when the video is not ready yet: the waiting screen continues it seamlessly. */
- private final Runnable introWatch=new Runnable(){public void run(){if(intro==null)return;if(!prepared&&intro.getCurrentPosition()>=INTRO_HOLD_MS){endIntro();return;}h.postDelayed(this,100);}};
+ /** Cut the intro on its settled frame when the video is not ready yet: the waiting screen continues it seamlessly. The
+  *  holiday intro settles later, once its greeting is in (HolidayIntro.HOLD_MS). */
+ private final Runnable introWatch=new Runnable(){public void run(){if(!introOn())return;long at=intro!=null?intro.getCurrentPosition():holidayIntro.elapsed(),hold=intro!=null?INTRO_HOLD_MS:HolidayIntro.HOLD_MS;if(!prepared&&at>=hold){endIntro();return;}h.postDelayed(this,100);}};
  /** Three small red dots that brighten one after another under the waiting line; only this strip redraws. */
  static final class Dots extends View{
   private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -474,7 +489,7 @@ public final class KikPlayerActivity extends Activity {
   }
   @Override protected void onVisibilityChanged(View v,int visibility){super.onVisibilityChanged(v,visibility);if(visibility==VISIBLE)postInvalidateOnAnimation();}
  }
- private boolean wanted(){return playWhenReady&&active&&intro==null;}
+ private boolean wanted(){return playWhenReady&&active&&!introOn();}
  private void onEnded(){
   // A broken stream can report the end long before the credits: resume it instead of marking the episode watched.
   if(truncated())return;
@@ -809,7 +824,7 @@ public final class KikPlayerActivity extends Activity {
  @Override public boolean dispatchKeyEvent(KeyEvent e){
   int k=e.getKeyCode();
   if(!playerKey(k))return super.dispatchKeyEvent(e);
-  if(intro!=null){if(e.getAction()==KeyEvent.ACTION_UP)endIntro();return true;}
+  if(introOn()){if(e.getAction()==KeyEvent.ACTION_UP)endIntro();return true;}
   if(k==KeyEvent.KEYCODE_BACK){if(e.getAction()==KeyEvent.ACTION_UP)onBackPressed();return true;}
   // The «Упс» screen has real buttons: the remote moves between them and OK presses them, as anywhere else in KIK.
   if(oops!=null)return super.dispatchKeyEvent(e);

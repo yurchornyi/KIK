@@ -27,20 +27,21 @@ public final class LoudnessAudit extends Instrumentation {
  }
  void republish()throws Exception{c.getSharedPreferences("kik_tv_channels",0).edit().remove("profile").commit();Method m=TvChannels.class.getDeclaredMethod("publish",Context.class,boolean.class);m.setAccessible(true);m.invoke(null,c,true);}
  @Override public void onCreate(Bundle b){super.onCreate(b);start();}
- @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();SharedPreferences settings=c.getSharedPreferences("settings",0);boolean had=settings.contains(Loudness.PREF),was=settings.getBoolean(Loudness.PREF,true);
+ @Override public void onStart(){boolean passed=false;String error="";c=getTargetContext();// The switch is the owner's now (admin panel «Для всіх»), cached on the TV by AppFlags.
+  SharedPreferences settings=c.getSharedPreferences("kik_flags",0);boolean had=settings.contains("loudness"),was=settings.getBoolean("loudness",true);
   original=ProfileStore.current(c);list=c.getSharedPreferences("kik_profiles",0).getString("list","[]");try{
   File quiet=copy("loudness-quiet.mp4"),loud=copy("loudness-loud.mp4");
   qa=ProfileStore.create(c,"QA Loudness","Local6789").id;c.getSharedPreferences("kik_profiles",0).edit().putString("current",qa).commit();ProfileStore.completeTasteSetup(c,qa);
-  settings.edit().putBoolean(Loudness.PREF,true).commit();
+  settings.edit().putBoolean("loudness",true).commit();
   double[] q=play(quiet),l=play(loud);
   check("the player's sound passes through Loudness",q!=null&&l!=null);
   note(String.format(java.util.Locale.ROOT,"quiet clip: gain %+.1f dB, out %.1f dB; loud clip: gain %+.1f dB, out %.1f dB",q[0],q[1],l[0],l[1]));
   check("the quiet film is lifted",q[0]>6);check("the loud film is turned down",l[0]<-5);
   check("both come out within 3 dB of each other (they were 20 dB apart)",Math.abs(q[1]-l[1])<=3);
-  settings.edit().putBoolean(Loudness.PREF,false).commit();
+  settings.edit().putBoolean("loudness",false).commit();
   check("with the switch off the sound is left alone",play(quiet)==null);
   passed=true;
- }catch(Throwable e){error=e.toString();}finally{try{if(p!=null)ui(()->{p.finish();return null;});if(had)settings.edit().putBoolean(Loudness.PREF,was).commit();else settings.edit().remove(Loudness.PREF).commit();
+ }catch(Throwable e){error=e.toString();}finally{try{if(p!=null)ui(()->{p.finish();return null;});if(had)settings.edit().putBoolean("loudness",was).commit();else settings.edit().remove("loudness").commit();
    c.getSharedPreferences("kik_profiles",0).edit().putString("current",original).commit();if(qa!=null)ProfileStore.delete(c,qa);c.getSharedPreferences("kik_profiles",0).edit().putString("list",list).putString("current",original).commit();republish();
    new File(c.getExternalFilesDir(null),"loudness-quiet.mp4").delete();new File(c.getExternalFilesDir(null),"loudness-loud.mp4").delete();}catch(Exception e){passed=false;error=e.toString();}
   }Bundle b=new Bundle();b.putString("stream","Loudness passed="+passed+" checks="+checks+" "+error);finish(passed?-1:0,b);}
