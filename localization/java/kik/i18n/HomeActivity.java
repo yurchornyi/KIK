@@ -51,7 +51,8 @@ public final class HomeActivity extends Activity {
   // The backdrop is one opaque, half-resolution bitmap with its fades baked in (blending is costly on this GPU).
   heroImage.setScaleType(ImageView.ScaleType.FIT_XY);heroImage.setBackgroundColor(BG);
   root.addView(heroImage,new FrameLayout.LayoutParams(-1,heroH));
-  scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);scroll.setSmoothScrollingEnabled(true);
+  // A focused row glides into view with its heading (Glide.Page); the top bar and the hero bring back the page's top.
+  scroll=new Glide.Page(this);
   scroll.getViewTreeObserver().addOnScrollChangedListener(()->heroImage.setTranslationY(-Math.min(scroll.getScrollY(),heroH)));
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
@@ -375,7 +376,8 @@ public final class HomeActivity extends Activity {
  }
  private TextView rowHeading(String title){TextView h=text(title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);return h;}
  private HorizontalScrollView rowLine(Row r){
-  HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
+  // The focused card stands where the first one does, its poster under the heading's first letter, and the row glides under it.
+  HorizontalScrollView hs=new Glide.Row(this).shelf(dp(32));hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
   LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);for(Item i:r.items)line.addView(card(i));return hs;
  }
  /** «Мій список» on the hero changes one row: it is redrawn in place (added after «Продовжити перегляд» or taken away), so the
@@ -399,7 +401,7 @@ public final class HomeActivity extends Activity {
   FrameLayout frame=new FrameLayout(this);frame.setFocusable(true);frame.setClickable(true);
   // Rounded corners come from a shader-drawn poster, not outline clipping (costly on this GPU).
   ImageView img=new PosterView(this,dp(8));frame.addView(img,new FrameLayout.LayoutParams(-1,-1));
-  final View ring=new View(this);ring.setBackground(shape(0,dp(8),dp(3),RED));ring.setAlpha(0f);frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
+  final View ring=Ui.ring(this,dp(8));frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
   Studios.watch(frame,i.link,i.title,i.year,null);
   if(i.rating!=null){TextView r=text("★ "+i.rating,12,Color.WHITE);r.setPadding(dp(6),dp(2),dp(6),dp(2));r.setBackground(shape(0xcc000000,dp(4),0,0));FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);p.setMargins(0,dp(6),dp(6),0);frame.addView(r,p);}
   if(i.resume){View track=new View(this);track.setBackgroundColor(0xff77777b);frame.addView(track,new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM));View bar=new View(this);bar.setBackgroundColor(RED);frame.addView(bar,new FrameLayout.LayoutParams(Math.max(dp(3),Math.round(dp(150)*i.progress)),dp(3),Gravity.BOTTOM|Gravity.START));}
@@ -412,7 +414,7 @@ public final class HomeActivity extends Activity {
   frame.setOnFocusChangeListener((v,f)->{
    Ui.focus(v,f,1.05f);ring.animate().alpha(f?1f:0f).setDuration(140).start();
    t.setTextColor(f?Color.WHITE:0xffe6e6ea);
-   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=()->feature(i);main.postDelayed(heroTask,200);if(box.getParent()!=null){final HorizontalScrollView hs=(HorizontalScrollView)box.getParent().getParent();scrollRowIntoView(hs);hs.post(()->{View line=(View)box.getParent();if(line==null||destroyed)return;int left=line.getLeft()+box.getLeft(),target=Math.max(0,left-dp(40));if(target!=hs.getScrollX())hs.smoothScrollTo(target,0);});}}
+   if(f){final String profile=ProfileStore.current(this);Ui.bg(()->RatingStore.expose(this,profile,i.link));focusedLink=i.link;main.removeCallbacks(heroTask);heroTask=heroFor(i);main.postDelayed(heroTask,200);}
   });
   frame.setOnClickListener(v->open(i));
   frame.setOnLongClickListener(v->{rate(i);return true;});
@@ -453,9 +455,10 @@ public final class HomeActivity extends Activity {
   icon.setBounds(0,0,dp(20),dp(20));if(chosen)icon.setColorFilter(new PorterDuffColorFilter(RED,PorterDuff.Mode.SRC_IN));c.setCompoundDrawables(icon,null,null,null);
   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(44));lp.setMargins(0,0,0,dp(2));box.addView(c,lp);return c;
  }
- private void scrollRowIntoView(View row){
-  int target=FocusScrollPolicy.target(scroll.getScrollY(),scroll.getHeight(),dp(16),dp(24),row.getTop(),row.getBottom(),dp(8));
-  if(target!=scroll.getScrollY())scroll.smoothScrollTo(0,target);
+ /** The focused card takes the hero once the rows stand still: a new backdrop crossfading under a gliding row drops
+  *  frames on the projector. Half a second at most, so a held key still updates it. */
+ private Runnable heroFor(final Item i){
+  return new Runnable(){int waited;public void run(){if(destroyed)return;if(Glide.moving()&&waited++<10){main.postDelayed(this,50);return;}feature(i);}};
  }
 
  // ---------- featured slideshow ----------
@@ -577,12 +580,12 @@ public final class HomeActivity extends Activity {
  private TextView menu(String label,View.OnClickListener l){
   TextView t=text(label,14,0xffd0d0d4);t.setIncludeFontPadding(false);t.setGravity(Gravity.CENTER_VERTICAL);t.setFocusable(true);t.setClickable(true);t.setPadding(dp(12),dp(9),dp(12),dp(9));
   t.setBackground(states(shape(0,dp(24),0,0),shape(Color.WHITE,dp(24),dp(2),RED)));t.setTextColor(Ui.buttonText(false));
-  t.setOnFocusChangeListener((v,f)->{Ui.focus(v,f,1.04f);if(f)scroll.smoothScrollTo(0,0);});
+  t.setOnFocusChangeListener((v,f)->Ui.focus(v,f,1.04f));
   t.setOnClickListener(l);return t;
  }
  private Button action(String label,int icon,boolean primary){
   Button b=HeroActions.button(this,label,icon,primary);
-  b.setOnFocusChangeListener((v,f)->{HeroActions.focus(v,f);if(f)scroll.smoothScrollTo(0,0);});
+  b.setOnFocusChangeListener(HeroActions::focus);
   return b;
  }
  private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
@@ -666,6 +669,11 @@ public final class HomeActivity extends Activity {
    view.setImageDrawable(null);
    new VisiblePoster(u,key,width,view).attach();
   }
+  /** Posters still off screen look again once per 100 ms while the page moves, all in one pass: a check per poster
+   *  per frame (hundreds wait below the fold) took the time a glide needs for its frames. */
+  private static final Set<VisiblePoster> WAITING=new LinkedHashSet<VisiblePoster>();private static boolean sweeping;
+  private static final Runnable SWEEP=()->{sweeping=false;List<VisiblePoster> due=new ArrayList<VisiblePoster>(WAITING);WAITING.clear();for(VisiblePoster p:due)p.attempt();};
+  private static void soon(VisiblePoster p){WAITING.add(p);if(!sweeping){sweeping=true;MAIN.postDelayed(SWEEP,100);}}
   /** Off-screen catalogue posters must not consume the connection while the viewer starts video. */
   private static final class VisiblePoster implements View.OnAttachStateChangeListener,ViewTreeObserver.OnScrollChangedListener,ViewTreeObserver.OnGlobalLayoutListener{
    final String url,key;final int width;final ImageView view;boolean started;ViewTreeObserver observer;
@@ -674,7 +682,7 @@ public final class HomeActivity extends Activity {
    public void onViewAttachedToWindow(View v){observer=view.getViewTreeObserver();observer.addOnScrollChangedListener(this);observer.addOnGlobalLayoutListener(this);view.post(this::attempt);}
    public void onViewDetachedFromWindow(View v){remove();}
    void remove(){if(observer!=null&&observer.isAlive()){observer.removeOnScrollChangedListener(this);observer.removeOnGlobalLayoutListener(this);}observer=null;}
-   public void onScrollChanged(){attempt();}public void onGlobalLayout(){attempt();}
+   public void onScrollChanged(){soon(this);}public void onGlobalLayout(){soon(this);}
    void attempt(){if(started)return;if(!key.equals(view.getTag())){remove();view.removeOnAttachStateChangeListener(this);return;}Rect rect=new Rect();if(!view.isShown()||!view.getGlobalVisibleRect(rect)||rect.width()==0||rect.height()==0)return;started=true;remove();view.removeOnAttachStateChangeListener(this);fetch(url,key,width,0,view,false);}
   }
   /** Hero backdrop: keeps the current picture until the next one is ready, then crossfades. */

@@ -56,7 +56,7 @@ public final class KikPlayerActivity extends Activity {
  private LinearLayout ask;private TextView askTitle;private View askTimer;private static final long ASK_MS=8000;private final List<TextView> askChoices=new ArrayList<TextView>();private int askFocus;private boolean askOn,askChecked,finishAfterAsk;
  private String askItem;private long watchedItem;private final Runnable askHide=()->hideAsk(true);
  private boolean prepared,switching,seeking,failed,destroyed,active=true,playWhenReady=true,offline,sourcePaused;private int generation,subGeneration,playGeneration;private long resumeAt,startWanted=-1;
- private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,settings,options;private HorizontalScrollView optionsBox;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
+ private FrameLayout root,wait;private ImageView pulse,emblem;private android.animation.ObjectAnimator turning;private Dots dots;private boolean waitOn=true,waitBranded=true;private android.animation.ObjectAnimator breathing;private LinearLayout top,bottom,buttons,settings,options;private Glide.Row optionsBox;private TextView name,sub,left,right,flash,loading,subtitle;private View played,track,knob;
  private final List<TextView> controls=new ArrayList<TextView>();private int focus=1,playIndex=1;private boolean visible,progressFocus;
  private final WatchTracker watchTracker=new WatchTracker();private long watchedPending;
  private final RecoveryPolicy recovery=new RecoveryPolicy();private boolean recovering;private int refreshAttempt,voiceAttempt,sameAttempt,autoRetry,earlyEnds;private final Set<String> failedVoices=new HashSet<String>();
@@ -524,7 +524,7 @@ public final class KikPlayerActivity extends Activity {
   settings=new LinearLayout(this);settings.setOrientation(0);settings.setGravity(Gravity.CENTER_VERTICAL);settings.setClipChildren(false);settings.setClipToPadding(false);
   side.addView(settings,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
   options=new LinearLayout(this);options.setOrientation(0);options.setGravity(Gravity.CENTER_VERTICAL);options.setClipChildren(false);options.setClipToPadding(false);
-  optionsBox=new HorizontalScrollView(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setClipChildren(true);optionsBox.setClipToPadding(true);optionsBox.setHorizontalFadingEdgeEnabled(true);optionsBox.setFadingEdgeLength(dp(40));optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
+  optionsBox=new Glide.Row(this);optionsBox.setHorizontalScrollBarEnabled(false);optionsBox.setClipChildren(true);optionsBox.setClipToPadding(true);optionsBox.setHorizontalFadingEdgeEnabled(true);optionsBox.setFadingEdgeLength(dp(40));optionsBox.addView(options,new FrameLayout.LayoutParams(-2,-2));optionsBox.setVisibility(View.GONE);
   side.addView(optionsBox,new FrameLayout.LayoutParams(-2,-2,Gravity.END|Gravity.CENTER_VERTICAL));
   buttons.addView(side,new LinearLayout.LayoutParams(0,-2,1));
   if(voiceNames().size()>1)addControl("Озвучка",()->openVoices());
@@ -802,7 +802,7 @@ public final class KikPlayerActivity extends Activity {
    if(t instanceof Icon){GradientDrawable o=new GradientDrawable();o.setShape(GradientDrawable.OVAL);o.setColor(f?Color.WHITE:0x26ffffff);if(f)o.setStroke(dp(2),Ui.RED);t.setBackground(o);t.setTextColor(f?Color.BLACK:Color.WHITE);t.animate().scaleX(f?1.08f:1f).scaleY(f?1.08f:1f).setDuration(150).start();t.invalidate();}
    else Ui.paintControl(t,f);}
   // While the choices fly in or out, only their colours are painted: a focus scale would cancel that flight.
-  if(menu!=null)for(int i=0;i<options.getChildCount();i++){TextView t=(TextView)options.getChildAt(i);boolean f=i==optFocus;t.setBackground(Ui.shape(f?Color.WHITE:i==optSelected?Ui.RED:0xff333337,dp(24),f?dp(2):0,Ui.RED));t.setTextColor(f?Color.BLACK:Color.WHITE);if(SystemClock.elapsedRealtime()>=swapUntil)Ui.focus(t,f,1.04f);if(f){final View target=t;options.post(()->((HorizontalScrollView)options.getParent()).smoothScrollTo(Math.max(0,target.getLeft()-dp(120)),0));}}
+  if(menu!=null)for(int i=0;i<options.getChildCount();i++){TextView t=(TextView)options.getChildAt(i);boolean f=i==optFocus;t.setBackground(Ui.shape(f?Color.WHITE:i==optSelected?Ui.RED:0xff333337,dp(24),f?dp(2):0,Ui.RED));t.setTextColor(f?Color.BLACK:Color.WHITE);if(SystemClock.elapsedRealtime()>=swapUntil)Ui.focus(t,f,1.04f);if(f){final View target=t;options.post(()->optionsBox.glide(Math.max(0,target.getLeft()-dp(120))));}}
   knob.animate().scaleX(progressFocus?1.6f:1f).scaleY(progressFocus?1.6f:1f).setDuration(180).start();
  }
 

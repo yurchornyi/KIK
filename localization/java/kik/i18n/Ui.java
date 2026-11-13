@@ -33,8 +33,8 @@ public final class Ui {
  public static int dp(Context c,float n){return Math.round(n*c.getResources().getDisplayMetrics().density);}
  /** Clamp a design width to the usable window; TV density differs across manufacturers. */
  public static int contentWidth(Context c,int maximum,int horizontalPadding){return Math.max(1,Math.min(dp(c,maximum),c.getResources().getDisplayMetrics().widthPixels-dp(c,horizontalPadding)));}
- /** Scroll a focusable row while leaving enough room for the focus ring on every edge. */
- public static HorizontalScrollView horizontal(Context c,LinearLayout row){HorizontalScrollView scroll=new HorizontalScrollView(c);scroll.setHorizontalScrollBarEnabled(false);scroll.setClipToPadding(false);scroll.setClipChildren(false);scroll.setPadding(dp(c,8),dp(c,6),dp(c,8),dp(c,6));row.setClipChildren(false);row.setClipToPadding(false);scroll.addView(row);return scroll;}
+ /** Scroll a focusable row while leaving enough room for the focus ring on every edge; it glides ({@link Glide}). */
+ public static HorizontalScrollView horizontal(Context c,LinearLayout row){HorizontalScrollView scroll=new Glide.Row(c);scroll.setHorizontalScrollBarEnabled(false);scroll.setClipToPadding(false);scroll.setClipChildren(false);scroll.setPadding(dp(c,8),dp(c,6),dp(c,8),dp(c,6));row.setClipChildren(false);row.setClipToPadding(false);scroll.addView(row);return scroll;}
  public static void bg(Runnable r){new Thread(r,"kik-ui").start();}
 
  /** Full-screen dark window with immersive mode; Back on Android 13+ is routed to onBackPressed. */
@@ -47,6 +47,9 @@ public final class Ui {
  public static boolean animations(){return Build.VERSION.SDK_INT<26||android.animation.ValueAnimator.areAnimatorsEnabled();}
  public static void enter(View v,int delay){if(!animations()){v.setAlpha(1f);v.setTranslationY(0);return;}v.setAlpha(0f);v.setTranslationY(dp(v.getContext(),10));v.animate().alpha(1f).translationY(0).setStartDelay(delay).setDuration(240).setInterpolator(EASE).start();}
  public static void focus(View v,boolean on,float scale){v.animate().cancel();if(!animations()){v.setScaleX(on?scale:1f);v.setScaleY(on?scale:1f);return;}v.animate().setStartDelay(0).scaleX(on?scale:1f).scaleY(on?scale:1f).setDuration(160).setInterpolator(EASE).start();}
+ /** The red ring over a focused poster. It fades in and out, and as one stroke it needs no offscreen layer for that
+  *  (hasOverlappingRendering): two of them fade at every step along a row. */
+ static View ring(Context c,int radius){View ring=new View(c){@Override public boolean hasOverlappingRendering(){return false;}};ring.setBackground(shape(0,radius,dp(c,3),RED));ring.setAlpha(0f);return ring;}
  public static TextView text(Context c,String s,int size,int color){TextView t=new TextView(c);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
  public static TextView bold(Context c,String s,int size){TextView t=text(c,s,size,Color.WHITE);t.setTypeface(Typeface.DEFAULT_BOLD);return t;}
  public static void space(LinearLayout l,int h){l.addView(new View(l.getContext()),new LinearLayout.LayoutParams(1,dp(l.getContext(),h)));}
@@ -153,7 +156,7 @@ public final class Ui {
   LinearLayout box=new LinearLayout(c);box.setOrientation(1);box.setClipChildren(false);box.setClipToPadding(false);box.setPadding(dp(c,6),dp(c,10),dp(c,6),dp(c,10));
   FrameLayout frame=new FrameLayout(c);frame.setFocusable(true);frame.setClickable(true);
   ImageView img=new HomeActivity.PosterView(c,dp(c,8));frame.addView(img,new FrameLayout.LayoutParams(-1,-1));
-  final View ring=new View(c);ring.setBackground(shape(0,dp(c,8),dp(c,3),RED));ring.setAlpha(0f);frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
+  final View ring=ring(c,dp(c,8));frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
   if(badge!=null){TextView r=text(c,badge,12,Color.WHITE);r.setPadding(dp(c,6),dp(c,2),dp(c,6),dp(c,2));r.setBackground(shape(0xcc000000,dp(c,4),0,0));FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);p.setMargins(0,dp(c,6),dp(c,6),0);frame.addView(r,p);}
   if(progress>0){View track=new View(c);track.setBackgroundColor(0x88ffffff);frame.addView(track,new FrameLayout.LayoutParams(-1,dp(c,4),Gravity.BOTTOM));
    View bar=new View(c);bar.setBackgroundColor(RED);frame.addView(bar,new FrameLayout.LayoutParams((int)(dp(c,136)*Math.min(1f,progress)),dp(c,4),Gravity.BOTTOM|Gravity.START));}

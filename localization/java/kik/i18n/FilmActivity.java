@@ -36,7 +36,7 @@ public final class FilmActivity extends Activity {
   root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
   int h=Math.round(getResources().getDisplayMetrics().heightPixels*0.72f);
   backdrop=new ImageView(this);backdrop.setScaleType(ImageView.ScaleType.FIT_XY);root.addView(backdrop,new FrameLayout.LayoutParams(-1,h));
-  page=new ScrollView(this);page.setVerticalScrollBarEnabled(false);root.addView(page,new FrameLayout.LayoutParams(-1,-1));
+  page=new Glide.Page(this);page.setVerticalScrollBarEnabled(false);root.addView(page,new FrameLayout.LayoutParams(-1,-1));
   body=new LinearLayout(this);body.setOrientation(1);body.setClipChildren(false);body.setClipToPadding(false);body.setPadding(dp(40),dp(24),dp(40),dp(40));page.addView(body,new ScrollView.LayoutParams(-1,-2));
   body.addView(Brand.logo(this,56,26));Ui.space(body,16);
   name=Ui.bold(this,title==null?"":title,34);name.setLetterSpacing(-0.01f);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
@@ -46,18 +46,18 @@ public final class FilmActivity extends Activity {
   desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(Ui.contentWidth(this,640,80),-2));
   sourceInfo=Ui.text(this,"",13,Ui.GREY);sourceInfo.setVisibility(View.GONE);body.addView(sourceInfo);
   Ui.space(body,20);
-  LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);buttons.setGravity(Gravity.CENTER_VERTICAL);buttons.setPadding(dp(8),0,dp(8),0);HorizontalScrollView actionsBox=new HorizontalScrollView(this);actionsBox.setHorizontalScrollBarEnabled(false);actionsBox.setClipChildren(false);actionsBox.setClipToPadding(false);actionsBox.setPadding(0,dp(4),0,dp(4));actionsBox.addView(buttons);LinearLayout.LayoutParams actionsLp=new LinearLayout.LayoutParams(-1,-2);actionsLp.setMargins(-dp(8),0,-dp(8),0);body.addView(actionsBox,actionsLp);
+  LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);buttons.setGravity(Gravity.CENTER_VERTICAL);buttons.setPadding(dp(8),0,dp(8),0);HorizontalScrollView actionsBox=new Glide.Row(this);actionsBox.setHorizontalScrollBarEnabled(false);actionsBox.setClipChildren(false);actionsBox.setClipToPadding(false);actionsBox.setPadding(0,dp(4),0,dp(4));actionsBox.addView(buttons);LinearLayout.LayoutParams actionsLp=new LinearLayout.LayoutParams(-1,-2);actionsLp.setMargins(-dp(8),0,-dp(8),0);body.addView(actionsBox,actionsLp);
   watch=Ui.pill(this,"▶  Дивитися",true);buttons.addView(watch,new LinearLayout.LayoutParams(-2,dp(48)));watch.setEnabled(false);
   later=Ui.pill(this,"＋  Мій список",false);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(48));lp.setMargins(dp(12),0,0,0);buttons.addView(later,lp);
   voiceChip=Ui.chip(this,"Озвучка");LinearLayout.LayoutParams lv=new LinearLayout.LayoutParams(-2,dp(48));lv.setMargins(dp(12),0,0,0);buttons.addView(voiceChip,lv);voiceChip.setVisibility(View.GONE);
   tasteChip=thumb(false);LinearLayout.LayoutParams tasteLp=new LinearLayout.LayoutParams(dp(56),dp(48));tasteLp.setMargins(dp(12),0,0,0);buttons.addView(tasteChip,tasteLp);tasteChip.setOnClickListener(v->rate(1));
   dislikeChip=thumb(true);LinearLayout.LayoutParams dislikeLp=new LinearLayout.LayoutParams(dp(56),dp(48));dislikeLp.setMargins(dp(12),0,0,0);buttons.addView(dislikeChip,dislikeLp);dislikeChip.setOnClickListener(v->rate(-1));paintTaste();
-  voicesBox=new HorizontalScrollView(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
+  voicesBox=new Glide.Row(this);voicesBox.setHorizontalScrollBarEnabled(false);voices=new LinearLayout(this);voices.setOrientation(0);voices.setClipChildren(false);voices.setClipToPadding(false);voicesBox.setClipToPadding(false);voices.setPadding(dp(6),dp(14),dp(6),dp(6));voicesBox.addView(voices);voicesBox.setVisibility(View.GONE);body.addView(voicesBox);
   status=Ui.text(this,"Завантаження…",16,Ui.GREY);status.setPadding(0,dp(14),0,0);body.addView(status);
   status.setFocusable(false);
   epHeader=Ui.bold(this,"Серії",20);epHeader.setPadding(0,dp(20),0,dp(8));epHeader.setVisibility(View.GONE);body.addView(epHeader);
-  HorizontalScrollView sb=new HorizontalScrollView(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
-  HorizontalScrollView eb=new HorizontalScrollView(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
+  HorizontalScrollView sb=new Glide.Row(this);sb.setHorizontalScrollBarEnabled(false);seasons=new LinearLayout(this);seasons.setOrientation(0);seasons.setClipChildren(false);seasons.setClipToPadding(false);sb.setClipToPadding(false);seasons.setPadding(dp(4),dp(4),dp(4),dp(4));sb.addView(seasons);body.addView(sb);
+  HorizontalScrollView eb=new Glide.Row(this);eb.setHorizontalScrollBarEnabled(false);eb.setClipToPadding(false);episodes=new LinearLayout(this);episodes.setOrientation(0);episodes.setClipChildren(false);episodes.setClipToPadding(false);episodes.setPadding(dp(8),dp(10),dp(8),dp(10));eb.addView(episodes);body.addView(eb);
   similarHeader=Ui.bold(this,"Вам може сподобатися",20);similarHeader.setPadding(0,dp(24),0,dp(4));similarHeader.setVisibility(View.GONE);body.addView(similarHeader);
   similar=new LinearLayout(this);similar.setOrientation(0);HorizontalScrollView sim=Ui.horizontal(this,similar);sim.setPadding(0,dp(2),dp(8),dp(6));body.addView(sim);
   watch.setOnClickListener(v->play(null,null));
@@ -235,7 +235,7 @@ public final class FilmActivity extends Activity {
    if(p!=null&&p[1]>0&&!finished){FrameLayout progress=new FrameLayout(this);progress.setBackground(Ui.shape(0xff414147,dp(2),0,0));FrameLayout.LayoutParams progressLp=new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM);progressLp.setMargins(dp(14),0,dp(14),dp(8));card.addView(progress,progressLp);View bar=new View(this);bar.setBackground(Ui.shape(Ui.RED,dp(2),0,0));progress.addView(bar,new FrameLayout.LayoutParams((int)(dp(136)*Math.max(0,Math.min(1f,(float)p[0]/p[1]))),-1));}
    card.setContentDescription("Серія "+e.episode+". "+(finished?"Переглянуто":sub));
    final float rest=finished?0.5f:1f;
-   card.setOnFocusChangeListener((v,f)->{v.animate().alpha(f?1f:rest).scaleX(f?1.06f:1f).scaleY(f?1.06f:1f).setDuration(160).setInterpolator(Ui.EASE).start();if(f)v.requestRectangleOnScreen(new Rect(-dp(8),-dp(8),v.getWidth()+dp(8),v.getHeight()+dp(8)),false);});
+   card.setOnFocusChangeListener((v,f)->{v.animate().alpha(f?1f:rest).scaleX(f?1.06f:1f).scaleY(f?1.06f:1f).setDuration(160).setInterpolator(Ui.EASE).start();});
    card.setOnClickListener(v->play(e.season,e.episode));if(here)resume=card;
    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(164),dp(72));lp.setMargins(0,0,dp(12),0);episodes.addView(card,lp);
   }

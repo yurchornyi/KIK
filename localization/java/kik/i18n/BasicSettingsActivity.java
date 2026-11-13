@@ -27,7 +27,7 @@ public final class BasicSettingsActivity extends Activity {
 
  @Override public void onCreate(Bundle state){
   super.onCreate(state);UiRuntime.settingsOpen=true;Ui.screen(this);prefs=getSharedPreferences("settings",0);
-  ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);scroll.setClipToPadding(false);
+  ScrollView scroll=new Glide.Page(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);scroll.setClipToPadding(false);
   LinearLayout page=column();page.setPadding(dp(40),dp(24),dp(40),dp(28));
   scroll.addView(page,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
   LinearLayout heading=new LinearLayout(this);heading.setGravity(Gravity.CENTER_VERTICAL);

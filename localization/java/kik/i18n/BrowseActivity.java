@@ -48,7 +48,7 @@ public final class BrowseActivity extends Activity {
   super.onCreate(state);Ui.screen(this);columns=Math.max(1,(int)((getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density-64)/148));
   mode=getIntent().getStringExtra(MODE);category=getIntent().getStringExtra(CATEGORY);genre=getIntent().getStringExtra(GENRE);if(mode==null)mode="catalog";
   FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Ui.BG);setContentView(root);
-  scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+  scroll=new Glide.Page(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
   LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);head.setClipChildren(false);head.setClipToPadding(false);content.addView(head);
   View logo=Brand.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
@@ -196,12 +196,12 @@ public final class BrowseActivity extends Activity {
   List<String> list=recent();
   if(!list.isEmpty()){
    TextView h=Ui.bold(this,"Останні пошуки",20);h.setPadding(dp(4),dp(18),0,dp(10));idle.addView(h);
-   LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);row.setPadding(dp(4),dp(4),dp(4),dp(4));HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.addView(row);idle.addView(hs);
+   LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);row.setPadding(dp(4),dp(4),dp(4),dp(4));HorizontalScrollView hs=new Glide.Row(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.addView(row);idle.addView(hs);
    for(final String q:list){TextView c=Ui.chip(this,q);row.addView(c,Ui.wrap(this,10));c.setOnClickListener(v->{query.setText(q);query.setSelection(query.length());remember(q);reload();});}
    TextView clear=Ui.chip(this,"Очистити");clear.setAlpha(0.7f);row.addView(clear,Ui.wrap(this,10));clear.setOnClickListener(v->{searches().edit().clear().apply();idle.removeAllViews();showIdle(true);query.requestFocus();});
   }
   final TextView h=Ui.bold(this,"Рекомендовано для вас",20);h.setPadding(dp(4),dp(22),0,dp(10));h.setVisibility(View.GONE);idle.addView(h);
-  final LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);row.setPadding(dp(4),dp(4),dp(4),dp(12));HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.addView(row);idle.addView(hs);
+  final LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setClipChildren(false);row.setClipToPadding(false);row.setPadding(dp(4),dp(4),dp(4),dp(12));HorizontalScrollView hs=new Glide.Row(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.addView(row);idle.addView(hs);
   final String profile=ProfileStore.current(this);
   Ui.bg(()->{
    List<G> items=new ArrayList<G>();String[] heading={"Рекомендовано для вас"};
