@@ -3,7 +3,7 @@ package kik.i18n;
 /**
  * The holidays KIK dresses up for, counted on the TV itself, the same days as the web (web/public/holidays.js). On the day:
  * the holiday logo, the holiday intro before a video and a few quiet touches on Home. A week or so before and on the day: a
- * shelf of films for it. Easter comes twice when the Western and the Orthodox dates differ. Everyone gets them; only the
+ * shelf of films for it. Easter is the Western (European) one, as the owner chose. Everyone gets them; only the
  * owner's admin panel turns them off for all. No Android here, so scripts/check-tv.sh can test it (scripts/HolidayCheck.java).
  */
 public final class Holidays {
@@ -18,18 +18,15 @@ public final class Holidays {
 
  /** Western (Gregorian) Easter Sunday: {month, day}. */
  public static int[] westernEaster(int y){int a=y%19,b=y/100,c=y%100,d=b/4,e=b%4,f=(b+8)/25,g=(b-f+1)/3,h=(19*a+b-d-g+15)%30,i=c/4,k=c%4,l=(32+2*e+2*i-h-k)%7,m=(a+11*h+22*l)/451,n=h+l-7*m+114;return new int[]{n/31,n%31+1};}
- /** Orthodox (Julian) Easter Sunday in the Gregorian calendar, 1900–2099: {month, day}. */
- public static int[] orthodoxEaster(int y){int a=y%4,b=y%7,c=y%19,d=(19*c+15)%30,e=(2*a+4*b-d+34)%7,n=d+e+114;long day=dayNo(y,n/31,n%31+1)+13;return monthDay(day);}
- private static int[] monthDay(long z){z+=719468;long era=(z>=0?z:z-146096)/146097;long doe=z-era*146097;long yoe=(doe-doe/1460+doe/36524-doe/146096)/365;long doy=doe-(365*yoe+yoe/4-yoe/100);long mp=(5*doy+2)/153;int d=(int)(doy-(153*mp+2)/5+1);int m=(int)(mp<10?mp+3:mp-9);return new int[]{m,d};}
 
  /** The days of a holiday whose first day falls in year y, as {first, last} day numbers. */
  private static long[][] days(String id,int y){
   switch(id){
    case NICK:return new long[][]{{dayNo(y,12,6),dayNo(y,12,6)}};
-   case XMAS:return new long[][]{{dayNo(y,12,24),dayNo(y,12,26)}};
-   case NEW_YEAR:return new long[][]{{dayNo(y,12,31),dayNo(y+1,1,1)}};
+   case XMAS:return new long[][]{{dayNo(y,12,22),dayNo(y,12,26)}};
+   case NEW_YEAR:return new long[][]{{dayNo(y,12,29),dayNo(y+1,1,1)}};
    case VALENTINE:return new long[][]{{dayNo(y,2,14),dayNo(y,2,14)}};
-   case EASTER:{int[] w=westernEaster(y),o=orthodoxEaster(y);long a=dayNo(y,w[0],w[1]),b=dayNo(y,o[0],o[1]);return a==b?new long[][]{{a,a}}:new long[][]{{a,a},{b,b}};}
+   case EASTER:{int[] w=westernEaster(y);long a=dayNo(y,w[0],w[1]);return new long[][]{{a,a}};}
    case INDEPENDENCE:return new long[][]{{dayNo(y,8,24),dayNo(y,8,24)}};
    case HALLOWEEN:return new long[][]{{dayNo(y,10,31),dayNo(y,10,31)}};
    default:return new long[0][];
