@@ -1,7 +1,7 @@
 /**
  * The holidays KIK dresses up for, counted on the device, the same days as the TV (localization/java/kik/i18n/Holidays.java).
  * On the day itself: the holiday logo, the holiday intro before a video and a few quiet touches on the home page. A week or so
- * before and on the day: a shelf of films for it. Easter comes twice when the Western and the Orthodox dates differ.
+ * before and on the day: a shelf of films for it. Easter is the Western (European) one, as the owner chose.
  * The owner's «Свята» switch (admin panel «Для всіх», flags.js; on by default) turns all of it off for everyone.
  */
 export const HOLIDAYS=['nick','xmas','ny','val','easter','ind','hw'];
@@ -10,21 +10,18 @@ export const SHELF_DAYS=7;
 
 /** Western (Gregorian) Easter Sunday: [month, day]. */
 export function westernEaster(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),n=h+l-7*m+114;return[Math.floor(n/31),n%31+1];}
-/** Orthodox (Julian) Easter Sunday in the Gregorian calendar, 1900–2099: [month, day]. */
-export function orthodoxEaster(y){const a=y%4,b=y%7,c=y%19,d=(19*c+15)%30,e=(2*a+4*b-d+34)%7,n=d+e+114,day=dayNo(y,Math.floor(n/31),n%31+1)+13;return dateOf(day).slice(1);}
 
 /** Days since 1970-01-01 for a calendar date, whatever the time zone. */
 export const dayNo=(y,m,d)=>Math.floor(Date.UTC(y,m-1,d)/864e5);
-const dateOf=n=>{const t=new Date(n*864e5);return[t.getUTCFullYear(),t.getUTCMonth()+1,t.getUTCDate()];};
 
 /** The days of a holiday whose first day falls in year y, as [first, last] day numbers. */
 function days(id,y){
  switch(id){
   case 'nick':return[[dayNo(y,12,6),dayNo(y,12,6)]];
-  case 'xmas':return[[dayNo(y,12,24),dayNo(y,12,26)]];
-  case 'ny':return[[dayNo(y,12,31),dayNo(y+1,1,1)]];
+  case 'xmas':return[[dayNo(y,12,22),dayNo(y,12,26)]];
+  case 'ny':return[[dayNo(y,12,29),dayNo(y+1,1,1)]];
   case 'val':return[[dayNo(y,2,14),dayNo(y,2,14)]];
-  case 'easter':{const w=dayNo(y,...westernEaster(y)),o=dayNo(y,...orthodoxEaster(y));return w===o?[[w,w]]:[[w,w],[o,o]];}
+  case 'easter':{const w=dayNo(y,...westernEaster(y));return[[w,w]];}
   case 'ind':return[[dayNo(y,8,24),dayNo(y,8,24)]];
   case 'hw':return[[dayNo(y,10,31),dayNo(y,10,31)]];
  }
