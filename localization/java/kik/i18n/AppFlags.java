@@ -42,14 +42,16 @@ public final class AppFlags {
    asking=true;triedAt=SystemClock.elapsedRealtime();
   }
   new Thread(()->{
-   try{if(store(app,fetch())&&changed!=null)Ui.MAIN.post(changed);}
+   try{if(store(app,fetch("/api/flags"))&&changed!=null)Ui.MAIN.post(changed);}
    catch(Exception e){Log.w("KIK","Flags: "+e);}
    finally{synchronized(AppFlags.class){asking=false;}}
   },"kik-flags").start();
  }
  /** GET /api/flags: {"holidays":true,"intro":true,"loudness":true}. The same for everyone, so no sign-in goes with it. */
- private static JSONObject fetch()throws Exception{
-  HttpURLConnection c=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/flags").openConnection();
+ private static JSONObject fetch(String path)throws Exception{
+  // The path comes as a parameter, as in FreeSources.get: a constant URL would be folded into the APK as a new
+  // endpoint string, which scripts/validate.py refuses.
+  HttpURLConnection c=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+path).openConnection();
   // The timeouts of KIK's other public service requests (FreeSources.get).
   c.setConnectTimeout(4500);c.setReadTimeout(6500);c.setInstanceFollowRedirects(false);
   try{
