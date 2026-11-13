@@ -24,7 +24,8 @@ if [ -z "$DRY" ] && git diff --quiet "$LAST" origin/main -- "${APP[@]}"; then
 fi
 
 echo "Releasing what changed since $LAST"
-git checkout -q --detach origin/main
+# A dry run builds what the workflow checked out (a branch, when dispatched on one); a release builds main.
+if [ -n "$DRY" ]; then git checkout -q --detach HEAD; else git checkout -q --detach origin/main; fi
 python3 - <<'PY'
 import json, pathlib
 path = pathlib.Path('localization/release.json')

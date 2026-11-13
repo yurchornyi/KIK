@@ -5,7 +5,8 @@ import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './l
 import {recommendations} from './recommendations.mjs';import {aiReady} from './sentra-ai.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
-import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport,devices,revokeDevice} from './management.mjs';
+import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport,devices,revokeDevice,ownerFlags} from './management.mjs';
+import {holidayFilms,HOLIDAY_FILMS} from './holiday-films.mjs';import {shelfTitle} from './public/holidays.js';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken,deviceName} from "./auth.mjs";
 import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -25,19 +26,20 @@ const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status
  * Public source data from the edge cache. A copy older than `fresh` seconds is still served at once and refreshed
  * in the background, so visitors rarely wait for the source; browsers keep each answer for `fresh` seconds.
  * An answer `keep` refuses (Sentra failed) is neither stored nor kept by the browser, so a later request asks again;
- * a stored copy answers meanwhile.
+ * a stored copy answers meanwhile. A copy older than `stale` seconds (a day unless the caller keeps lists longer) is
+ * refreshed before it answers; until then every refresh runs behind the answer.
  */
 // URL → when its background refresh started. A refresh still marked after REFRESH_STALE is taken as dead (a Worker's
 // promise never settles once its request is cancelled), so it can no longer block that URL's refresh for the isolate's life.
 const refreshing=new Map(),REFRESH_STALE=120000;
-async function edgeCached(ctx,key,fresh,load,keep=()=>true){
+async function edgeCached(ctx,key,fresh,load,keep=()=>true,stale=86400){
  const reply=async stored=>{const r=new Response(stored.body,stored);r.headers.set("Cache-Control","public, max-age="+fresh);r.headers.delete("X-KIK-Stored");return r;};
- const store=async()=>{const value=await load();if(!keep(value))throw Object.assign(Error("not kept"),{unkept:json(value)});const r=json(value,200,{"Cache-Control":"public, max-age=604800","X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
+ const store=async()=>{const value=await load();if(!keep(value))throw Object.assign(Error("not kept"),{unkept:json(value)});const r=json(value,200,{"Cache-Control":"public, max-age="+Math.max(604800,stale),"X-KIK-Stored":String(Date.now())});await caches.default.put(key,r.clone());return r;};
  const cached=await caches.default.match(key);
  // Gone from the source (404): the stored copy goes too, instead of answering for a week.
  const gone=e=>{if(e.status!==404)return false;ctx.waitUntil(caches.default.delete(key).catch(()=>{}));return true;};
- // A copy older than a day is refreshed first, but still answers for up to a week while the source is down.
- if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>86400000)return reply(await store().catch(e=>{if(gone(e))throw e;if(!e.unkept)console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
+ // A copy older than a day (or `stale`) is refreshed first, but still answers for up to a week while the source is down.
+ if(cached&&Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>stale*1000)return reply(await store().catch(e=>{if(gone(e))throw e;if(!e.unkept)console.warn("KIK stale copy",key.url.replace(/\?.*/,""),e.message);return cached;}));
  if(cached){if(Date.now()-Number(cached.headers.get("X-KIK-Stored")||0)>fresh*1000&&!(Date.now()-(refreshing.get(key.url)||0)<REFRESH_STALE)){const started=Date.now();refreshing.set(key.url,started);ctx.waitUntil(store().catch(gone).finally(()=>{if(refreshing.get(key.url)===started)refreshing.delete(key.url);}));}return reply(cached);}
  return store().then(reply,e=>{if(e.unkept)return e.unkept;throw e;});
 }
@@ -80,6 +82,13 @@ async function api(request,env,ctx){
  // Signed out, only the free lookups run: no env reaches the model, so Sentra is not asked.
  if(path==="/api/search-aliases"){const query=String(url.searchParams.get("query")||"").trim().slice(0,150),ai=await signedIn();return edgeCached(ctx,new Request(url.origin+path+"?query="+encodeURIComponent(query.toLowerCase())+"&__presentation=uk2&ai="+(ai?1:0)),86400,async()=>({aliases:await searchAlternatives(db,ai?env:null,query,aliases)}),r=>!r.aliases.failed);}
  if(path==="/api/sources")return json({uaserials:true,tvmaze:true,wikidata:true,tmdb:!!env.TMDB_READ_TOKEN});
+ // The owner's switches for everyone (admin panel «Для всіх»): the site reads them once a page, the TV every 30 minutes at most.
+ if(path==="/api/flags"&&request.method==="GET")return json(await ownerFlags(db),200,{"Cache-Control":"public, max-age=300"});
+ // The film shelf before a holiday, in the catalogue's shape plus its title: fixed lists (holiday-films.mjs) found on the
+ // source once a day and kept at the edge for a month, so a day the source is down still has the shelf. A list that is
+ // not whole yet (time ran out, the source was busy) answers as it is and is not kept: the next request goes on with it.
+ if(path==="/api/holiday-films"&&request.method==="GET"){const id=url.searchParams.get("id")||"";if(!Object.hasOwn(HOLIDAY_FILMS,id))fail("Невідоме свято");
+  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v=1"),86400,async()=>{const found=await holidayFilms(id,{search:params=>catalogue(params,{background:true,budget:8000})});return {items:await localizedCards(db,found.items),title:shelfTitle(id),...(found.partial?{partial:true}:{})};},v=>!v.partial,30*86400);}
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // An admin adds the email; the person then picks a password. A reset password is created again the same way.

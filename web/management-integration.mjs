@@ -46,6 +46,14 @@ let adminCookie,memberCookie,memberId;try{
  check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:true},adminCookie)).body.enabled===true,'admin turns on ad skipping');
  check((await req('/api/sync',{profile_id:p,source_schema:2,records:[]},memberCookie)).body.profile.ad_skip===1&&(await req('/api/me',undefined,memberCookie)).body.profiles.find(x=>x.id===p).ad_skip===1,'ad skipping reaches the profile on web and TV');
  check((await req('/api/admin/profiles/ad-skip',{profile_id:p,enabled:false},adminCookie)).body.enabled===false,'admin turns off ad skipping');
+ // The owner's switches for everyone: anybody reads them, only the admin changes them, the newest change is the state.
+ const flags=await req('/api/flags');check(flags.status===200&&['holidays','intro','loudness'].every(k=>typeof flags.body[k]==='boolean'),'owner switches are public booleans');
+ check((await req('/api/admin/flags',{key:'holidays',on:false},memberCookie)).status===403,'members cannot change owner switches');
+ check((await req('/api/admin/flags',{key:'holidays',on:false},adminCookie,{Origin:'https://evil.test'})).status===403,'owner switch CSRF denied');
+ check((await req('/api/admin/flags',{key:'volume',on:false},adminCookie)).status===400,'unknown owner switch rejected');
+ const off=await req('/api/admin/flags',{key:'holidays',on:false},adminCookie);check(off.status===200&&off.body.holidays===false&&(await req('/api/flags')).body.holidays===false,'admin switches holidays off for the TV and the site');
+ check((await req('/api/admin/flags',{key:'holidays',on:true},adminCookie)).body.holidays===true&&(await req('/api/flags')).body.holidays===true,'admin switches holidays back on');
+ check((await req('/api/admin/overview',undefined,adminCookie)).body.events.some(e=>e.action==='flag'&&e.target==='holidays:off'),'owner switch change logged');
  const tv=await req('/api/auth/login',{email:guestEmail,password,device:true,device_name:'QA TV'}),signins=(await req('/api/devices',undefined,memberCookie)).body.devices,tvRow=signins.find(d=>d.tv&&d.name==='QA TV');check(tvRow&&signins.some(d=>d.current),'the website lists the TV by name next to this browser');
  check((await req('/api/devices/revoke',{id:tvRow.id},memberCookie)).status===200&&(await req('/api/me',undefined,undefined,{Authorization:'Bearer '+tv.body.token})).body.user===null,'the owner signs one TV out from the website');
  check((await req('/api/me',undefined,memberCookie)).body.user.id===memberId,'signing a TV out keeps this browser');

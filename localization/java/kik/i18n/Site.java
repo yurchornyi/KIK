@@ -215,6 +215,8 @@ public final class Site {
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{
   return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);
  }
+ /** A holiday's film shelf for Home (Holidays.shelfOn): KIK's service picks the films and answers in the catalogue's shape; HDRezka is never asked. */
+ public static List<Card> holidayFilms(String id)throws IOException{return serviceCards("/api/holiday-films?id="+FreeSources.enc(id));}
  private static final long LIST_TTL_MS=30*60_000L;
  /** Catalogue lists change slowly: reopening the home screen reads them from disk for half an hour instead of asking the site again. */
  private static String listPage(String path)throws IOException{

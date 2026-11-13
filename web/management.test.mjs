@@ -99,3 +99,22 @@ test('the admin changes an account email or password: profiles, access and TVs s
  await assert.rejects(call(db,'/api/admin/users/update',{id:'a2',password:'whatever'}),e=>e.status===403);
  await assert.rejects(call(db,'/api/admin/users/update',{id:'u0001',password:'whatever'},{id:'u0002',role:'user'}),e=>e.status===403,'members cannot');
  assert.deepEqual(events(db).filter(e=>e.startsWith('change-email')),['change-email:member1@example.invalid → new.mail@example.invalid','change-email:member3@example.invalid → third@example.invalid','change-email:owner@example.invalid → boss@example.invalid']);});
+
+import {ownerFlags} from './management.mjs';
+const ALL_ON={holidays:true,intro:true,loudness:true};
+test('owner switches are on until the admin changes one; the newest change wins and the overview shows them',async()=>{const db=memoryD1();seed(db,1);
+ assert.deepEqual(await ownerFlags(db),ALL_ON);assert.deepEqual((await call(db,'/api/admin/overview')).flags,ALL_ON);
+ assert.deepEqual(await call(db,'/api/admin/flags',{key:'holidays',on:false}),{holidays:false,intro:true,loudness:true});
+ for(const [key,on] of [['intro',false],['holidays',true],['holidays',false]])await call(db,'/api/admin/flags',{key,on});
+ assert.deepEqual(await ownerFlags(db),{holidays:false,intro:false,loudness:true});
+ // Changes in the same millisecond: the later row still wins.
+ db.raw.exec("UPDATE admin_events SET created_at=1 WHERE action='flag'");assert.deepEqual(await ownerFlags(db),{holidays:false,intro:false,loudness:true});
+ const o=await call(db,'/api/admin/overview');assert.deepEqual(o.flags,{holidays:false,intro:false,loudness:true});assert.deepEqual([o.events[0].action,o.events[0].target],['flag','holidays:off']);
+ assert.deepEqual(events(db),['flag:holidays:off','flag:intro:off','flag:holidays:on','flag:holidays:off']);});
+test('only the admin changes an owner switch; an unknown switch or a bad body changes nothing',async()=>{const db=memoryD1();seed(db,1);
+ await assert.rejects(call(db,'/api/admin/flags',{key:'holidays',on:false},{id:'u0001',role:'user'}),e=>e.status===403);
+ await assert.rejects(call(db,'/api/admin/flags',{key:'holidays',on:false},null),e=>e.status===401);
+ for(const body of [{key:'volume',on:false},{key:'holidays',on:'false'},{key:'holidays'},{on:true},{key:['holidays'],on:true},{key:'constructor',on:false}])await assert.rejects(call(db,'/api/admin/flags',body),e=>e.status===400,JSON.stringify(body));
+ assert.deepEqual(events(db),[]);assert.deepEqual(await ownerFlags(db),ALL_ON);});
+test('the switches stay on for the TV and the site when D1 cannot answer',async()=>{
+ assert.deepEqual(await ownerFlags({prepare(){throw Error('D1 unavailable');}}),ALL_ON);assert.deepEqual(await ownerFlags(undefined),ALL_ON);});

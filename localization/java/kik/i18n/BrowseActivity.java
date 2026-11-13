@@ -51,7 +51,7 @@ public final class BrowseActivity extends Activity {
   scroll=new Glide.Page(this);scroll.setVerticalScrollBarEnabled(false);root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setPadding(dp(32),dp(22),dp(24),dp(40));scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
   LinearLayout head=new LinearLayout(this);head.setOrientation(0);head.setBaselineAligned(false);head.setGravity(Gravity.CENTER_VERTICAL);head.setClipChildren(false);head.setClipToPadding(false);content.addView(head);
-  View logo=Brand.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
+  View logo=HolidayMark.logo(this,56,26);LinearLayout.LayoutParams markLp=new LinearLayout.LayoutParams(dp(56),dp(26));markLp.rightMargin=dp(20);head.addView(logo,markLp);
   String titleText=getIntent().getStringExtra(TITLE);heading=Ui.bold(this,titleText==null?"Каталог":titleText,30);heading.setIncludeFontPadding(false);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
   Ui.enter(head,0);
   Ui.space(content,14);

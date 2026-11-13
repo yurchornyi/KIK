@@ -400,3 +400,105 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 .dl-smart{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:12px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--line);cursor:pointer}
 .dl-smart input{margin:0}
 .dl-smart span{display:flex;flex-direction:column;gap:3px;font-size:14px;line-height:1.45}.dl-smart small{color:var(--muted);font-size:13px}
+/* Holidays (holidays.js, holiday-mark.js): the mark in the header and in the intro, the greeting and the poster ring in
+   the holiday's colour, one thin decoration at the top. Every animation runs once, in the intro or in the header's
+   moment; the still mark and the decoration never move. */
+.hmark{display:block;overflow:visible}
+.hmark g,.hmark path,.hmark circle,.hmark line,.hmark rect,.hmark ellipse{transform-box:fill-box}
+.holiday-mark{display:block;line-height:0}
+.brand .hmark{width:72px;height:auto;aspect-ratio:102/48}
+@media(max-width:650px){.brand .hmark{width:58px}}
+.holiday-top{position:absolute;top:env(safe-area-inset-top);left:0;right:0;z-index:6;overflow:hidden;pointer-events:none;line-height:0}
+.holiday-top svg{display:block}
+.holiday-flag i{display:block;height:3px;background:#1F6FE0}
+.holiday-flag i+i{background:#FFD500}
+.holiday-fx{position:fixed;inset:0;width:100%;height:100%;z-index:7;pointer-events:none}
+.hero .eyebrow.holiday-greeting{color:var(--holiday-accent);text-transform:uppercase}
+.holiday .poster:focus-visible{outline-color:var(--holiday-accent)}
+@media(hover:hover){.holiday .poster:hover .poster-image{outline:2px solid var(--holiday-accent);outline-offset:2px}}
+/* The holiday intro: the same black screen, the mark draws itself, the holiday plays, the greeting rises under it. */
+.intro.holiday-intro{animation-delay:3.1s}
+.intro-holiday{display:flex;flex-direction:column;align-items:center;width:100%}
+.intro-holiday .intro-logo{animation:hm-glow 1.5s ease-in-out 2s both}
+.intro-holiday .hmark{width:100%;height:auto;aspect-ratio:102/48}
+.intro-greeting{margin-top:min(5vw,40px);padding:0 16px;color:var(--holiday-accent);font-size:clamp(11px,1.5vw,16px);font-weight:600;letter-spacing:.32em;text-transform:uppercase;text-align:center;animation:hm-fade-up .7s ease 1.95s both}
+.intro-fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+@keyframes hm-glow{0%{filter:drop-shadow(0 0 0 transparent)}45%{filter:drop-shadow(0 0 22px var(--glow))}100%{filter:drop-shadow(0 0 9px var(--glow))}}
+@keyframes hm-fade-up{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
+@keyframes hm-draw{0%{stroke-dashoffset:1;opacity:0}1%{opacity:1}100%{stroke-dashoffset:0;opacity:1}}
+@keyframes hm-pop{0%{transform:scale(0)}100%{transform:none}}
+@keyframes hm-pulse{0%,100%{opacity:.55;transform:scale(.92)}50%{opacity:1;transform:scale(1.08)}}
+.hmark.m-intro .s{stroke-dasharray:1 2;animation:hm-draw .34s cubic-bezier(.6,0,.3,1) both}
+.hmark.m-intro .s2{animation-delay:.16s}.hmark.m-intro .s3{animation-delay:.34s}.hmark.m-intro .s4{animation-delay:.52s}.hmark.m-intro .s5{animation-delay:.68s}
+/* New Year: a sparkler runs up the I and bursts */
+.hmark.h-ny .ny-b{transform-origin:center}
+.hmark.h-ny .ny-fuse{opacity:0}
+.hmark.m-intro.h-ny .ny-fuse{animation:hm-fuse .6s cubic-bezier(.5,0,.8,.6) var(--a) both}
+@keyframes hm-fuse{0%{opacity:0;transform:none}10%{opacity:1}92%{opacity:1;transform:translateY(-46px)}100%{opacity:0;transform:translateY(-46px)}}
+.hmark.m-intro.h-ny .ny-b{animation:hm-pop .55s cubic-bezier(.2,1.7,.4,1) calc(var(--a) + .58s) both}
+.hmark.m-moment.h-ny .ny-b{animation:hm-pop .55s cubic-bezier(.2,1.7,.4,1) var(--a) both}
+/* Christmas: a star rises over the I */
+.hmark.h-xmas .xm-star,.hmark.h-xmas .xm-glow{transform-origin:center}
+.hmark.m-intro.h-xmas .xm-star{animation:hm-star-rise .9s cubic-bezier(.2,1.4,.4,1) var(--a) both}
+@keyframes hm-star-rise{0%{opacity:0;transform:translateY(12px) scale(.2) rotate(-45deg)}100%{opacity:1;transform:none}}
+.hmark.m-intro.h-xmas .xm-glow{animation:hm-glow-in .8s ease calc(var(--a) + .45s) both,hm-pulse 3.2s ease-in-out calc(var(--a) + 1.25s) infinite}
+@keyframes hm-glow-in{0%{opacity:0;transform:scale(.3)}100%{opacity:1;transform:none}}
+.hmark.m-moment.h-xmas .xm-star{animation:hm-star-spin 1s cubic-bezier(.2,1.3,.4,1) var(--a) both}
+@keyframes hm-star-spin{0%{transform:scale(.5) rotate(-90deg)}100%{transform:none}}
+.hmark.m-moment.h-xmas .xm-glow{animation:hm-pulse 1.6s ease-in-out var(--a) 1}
+/* St Nicholas: a gift drops beside the last K and its lid hops */
+.hmark.h-nick .gf{transform-origin:50% 100%}
+.hmark.h-nick .gl{transform-origin:15% 100%}
+.hmark.m-intro.h-nick .gf,.hmark.m-moment.h-nick .gf{animation:hm-drop 1s linear var(--a) both}
+@keyframes hm-drop{0%{transform:translateY(-70px);opacity:0;animation-timing-function:cubic-bezier(.55,0,1,.45)}45%{transform:translateY(0) scale(1.1,.88);opacity:1;animation-timing-function:cubic-bezier(0,.55,.45,1)}62%{transform:translateY(-9px) scale(.96,1.04);animation-timing-function:cubic-bezier(.55,0,1,.45)}78%{transform:translateY(0) scale(1.04,.96)}88%{transform:translateY(-2px)}100%{transform:none;opacity:1}}
+.hmark.m-intro.h-nick .gl,.hmark.m-moment.h-nick .gl{animation:hm-lid .6s ease-out calc(var(--a) + .85s) both}
+@keyframes hm-lid{0%{transform:none}40%{transform:translateY(-4px) rotate(-16deg)}100%{transform:none}}
+/* Valentine's: the I turns into a heart that beats twice */
+.hmark.h-val .vh{transform-origin:center}
+.hmark.m-intro.h-val .pi{transform-origin:center;animation:hm-draw .34s cubic-bezier(.6,0,.3,1) .34s both,hm-i-out .28s ease-in var(--a) forwards}
+@keyframes hm-i-out{to{transform:scaleY(0);opacity:0}}
+.hmark.m-intro.h-val .vh{animation:hm-pop .6s cubic-bezier(.2,1.6,.4,1) calc(var(--a) + .12s) both,hm-beat 1.05s ease-in-out calc(var(--a) + .9s) 2}
+.hmark.m-moment.h-val .vh{animation:hm-beat 1.05s ease-in-out var(--a) 2}
+@keyframes hm-beat{0%,100%{transform:none}14%{transform:scale(1.18)}28%{transform:none}42%{transform:scale(1.1)}70%{transform:none}}
+/* Easter: a paska in place of the I rises, the glaze pours, the sprinkles pop */
+.hmark.h-easter .pk,.hmark.h-easter .pk-b{transform-origin:50% 100%}
+.hmark.h-easter .pk-g{transform-origin:50% 0}
+.hmark.h-easter .sp{transform-origin:center}
+.hmark.m-intro.h-easter .pk-b{animation:hm-rise .75s cubic-bezier(.3,1.5,.5,1) var(--a) both}
+@keyframes hm-rise{0%{transform:scale(.8,0)}100%{transform:none}}
+.hmark.m-intro.h-easter .pk-g{animation:hm-pour .6s cubic-bezier(.3,1.3,.5,1) calc(var(--a) + .5s) both}
+@keyframes hm-pour{0%{transform:scaleY(0);opacity:0}25%{opacity:1}100%{transform:none;opacity:1}}
+.hmark.m-intro.h-easter .sp{animation:hm-pop .4s cubic-bezier(.2,1.8,.4,1) calc(var(--a) + 1.05s + var(--i) * 70ms) both}
+.hmark.m-moment.h-easter .pk{animation:hm-hop .8s ease-in-out var(--a) both}
+@keyframes hm-hop{0%,100%{transform:none}22%{transform:scale(1.08,.9)}50%{transform:translateY(-6px) scale(.95,1.06)}75%{transform:scale(1.04,.96)}}
+.hmark.m-moment.h-easter .sp{animation:hm-pop .4s cubic-bezier(.2,1.8,.4,1) calc(var(--a) + .35s + var(--i) * 50ms) both}
+/* Independence Day: the letters retrace in blue and yellow */
+.hmark.m-intro.h-ind .fl path,.hmark.m-moment.h-ind .fl path{stroke-dasharray:1 2;animation:hm-draw .45s cubic-bezier(.6,0,.3,1) calc(var(--a) + var(--j) * 90ms) both}
+.hmark.m-moment.h-ind .dimbase{opacity:.28}
+/* Halloween: the neon flickers to orange, a spider drops on its thread */
+.hmark.m-intro.h-hw .hw-st{animation:hm-flick .7s linear calc(var(--a) + .1s) both,hm-orange .45s ease calc(var(--a) + .55s) both}
+@keyframes hm-flick{0%,100%{opacity:1}10%{opacity:.12}18%{opacity:1}30%{opacity:.25}36%{opacity:1}52%{opacity:.5}58%{opacity:1}}
+@keyframes hm-orange{from{stroke:#E50914}to{stroke:#FF7A1A}}
+.hmark.h-hw .hw-th{transform-origin:50% 0}
+.hmark.m-intro.h-hw .hw-th{animation:hm-thread 1s cubic-bezier(.3,1.35,.5,1) calc(var(--a) + .7s) both}
+.hmark.m-intro.h-hw .hw-sp{animation:hm-spider 1s cubic-bezier(.3,1.35,.5,1) calc(var(--a) + .7s) both}
+.hmark.m-moment.h-hw .hw-th{animation:hm-thread 1s cubic-bezier(.3,1.35,.5,1) var(--a) both}
+.hmark.m-moment.h-hw .hw-sp{animation:hm-spider 1s cubic-bezier(.3,1.35,.5,1) var(--a) both}
+@keyframes hm-thread{0%{transform:scaleY(0)}100%{transform:none}}
+@keyframes hm-spider{0%{transform:translateY(-86px)}100%{transform:none}}
+@media(prefers-reduced-motion:reduce){.hmark,.hmark *{animation:none!important}}
+/* «Для всіх» in the admin panel: one switch per row, its name and a short line under it, the switch on the right. */
+.switch-list{display:grid;gap:8px}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:56px;padding:12px 14px 12px 16px;border-radius:16px;background:#ffffff08;border:1px solid var(--line);text-align:left;line-height:1.4}
+.switch-row:hover{background:#ffffff0f;filter:none}
+.switch-row[aria-busy=true]{cursor:progress}
+.switch-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.switch-copy strong{font-size:15px;font-weight:650}
+.switch-copy small{font-size:13px;color:var(--muted)}
+.switch{flex:none;position:relative;width:44px;height:24px;border-radius:12px;background:#4a4a50;transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#cfcfd4;transition:transform .2s,background .2s}
+.switch-row[aria-checked=true] .switch{background:var(--red)}
+.switch-row[aria-checked=true] .switch::after{transform:translateX(20px);background:#fff}
+.switch-item .error:not(:empty){margin:6px 2px 0}
+@media(max-width:650px){.switch-row{padding:12px}.switch-copy small{font-size:12px}}
+@media(prefers-reduced-motion:reduce){.switch,.switch::after{transition:none}}

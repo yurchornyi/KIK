@@ -39,10 +39,13 @@ public final class HomeActivity extends Activity {
 
  private volatile boolean foreground;
  private String lastProfileName,lastProfileAvatar;
+ /** The holiday Home was built for (AppFlags.today), null on other days: the logo, the greeting, the ring's colour, the top
+  *  decoration and the moment come from it. */
+ private String holidayId;private View logoView,topDecor;private HolidayMark.Burst momentFx,fireworksFx;
  private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);if(Account.gate(this))return;TvChannels.start(this);
+  super.onCreate(state);if(Account.gate(this))return;TvChannels.start(this);holidayId=AppFlags.today(this);
   getWindow().setFlags(1024,1024);getWindow().getDecorView().setSystemUiVisibility(5894);
   getWindow().setBackgroundDrawable(null);
   root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
@@ -51,9 +54,12 @@ public final class HomeActivity extends Activity {
   // The backdrop is one opaque, half-resolution bitmap with its fades baked in (blending is costly on this GPU).
   heroImage.setScaleType(ImageView.ScaleType.FIT_XY);heroImage.setBackgroundColor(BG);
   root.addView(heroImage,new FrameLayout.LayoutParams(-1,heroH));
+  // On a holiday one thin static line of decoration crosses the very top, over the backdrop and under the top bar.
+  topDecor=HolidayMark.topline(this,holidayId);if(topDecor!=null)root.addView(topDecor,new FrameLayout.LayoutParams(-1,dp(HolidayMark.toplineHeight(holidayId))));
   // A focused row glides into view with its heading (Glide.Page); the top bar and the hero bring back the page's top.
   scroll=new Glide.Page(this);
-  scroll.getViewTreeObserver().addOnScrollChangedListener(()->heroImage.setTranslationY(-Math.min(scroll.getScrollY(),heroH)));
+  // The backdrop and the decoration move away with the page (a render property: nothing redraws for it).
+  scroll.getViewTreeObserver().addOnScrollChangedListener(()->{float y=-Math.min(scroll.getScrollY(),heroH);heroImage.setTranslationY(y);if(topDecor!=null)topDecor.setTranslationY(y);});
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));root.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   content.addView(topBar());
@@ -61,7 +67,7 @@ public final class HomeActivity extends Activity {
   heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setLetterSpacing(-0.01f);heroTitle.setShadowLayer(dp(10),0,dp(1),0x99000000);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
   heroMeta=text("",15,0xffd8d8dc);heroMeta.setTypeface(Ui.MEDIUM);heroMeta.setSingleLine(true);heroMeta.setEllipsize(TextUtils.TruncateAt.END);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
   heroText=text("",14,0xffd0d0d4);heroText.setLines(HERO_LINES);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
-  info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
+  holidayGreeting(info);info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
   heroResume=new LinearLayout(this);heroResume.setOrientation(0);heroResume.setGravity(Gravity.CENTER_VERTICAL);
   FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0xff4a4a50,dp(2),0,0));heroBar=new View(this);heroBar.setBackground(Ui.shape(RED,dp(2),0,0));track.addView(heroBar,new FrameLayout.LayoutParams(0,-1));
   LinearLayout.LayoutParams trackLp=new LinearLayout.LayoutParams(dp(120),dp(4));trackLp.setMargins(0,0,dp(12),0);heroResume.addView(track,trackLp);heroResume.addView(heroSub);
@@ -95,8 +101,58 @@ public final class HomeActivity extends Activity {
 
  private long cloudRevision=CloudSync.revision();
  private final Runnable cloudTick=new Runnable(){public void run(){if(destroyed||!foreground)return;CloudSync.now(HomeActivity.this);long next=CloudSync.revision();if(next!=cloudRevision){cloudRevision=next;load();}main.postDelayed(this,15000);}};
- @Override protected void onResume(){super.onResume();foreground=true;AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
- @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);super.onPause();}
+ @Override protected void onResume(){super.onResume();
+  // The day turned into or out of a holiday, or the owner switched holidays off or on, since Home was built: build it again.
+  if(root!=null&&!java.util.Objects.equals(AppFlags.today(this),holidayId)){recreate();return;}
+  foreground=true;holidayResume();AppUpdater.resumed(this);AppUpdater.prompt(this);AppUpdater.lookup(this,this::paintSettingsBadge);CloudSync.changed(this);main.removeCallbacks(cloudTick);main.postDelayed(cloudTick,15000);if(loadedOnce){String n=ProfileStore.nameOf(this,ProfileStore.current(this)),avatar=ProfileStore.avatarOf(this,ProfileStore.current(this));if(!java.util.Objects.equals(n,lastProfileName)||!java.util.Objects.equals(avatar,lastProfileAvatar)){content.removeViewAt(0);content.addView(topBar(),0);}load();}}
+ @Override protected void onPause(){foreground=false;AppUpdater.paused(this);main.removeCallbacks(cloudTick);holidayPause();super.onPause();}
+
+ // ---------- holidays ----------
+ /** On a holiday a small line in its colour over the hero title: «З РІЗДВОМ ХРИСТОВИМ». Nothing on other days. */
+ private void holidayGreeting(LinearLayout info){
+  if(holidayId==null)return;Calendar now=Calendar.getInstance();
+  TextView g=text(Holidays.greeting(holidayId,now.get(Calendar.YEAR),now.get(Calendar.MONTH)+1).toUpperCase(new Locale("uk")),12,Holidays.accent(holidayId));
+  g.setTypeface(Typeface.DEFAULT_BOLD);g.setLetterSpacing(0.2f);g.setSingleLine(true);g.setIncludeFontPadding(false);info.addView(g);space(info,8);
+ }
+ private final Runnable holidayMoment=this::playMoment,newYear=this::fireworks;
+ /** Asks for the owner's flags now and then; on the holiday plays the moment if the last one was half an hour ago or more,
+  *  and on New Year's Eve waits for midnight. */
+ private void holidayResume(){
+  if(root==null)return;AppFlags.refresh(this,null);
+  main.removeCallbacks(holidayMoment);main.removeCallbacks(newYear);
+  if(holidayId==null||!Ui.animations())return;
+  SharedPreferences p=getSharedPreferences("kik_holiday",0);long now=System.currentTimeMillis(),last=p.getLong("moment_at",0);
+  // A little after the page is back on screen, so the moment is seen and not lost in the page's own entrance.
+  if(now-last>=30*60_000L||now<last){p.edit().putLong("moment_at",now).apply();main.postDelayed(holidayMoment,700);}
+  if(Holidays.NEW_YEAR.equals(holidayId))newYearCheck();
+ }
+ private void holidayPause(){
+  main.removeCallbacks(holidayMoment);main.removeCallbacks(newYear);
+  if(momentFx!=null){momentFx.stop();momentFx=null;}if(fireworksFx!=null){fireworksFx.stop();fireworksFx=null;}
+  if(logoView instanceof HolidayMark)((HolidayMark)logoView).stop();
+ }
+ /** The mark's moment and its few particles; afterwards nothing on Home moves for the holiday. */
+ private void playMoment(){
+  if(destroyed||!foreground||holidayId==null)return;
+  HolidayMark mark=logoView instanceof HolidayMark?(HolidayMark)logoView:null;if(mark!=null)mark.play();
+  if(momentFx!=null)momentFx.stop();momentFx=HolidayMark.Burst.moment(root,mark,holidayId,getCurrentFocus());
+ }
+ private static boolean midnightHour(Calendar n){return n.get(Calendar.MONTH)==Calendar.JANUARY&&n.get(Calendar.DAY_OF_MONTH)==1&&n.get(Calendar.HOUR_OF_DAY)==0&&n.get(Calendar.MINUTE)<10;}
+ /** Fireworks over the hero once a year, when Home is in front in the first ten minutes of 1 January: at once on return
+  *  to Home then, or at midnight itself while Home stays open on the 31st. */
+ private void newYearCheck(){
+  Calendar n=Calendar.getInstance();
+  if(midnightHour(n)){main.postDelayed(newYear,1200);return;}
+  if(n.get(Calendar.MONTH)!=Calendar.DECEMBER||n.get(Calendar.DAY_OF_MONTH)!=31)return;
+  Calendar midnight=(Calendar)n.clone();midnight.add(Calendar.DAY_OF_MONTH,1);midnight.set(Calendar.HOUR_OF_DAY,0);midnight.set(Calendar.MINUTE,0);midnight.set(Calendar.SECOND,1);midnight.set(Calendar.MILLISECOND,0);
+  main.postDelayed(newYear,Math.max(0,midnight.getTimeInMillis()-n.getTimeInMillis()));
+ }
+ private void fireworks(){
+  if(destroyed||!foreground||!Ui.animations()||root==null)return;Calendar n=Calendar.getInstance();
+  if(!midnightHour(n)||!Holidays.NEW_YEAR.equals(AppFlags.today(this)))return;
+  SharedPreferences p=getSharedPreferences("kik_holiday",0);int year=n.get(Calendar.YEAR);if(p.getInt("fireworks",0)==year)return;p.edit().putInt("fireworks",year).apply();
+  if(fireworksFx!=null)fireworksFx.stop();fireworksFx=HolidayMark.Burst.fireworks(root);
+ }
  @Override protected void onDestroy(){destroyed=true;loadGeneration++;main.removeCallbacksAndMessages(null);super.onDestroy();}
  private long backAt;private TextView backHint;
  /** Back twice leaves the app; the first press only shows a quiet hint (no dialog). */
@@ -169,7 +225,8 @@ public final class HomeActivity extends Activity {
  private void paintSettingsBadge(){if(settingsItem==null||destroyed)return;boolean waiting=AppUpdater.availableName(this)!=null;if(!waiting){settingsItem.setText("Налаштування");return;}android.text.SpannableString t=new android.text.SpannableString("Налаштування  ●");t.setSpan(new android.text.style.ForegroundColorSpan(RED),t.length()-1,t.length(),0);settingsItem.setText(t);}
  private View topBar(){
   LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setBaselineAligned(false);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(40),dp(26),dp(40),dp(8));
-  bar.addView(Brand.logo(this,64,30));
+  // The holiday's mark gets room of its own for what reaches past its box: the row stays as it is (HolidayMark.roomInCenteredRow).
+  logoView=HolidayMark.logo(this,64,30);if(logoView instanceof HolidayMark)((HolidayMark)logoView).roomInCenteredRow();bar.addView(logoView);
   menuRow=new LinearLayout(this);menuRow.setGravity(Gravity.CENTER_VERTICAL);
   HorizontalScrollView navigation=Ui.horizontal(this,menuRow);LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,-2,1);navLp.setMargins(dp(14),0,dp(10),0);bar.addView(navigation,navLp);
   menuRow.addView(menu("Головна",v->{if(hero!=null)watch.requestFocus();}));
@@ -198,26 +255,35 @@ public final class HomeActivity extends Activity {
   final long started=SystemClock.elapsedRealtime();final int gen=++loadGeneration;final String profile=ProfileStore.current(this);
   new Thread(()->{
    final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);
-   final List<Row> local=localRows(profile);List<Row> cached=fromCache();
+   final String shelf=AppFlags.shelf(this);
+   final List<Row> local=localRows(profile);List<Row> cached=fromCache(shelf);
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
    Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");
    // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
    final List<Row> saved=savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
    if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(profile,local,cached,preferences);
+   placeShelf(all,shelf);
    Log.d("KIK.Load","Home rows "+(SystemClock.elapsedRealtime()-started)+"ms"+(saved!=null?" (saved)":""));translateNow(all);Log.d("KIK.Load","Home ranking "+(SystemClock.elapsedRealtime()-started)+"ms");
    final List<Row> first=all;
    main.post(()->{if(!valid(gen,profile))return;laterLinks.clear();laterLinks.addAll(links);if((!first.isEmpty()||loadedOnce)&&!(loadedOnce&&signature(first).equals(shownSignature)))show(first);Log.d("KIK.Load","Home rendered "+(SystemClock.elapsedRealtime()-started)+"ms");translateLater(first,gen,profile);});
    if(saved!=null&&!cached.isEmpty()){final List<Row> fresh=Recommendations.rows(this,preferences,cached);saveRecommendations(profile,fresh);translateNow(fresh);main.post(()->{if(valid(gen,profile))for(Row r:fresh)updateRecommendations(r);});}
-   long cacheAge=System.currentTimeMillis()-getSharedPreferences("kik_home",0).getLong("updated",0);
-   if(!cached.isEmpty()&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
+   SharedPreferences home=getSharedPreferences("kik_home",0);long cacheAge=System.currentTimeMillis()-home.getLong("updated",0);
+   // A holiday's shelf coming or going makes the cached rows stale as well.
+   boolean shelfSame=(shelf==null?"":shelf).equals(home.getString("shelf",""));
+   if(!cached.isEmpty()&&shelfSame&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(profile,local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
-   });}:null,preferences);
+   });}:null,preferences,shelf);
    if(site.isEmpty()){final Throwable why=rowError;main.post(()->{if(valid(gen,profile)&&first.isEmpty())fail(why);});return;}
-   refreshedAt=SystemClock.elapsedRealtime();saveCache(site);
-   if(cached.isEmpty()){final List<Row> rest=new ArrayList<Row>(Recommendations.withoutDisliked(preferences,site.subList(1,site.size())));translateNow(rest);main.post(()->{if(!valid(gen,profile))return;
+   refreshedAt=SystemClock.elapsedRealtime();saveCache(site,shelf);
+   if(cached.isEmpty()){
+    // site[0] is already on screen; the holiday's shelf goes after «Продовжити перегляд», the rest at the end.
+    List<Row> remaining=new ArrayList<Row>(site);Row festive=takeShelf(remaining,shelf);if(!remaining.isEmpty())remaining.remove(0);
+    final List<Row> rest=new ArrayList<Row>(Recommendations.withoutDisliked(preferences,remaining));
+    final List<Row> extra=festive==null?new ArrayList<Row>():new ArrayList<Row>(Recommendations.withoutDisliked(preferences,Collections.singletonList(festive)));
+    translateNow(rest);translateNow(extra);final List<Row> added=new ArrayList<Row>(rest);added.addAll(extra);main.post(()->{if(!valid(gen,profile))return;
     // The first catalogue row is already usable. Append remaining rows without replacing focus.
-    appendRows(rest);translateLater(rest,gen,profile);
+    appendRows(rest);for(Row r:extra)insertRow(r);translateLater(added,gen,profile);
    });}
    recommendLater(preferences,site,gen,profile);
   },"kik-home").start();
@@ -286,8 +352,12 @@ public final class HomeActivity extends Activity {
   for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=Site.opt(o,"link");i.title=Site.opt(o,"title");i.poster=Site.opt(o,"poster");i.year=Site.opt(o,"year");i.genre=Site.opt(o,"genre");if(i.link!=null&&i.title!=null)saved.items.add(i);}
   return saved;
  }
- private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste){
-  final Row[] out=new Row[ROWS.length];List<Thread> threads=new ArrayList<Thread>();rowError=null;
+ private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste,final String shelf){
+  final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
+  // The holiday's film shelf comes from KIK's service alongside the rows; HDRezka is never asked for it.
+  if(shelf!=null){Thread t=new Thread(()->{
+   try{Row r=new Row(Holidays.shelfTitle(shelf));for(Site.Card c:Site.holidayFilms(shelf)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=20)break;}festive[0]=r;}
+   catch(Exception e){Log.w("KIK","Home holiday shelf "+shelf+": "+e);}},"kik-home-shelf");threads.add(t);t.start();}
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
    try{Row r=new Row(ROWS[idx][0]);for(Site.Card c:Site.list(ROWS[idx][1],null,ROWS[idx][2],1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
    catch(Exception e){Log.w("KIK","Home row "+ROWS[idx][0]+": "+e);if(rowError==null)rowError=e;}});
@@ -296,17 +366,22 @@ public final class HomeActivity extends Activity {
   }
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty())first.accept(out[0]);
   for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));return rows;
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
+  // Second in the list, after the row already on screen; placeShelf puts it in its place on the page. Never alone: without
+  // the catalogue the page fails as before instead of caching a shelf for six hours.
+  if(!rows.isEmpty()&&festive[0]!=null&&!festive[0].items.isEmpty())rows.add(1,festive[0]);
+  return rows;
  }
- private void saveCache(List<Row> rows){
+ private void saveCache(List<Row> rows,String shelf){
   JSONArray a=new JSONArray();
   try{for(Row r:rows){JSONArray items=new JSONArray();for(Item i:r.items)items.put(new JSONObject().put("link",i.link).put("title",i.title).put("poster",i.poster).put("year",i.year).put("genre",i.genre));a.put(new JSONObject().put("title",r.title).put("items",items));}}catch(JSONException ignored){}
-  getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",System.currentTimeMillis()).apply();
+  getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",System.currentTimeMillis()).putString("shelf",shelf==null?"":shelf).apply();
  }
- private List<Row> fromCache(){
-  List<Row> rows=new ArrayList<Row>();
+ /** The cached rows; a holiday's film shelf only while it is still due (shelf). */
+ private List<Row> fromCache(String shelf){
+  List<Row> rows=new ArrayList<Row>();String due=shelf==null?null:Holidays.shelfTitle(shelf);
   try{JSONArray a=new JSONArray(getSharedPreferences("kik_home",0).getString("rows","[]"));
-   for(int k=0;k<a.length();k++){JSONObject o=a.getJSONObject(k);Row r=new Row(o.getString("title"));JSONArray items=o.getJSONArray("items");
+   for(int k=0;k<a.length();k++){JSONObject o=a.getJSONObject(k);String title=o.getString("title");if(shelfRow(title)&&!title.equals(due))continue;Row r=new Row(title);JSONArray items=o.getJSONArray("items");
     for(int n=0;n<items.length();n++){JSONObject x=items.getJSONObject(n);Item i=new Item();i.link=x.optString("link");i.title=x.optString("title");i.poster=Site.opt(x,"poster");i.year=Site.opt(x,"year");i.genre=Site.opt(x,"genre");
      String[] d=DETAILS.get(norm(i.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.age=d[5];i.duration=d[6];}r.items.add(i);}
     rows.add(r);}
@@ -393,6 +468,26 @@ public final class HomeActivity extends Activity {
   }
   shownSignature=signature(shownRows);
  }
+ /** A holiday's film shelf: its title is one of Holidays.shelfTitle. */
+ private static boolean shelfRow(String title){for(String id:Holidays.ALL)if(Holidays.shelfTitle(id).equals(title))return true;return false;}
+ /** Takes the holiday's shelf out of the rows, or null when there is none. */
+ private static Row takeShelf(List<Row> rows,String shelf){
+  if(shelf==null)return null;String title=Holidays.shelfTitle(shelf);
+  for(int n=0;n<rows.size();n++){Row r=rows.get(n);if(title.equals(r.title)&&!r.personalized&&r.recommendationId==null)return rows.remove(n);}
+  return null;
+ }
+ /** The holiday's shelf stands as the first catalogue row: right after «Продовжити перегляд», or first without it. */
+ private static void placeShelf(List<Row> rows,String shelf){
+  Row r=takeShelf(rows,shelf);if(r==null)return;int at=0;for(int n=0;n<rows.size();n++)if(RESUME_ROW.equals(rows.get(n).title))at=n+1;rows.add(at,r);
+ }
+ /** One row put in after «Продовжити перегляд» (first without it), the rest of the page left as it is: the holiday's shelf on a first start. */
+ private void insertRow(Row r){
+  if(r.items.isEmpty()||rowViews.containsKey(r.title)||content.getChildCount()<2)return;
+  View[] resume=rowViews.get(RESUME_ROW);int index=Math.min(content.getChildCount(),resume!=null?content.indexOfChild(resume[1])+1:2),at=0;
+  for(int n=0;n<shownRows.size();n++)if(RESUME_ROW.equals(shownRows.get(n).title))at=n+1;
+  TextView h=rowHeading(r.title);HorizontalScrollView hs=rowLine(r);content.addView(h,index);content.addView(hs,index+1);rowViews.put(r.title,new View[]{h,hs});
+  shownRows.add(at,r);shownSignature=signature(shownRows);for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);
+ }
  private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);shownRows.addAll(rows);shownSignature=signature(shownRows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
 
  /** A shelf card; the focused one stays at the row's left edge and the row slides under it, as on Netflix. */
@@ -401,7 +496,7 @@ public final class HomeActivity extends Activity {
   FrameLayout frame=new FrameLayout(this);frame.setFocusable(true);frame.setClickable(true);
   // Rounded corners come from a shader-drawn poster, not outline clipping (costly on this GPU).
   ImageView img=new PosterView(this,dp(8));frame.addView(img,new FrameLayout.LayoutParams(-1,-1));
-  final View ring=Ui.ring(this,dp(8));frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
+  final View ring=Ui.ring(this,dp(8),holidayId==null?RED:Holidays.accent(holidayId));frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
   Studios.watch(frame,i.link,i.title,i.year,null);
   if(i.rating!=null){TextView r=text("★ "+i.rating,12,Color.WHITE);r.setPadding(dp(6),dp(2),dp(6),dp(2));r.setBackground(shape(0xcc000000,dp(4),0,0));FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);p.setMargins(0,dp(6),dp(6),0);frame.addView(r,p);}
   if(i.resume){View track=new View(this);track.setBackgroundColor(0xff77777b);frame.addView(track,new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM));View bar=new View(this);bar.setBackgroundColor(RED);frame.addView(bar,new FrameLayout.LayoutParams(Math.max(dp(3),Math.round(dp(150)*i.progress)),dp(3),Gravity.BOTTOM|Gravity.START));}
