@@ -1,7 +1,6 @@
 /** Intro and closing credits of one series episode, as the scanner PC found them (episode-marks.mjs):
  *  «Пропустити заставку» while an intro plays, «Наступна серія» from the credits. Same rules as PlaybackPolicy on the TV.
  *  Marks belong to the very file that was scanned: another length (a re-upload, another cut) gets none. */
-import {creditsAt} from './rate-prompt.js';
 /** Seconds the «Наступна серія» card counts down before the next episode starts by itself. */
 export const NEXT_COUNTDOWN=10;
 const MAX_INTROS=4,MIN_INTRO=3,MAX_INTRO=180;
@@ -28,10 +27,14 @@ export function introSkip(marks,position,duration){
  for(const [s,e] of marks.intro||[])if(position>=s&&position<e-1.5)return e;
  return null;
 }
+/** Without a scan «Наступна серія» shows this many seconds before the end: a series' credits run 40 s and more, and a
+ *  guess must never cover the last scene (the last 5% put it 2 min early). Same as PlaybackPolicy.NEXT_GUESS_MS on the TV. */
+export const NEXT_GUESS=40;
 /** When «Наступна серія» appears. `sure` (scanned credits) counts down and goes on by itself; without a scan it shows
- *  over the last 5% (rate-prompt.js), as a button only: a guess must never cut the last scene. */
+ *  over the last 40 s as a button only. A stream under 3 min (a 60-second preview) gets no guess. */
 export function nextOffer(marks,duration){
  if(!(duration>0))return null;
  const credits=sameFile(marks,duration)?cleanCredits(marks.credits,duration):null;
- return credits!=null?{at:credits,sure:true}:{at:creditsAt(duration),sure:false};
+ if(credits!=null)return {at:credits,sure:true};
+ return duration>=180?{at:duration-NEXT_GUESS,sure:false}:null;
 }

@@ -45,7 +45,9 @@ public class PolicyCheck {
   if(PlaybackPolicy.openingLogo(marks,2_668_400)!=4_900||PlaybackPolicy.openingLogo(marks,2_700_000)!=0||PlaybackPolicy.openingLogo(new double[]{100,-1,0,40},100_000)!=0||PlaybackPolicy.openingLogo(null,100_000)!=0)throw new AssertionError("Only a short opening logo of this very file is passed");
   if(PlaybackPolicy.introSkip(marks,178_000,2_668_000)!=183_000||PlaybackPolicy.introSkip(marks,182_000,2_668_000)!=-1||PlaybackPolicy.introSkip(marks,10_000,2_668_000)!=-1||PlaybackPolicy.introSkip(marks,178_000,3_000_000)!=-1)throw new AssertionError("Skip-intro button inside an intro of this file");
   long[] sure=PlaybackPolicy.nextOffer(marks,2_668_000),guess=PlaybackPolicy.nextOffer(null,1_300_000),other=PlaybackPolicy.nextOffer(marks,3_000_000),odd=PlaybackPolicy.nextOffer(new double[]{2668,100},2_668_000);
-  if(sure[0]!=2_565_000||sure[1]!=1||guess[1]!=0||guess[0]!=PlaybackPolicy.creditsAt(1_300_000)||other[1]!=0||odd[1]!=0||PlaybackPolicy.nextOffer(marks,0)!=null)throw new AssertionError("Next episode counts down only after scanned credits");
+  if(sure[0]!=2_565_000||sure[1]!=1||guess[1]!=0||guess[0]!=1_260_000||other[1]!=0||odd[1]!=0||PlaybackPolicy.nextOffer(marks,0)!=null||PlaybackPolicy.nextOffer(null,60_000)!=null)throw new AssertionError("Next episode counts down only after scanned credits");
+  if(PlaybackPolicy.knobAt(1000,32,0,600_000)!=0||PlaybackPolicy.knobAt(1000,32,300_000,600_000)!=484||PlaybackPolicy.knobAt(1000,32,600_000,600_000)!=968||PlaybackPolicy.knobAt(1000,32,700_000,600_000)!=968||PlaybackPolicy.knobAt(0,32,1,2)!=0||PlaybackPolicy.knobAt(1000,32,5,0)!=0)
+   throw new AssertionError("Progress knob stays on the track");
   long film=6_600_000;
   if(PlaybackPolicy.creditsAt(film)!=6_270_000||PlaybackPolicy.creditsAt(1_320_000)!=1_254_000||PlaybackPolicy.creditsAt(9_000_000)!=8_640_000)throw new AssertionError("Credits are the last 5%, 45 s to 6 min");
   if(!PlaybackPolicy.askRating(6_300_000,film,3_000_000,false,false,0)||PlaybackPolicy.askRating(6_200_000,film,3_000_000,false,false,0))throw new AssertionError("Ask at a film's credits");
