@@ -705,18 +705,33 @@ function downloadRow(x,film=false){
   el('div',{class:'dl-row-actions'},actions));
  fillDownloadRow(node,x);return node;
 }
+/** One title on the «Завантаження» page. One file (a film, or a series with one episode saved) has one set of buttons:
+ *  play and delete, with how far it was watched. Several episodes: the header plays the next one, every episode has its
+ *  own play and delete, and «Видалити все» sits quietly under the list (owner, 13.11: one episode showed two plays and
+ *  two bins). On a phone the episodes take the card's whole width, not the strip beside the poster. */
 function downloadGroup(xs){
  const x=xs[0],eps=x.series?xs.slice().sort((a,b)=>Number(a.season)-Number(b.season)||Number(a.episode)-Number(b.episode)):xs,done=eps.filter(d=>d.status==='done');
- const size=xs.reduce((s,d)=>s+(d.status==='done'?d.total:d.bytes||0),0);
+ const size=xs.reduce((s,d)=>s+(d.status==='done'?d.total:d.bytes||0),0),removeAll=()=>removeDownloads(xs,'«'+x.title+'»');
  const stub=()=>el('div',{class:'dl-poster stub','aria-hidden':'true'},(x.title||'K').trim()[0]);
  const poster=x.poster?el('img',{class:'dl-poster',src:x.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer',onError:e=>e.target.replaceWith(stub())}):stub();
- const next=x.series?done.find(d=>watchedFor(d)<=.93)||done[0]:done[0];
- const play=next?button(x.series?'▶ '+'С'+next.season+' · Е'+next.episode:'▶ '+(watchedFor(next)>.02&&watchedFor(next)<.93?'Продовжити':'Дивитися'),()=>playDownload(next),'pill primary small'):null;
- const meta=x.series?[plural(done.length,'серія','серії','серій')+' на пристрої',formatBytes(size)]:x.status==='done'?[downloadState(x),watchedFor(x)>.93?'переглянуто':null,x.year]:[x.year];
- const head=el('div',{class:'dl-title-head'},el('div',{class:'dl-title-copy'},el('h2',{},x.title),el('p',{class:'dl-meta'},meta.filter(Boolean).join(' · '))),
-  el('div',{class:'dl-actions'},play,iconButton(DL_ICON.trash,'Видалити «'+x.title+'» з пристрою',()=>removeDownloads(xs,'«'+x.title+'»'),'dl-icon dl-remove')));
- const rows=x.series?el('ul',{class:'dl-rows'},eps.map(d=>downloadRow(d))):x.status!=='done'?el('div',{class:'dl-rows'},downloadRow(x,true)):null;
- return el('article',{class:'dl-title'},poster,el('div',{class:'dl-title-body'},head,rows));
+ let meta,actions=[],watchedBar=null,rows=null,foot=null;
+ if(eps.length===1){
+  const one=eps[0],seen=one.status==='done'?latestFor(one.link,one.season||'',one.episode||''):null,w=seen?.dur>0?seen.pos/seen.dur:0,started=w>.02&&w<.93;
+  meta=[x.series?episodeLabel(one):x.year,one.status==='done'?downloadState(one):null,w>.93?'переглянуто':started?'ще '+Math.max(1,Math.ceil((seen.dur-seen.pos)/60000))+' хв':null];
+  if(one.status==='done'){
+   actions=[button(started?'▶ Продовжити':'▶ Дивитися',()=>playDownload(one),'pill primary small'),iconButton(DL_ICON.trash,'Видалити «'+x.title+'» з пристрою',removeAll,'dl-icon dl-remove')];
+   if(started){const fill=el('i');fill.style.width=Math.round(w*100)+'%';watchedBar=el('div',{class:'dl-bar dl-watched','aria-hidden':'true'},fill);}
+  }else rows=el('div',{class:'dl-rows'},downloadRow(one,true));
+ }else{
+  const next=done.find(d=>watchedFor(d)<=.93)||done[0],coming=eps.length-done.length;
+  meta=[done.length?plural(done.length,'серія','серії','серій')+' на пристрої':null,coming?'завантаження: '+plural(coming,'серія','серії','серій'):null,formatBytes(size)];
+  if(next)actions=[button('▶ С'+next.season+' · Е'+next.episode,()=>playDownload(next),'pill primary small')];
+  rows=el('ul',{class:'dl-rows'},eps.map(d=>downloadRow(d)));
+  foot=button([],removeAll,'text-button dl-remove-all');foot.innerHTML=DL_ICON.trash;foot.append('Видалити все · '+formatBytes(size));
+ }
+ const head=el('div',{class:'dl-title-head'},el('div',{class:'dl-title-copy'},el('h2',{},x.title),el('p',{class:'dl-meta'},meta.filter(Boolean).join(' · ')),watchedBar),
+  actions.length?el('div',{class:'dl-actions'},actions):null);
+ return el('article',{class:'dl-title'},poster,head,rows,foot?el('div',{class:'dl-title-foot'},foot):null);
 }
 async function removeOne(x){await downloads.remove(x.id);if(!downloads.forTitle(x.link).length)tellWorker('drop-poster',x.poster);}
 /** Smart downloads (on unless switched off on the «Завантаження» page, per device): a film or episode watched to the end,
