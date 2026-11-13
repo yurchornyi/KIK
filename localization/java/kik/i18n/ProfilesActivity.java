@@ -23,7 +23,7 @@ public final class ProfilesActivity extends Activity {
   super.onCreate(state);Ui.screen(this);
   getWindow().setFlags(1024,1024);
   getWindow().getDecorView().setSystemUiVisibility(5894);
-  ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(0xff0d0d0f);scroll.setFillViewport(true);
+  ScrollView scroll=new Glide.Page(this);scroll.setBackgroundColor(0xff0d0d0f);scroll.setFillViewport(true);
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setGravity(Gravity.CENTER_HORIZONTAL);content.setPadding(dp(48),dp(64),dp(48),dp(32));
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
   render();
@@ -38,7 +38,7 @@ public final class ProfilesActivity extends Activity {
   TextView sub=text(all.isEmpty()?"Наявна історія переглядів перейде в цей профіль.":manage?"Виберіть профіль, щоб змінити його. Потрібен пароль профілю.":"Кожен профіль має свою історію та місце, де ви зупинилися.",16);sub.setTextColor(0xffb5b1be);content.addView(sub);space(26);
   if(all.isEmpty()){createForm(true);return;}
   LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);
-  HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(12),dp(12),dp(12),dp(12));row.setClipChildren(false);hs.addView(row);content.addView(hs,new LinearLayout.LayoutParams(-2,-2));
+  HorizontalScrollView hs=new Glide.Row(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(12),dp(12),dp(12),dp(12));row.setClipChildren(false);hs.addView(row);content.addView(hs,new LinearLayout.LayoutParams(-2,-2));
   String current=ProfileStore.current(this);View focus=null;final boolean several=Account.accounts(this).length()>1;
   for(final ProfileStore.Profile p:all){
    ImageView b=Avatars.view(this,p.avatar,150);b.setContentDescription(p.name+", "+Avatars.label(p.avatar)+(manage?", редагувати профіль":", дивитися"));
@@ -132,7 +132,7 @@ public final class ProfilesActivity extends Activity {
  private void pickAvatar(String initial,AvatarChoice choice){
   final String[] pending={Avatars.valid(initial)?initial:Avatars.idAt(0)};
   LinearLayout grid=new LinearLayout(this);grid.setOrientation(1);grid.setPadding(dp(6),dp(4),dp(6),dp(4));grid.setClipChildren(false);grid.setClipToPadding(false);
-  ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.addView(grid,new ScrollView.LayoutParams(-1,-2));
+  ScrollView scroll=new Glide.Page(this);scroll.setFillViewport(false);scroll.addView(grid,new ScrollView.LayoutParams(-1,-2));
   int maxHeight=Math.max(dp(100),getResources().getDisplayMetrics().heightPixels-dp(180));
   // AlertDialog's custom container uses the scroll view's own height; it never replaces the native actions.
   FrameLayout holder=new FrameLayout(this);holder.setPadding(dp(12),0,dp(12),dp(8));holder.addView(scroll,new FrameLayout.LayoutParams(-1,Math.min(dp(304),maxHeight)));

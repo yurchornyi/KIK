@@ -25,7 +25,7 @@ import org.json.*;
 public final class SignInActivity extends Activity {
  private static final int LOADING=0,EMAIL=1,PASSWORD=2,CREATE=3,PICK=4,NAME=5,AVATAR=6;
  private final Handler main=new Handler(Looper.getMainLooper());private final ExecutorService io=Executors.newSingleThreadExecutor();
- private volatile boolean destroyed;private boolean working;private ScrollView scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding,joining,committed,temporary;
+ private volatile boolean destroyed;private boolean working;private Glide.Page scroll;private LinearLayout content;private volatile int pairing;private TextView error;private int step;private boolean adding,joining,committed,temporary;
  // The sign-in of the account these screens work on; a joining account becomes one of the TV's only once a profile is chosen.
  private String email="",name="",session="";private JSONArray remote=new JSONArray();
 
@@ -36,7 +36,7 @@ public final class SignInActivity extends Activity {
  private int dp(float n){return Ui.dp(this,n);}
  @Override public void onCreate(Bundle state){
   super.onCreate(state);Ui.screen(this);
-  scroll=new ScrollView(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);
+  scroll=new Glide.Page(this);scroll.setBackgroundColor(Ui.BG);scroll.setFillViewport(true);
   content=new LinearLayout(this);content.setOrientation(1);content.setClipChildren(false);content.setClipToPadding(false);content.setGravity(Gravity.CENTER_HORIZONTAL);content.setPadding(dp(48),dp(40),dp(48),dp(32));
   scroll.addView(content,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
   joining=getIntent().getBooleanExtra("account",false)&&Account.signedIn(this);adding=!joining&&getIntent().getBooleanExtra("add",false)&&!Account.token(this).isEmpty();
@@ -79,7 +79,7 @@ public final class SignInActivity extends Activity {
   }else if(step==PICK){
    head("Хто дивиться?","Виберіть свій профіль. Історія й місце, де ви зупинилися, підтягнуться з облікового запису.");
    LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setGravity(Gravity.CENTER);row.setClipChildren(false);
-   HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(12),dp(12),dp(12),dp(12));hs.addView(row);content.addView(hs,new LinearLayout.LayoutParams(-2,-2));
+   HorizontalScrollView hs=new Glide.Row(this);hs.setHorizontalScrollBarEnabled(false);hs.setClipToPadding(false);hs.setPadding(dp(12),dp(12),dp(12),dp(12));hs.addView(row);content.addView(hs,new LinearLayout.LayoutParams(-2,-2));
    View first=null;
    for(int i=0;i<remote.length();i++){final JSONObject p=remote.optJSONObject(i);if(p==null)continue;View tile=tile(row,p.optString("avatar"),p.optString("name"),150);tile.setOnClickListener(v->pick(p));if(first==null)first=tile;}
    
@@ -131,7 +131,7 @@ public final class SignInActivity extends Activity {
   final TextView steps=text("Отримання коду…",15);steps.setGravity(Gravity.START);steps.setTextColor(0xffb5b1be);steps.setLineSpacing(0,1.25f);copy.addView(steps);
   LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);cp.topMargin=dp(18);content.addView(card,cp);
   toggle.setOnClickListener(v->{boolean open=card.getVisibility()!=View.VISIBLE;card.setVisibility(open?View.VISIBLE:View.GONE);toggle.setText(open?"Сховати код":"Увійти з телефону");final int gen=++pairing;
-   if(open){startPair(gen,qr,code,steps);scroll.post(()->scroll.smoothScrollTo(0,card.getBottom()));}});
+   if(open){startPair(gen,qr,code,steps);scroll.post(()->scroll.glide(card.getBottom()));}});
   return toggle;
  }
  private void startPair(int gen,ImageView qr,TextView code,TextView steps){
