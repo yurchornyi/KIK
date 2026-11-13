@@ -71,12 +71,20 @@ public final class PlaybackPolicy {
  public static long openingLogo(double[] m,long durMs){if(!sameFile(m,durMs)||m.length<4)return 0;return m[2]<=3&&m[3]-m[2]<=15?(long)(m[3]*1000):0;}
  /** End (ms) of the intro playing now, or -1: «Пропустити заставку» shows from its start to 1.5 s before its end. */
  public static long introSkip(double[] m,long posMs,long durMs){if(!sameFile(m,durMs))return -1;double t=posMs/1000.0;for(int i=2;i+1<m.length;i+=2)if(t>=m[i]&&t<m[i+1]-1.5)return (long)(m[i+1]*1000);return -1;}
- /** {ms when «Наступна серія» shows, 1 when it counts down after scanned credits, 0 for a guess over the last 5% (a button only:
-  *  a guess must never cut the last scene)}, or null. */
+ /** Without scanned credits «Наступна серія» shows this long before the end: a series' closing credits run 40 s and more,
+  *  and a guess must never cover the last scene (13.11: the last 5% put it 2 min early, over the episode itself). */
+ public static final long NEXT_GUESS_MS=40_000L;
+ /** {ms when «Наступна серія» shows, 1 when it counts down after scanned credits, 0 for a guess over the last 40 s (a button
+  *  only)}, or null; a stream under 3 min (a 60-second preview) gets no guess. */
  public static long[] nextOffer(double[] m,long durMs){
   if(durMs<=0)return null;
   if(sameFile(m,durMs)&&m[1]>=Math.max(m[0]*0.6,m[0]-600)&&m[1]<=m[0]-5)return new long[]{(long)(m[1]*1000),1};
-  return new long[]{creditsAt(durMs),0};
+  return durMs<180_000L?null:new long[]{durMs-NEXT_GUESS_MS,0};
+ }
+ /** Left edge (px) of the progress knob: its centre runs from one radius in to one radius short of the track's ends, so it
+  *  never hangs over them (13.11: at the end half of it went past the track and was cut off). */
+ public static int knobAt(int track,int knob,long posMs,long durMs){
+  if(track<=knob||durMs<=0)return 0;return Math.round((track-knob)*Math.max(0f,Math.min(1f,(float)posMs/durMs)));
  }
  /** Where the closing credits are taken to start: the last 5% of the file, 45 s to 6 min. Same rule as rate-prompt.js on the web. */
  public static long creditsAt(long durMs){return durMs<=0?-1:durMs-Math.max(45_000L,Math.min(360_000L,durMs/20));}

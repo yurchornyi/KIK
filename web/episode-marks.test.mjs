@@ -52,7 +52,7 @@ test('players: a logo at the start is passed, a longer intro gets a button, the 
  assert.equal(openingLogo({duration:100,intro:[[0,40]]},100),0,'a long opening is the viewer’s choice');
  assert.equal(introSkip(marks,178,2668),183);assert.equal(introSkip(marks,182,2668),null,'not in the last 1.5 s');assert.equal(introSkip(marks,10,2668),null);
  assert.deepEqual(nextOffer(marks,2668),{at:2565,sure:true});
- const guess=nextOffer(null,1300);assert.equal(guess.sure,false);assert.ok(guess.at>1200&&guess.at<1300,'a guess sits in the last 5%');
+ assert.deepEqual(nextOffer(null,1300),{at:1260,sure:false},'a guess sits in the last 40 s');assert.equal(nextOffer(null,60),null,'a 60-second preview gets no guess');
  assert.equal(nextOffer(marks,3000).sure,false,'credits of another file are not trusted');
  assert.equal(NEXT_COUNTDOWN,10);
  assert.deepEqual(cleanIntro([[0,1],[0.9,4.9],[2,6],[900,920],[100,400],'x'],2668),[[0.9,4.9]],'too short, overlapping, too late, too long, junk');

@@ -103,10 +103,7 @@ public final class KikPlayerActivity extends Activity {
   screen.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(r-l!=or-ol||b-t!=ob-ot)fit();});
   subtitle=Ui.text(this,"",26,Color.WHITE);subtitle.setGravity(Gravity.CENTER);subtitle.setShadowLayer(8,0,2,Color.BLACK);subtitle.setPadding(dp(80),0,dp(80),0);
   FrameLayout.LayoutParams sl=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);sl.bottomMargin=dp(48);root.addView(subtitle,sl);
-  skipAd=Ui.text(this,"Пропустити рекламу",20,Color.BLACK);skipAd.setGravity(Gravity.CENTER);skipAd.setIncludeFontPadding(false);skipAd.setMinHeight(dp(52));skipAd.setPadding(dp(30),0,dp(30),0);skipAd.setBackground(Ui.shape(0xffffffff,dp(26),0,0));skipAd.setVisibility(View.GONE);
-  FrameLayout.LayoutParams kl=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);kl.rightMargin=dp(56);kl.bottomMargin=dp(52);root.addView(skipAd,kl);
-  nextCard=Ui.text(this,"Наступна серія ▸",20,Color.BLACK);nextCard.setGravity(Gravity.CENTER);nextCard.setIncludeFontPadding(false);nextCard.setMinHeight(dp(52));nextCard.setPadding(dp(30),0,dp(30),0);nextCard.setBackground(Ui.shape(0xffffffff,dp(26),0,0));nextCard.setVisibility(View.GONE);
-  FrameLayout.LayoutParams nl=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);nl.rightMargin=dp(56);nl.bottomMargin=dp(52);root.addView(nextCard,nl);
+  skipAd=corner("Пропустити рекламу");nextCard=corner("Наступна серія ▸");
   // KIK's waiting screen: the intro's settled frame (logo, «Створено Чорним» below), with what is happening under the logo.
   wait=new FrameLayout(this);wait.setBackgroundColor(Color.BLACK);ImageView mark=new ImageView(this);mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
   mark.setImageBitmap(asset("kik/wait.png"));wait.addView(mark,new FrameLayout.LayoutParams(-1,-1));
@@ -126,6 +123,13 @@ public final class KikPlayerActivity extends Activity {
   h.post(tick);h.postDelayed(saver,5000);
   playIntro();
   start(true);
+ }
+ /** «Пропустити рекламу / заставку» and «Наступна серія», bottom right over the picture: a quiet see-through pill with a thin
+  *  light edge, as on Netflix, not a white block that outshines the film (13.11). OK takes it while it is up. */
+ private TextView corner(String label){
+  TextView t=Ui.text(this,label,18,Color.WHITE);t.setGravity(Gravity.CENTER);t.setIncludeFontPadding(false);t.setMinHeight(dp(46));t.setPadding(dp(24),0,dp(24),0);
+  t.setBackground(Ui.shape(0x8c000000,dp(23),dp(1.5f),0xb3ffffff));t.setShadowLayer(4,0,1,0x99000000);t.setVisibility(View.GONE);
+  FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.RIGHT);lp.rightMargin=dp(48);lp.bottomMargin=dp(52);root.addView(t,lp);return t;
  }
  private Loudness loudness;
  private ExoPlayer createPlayer(){
@@ -522,7 +526,8 @@ public final class KikPlayerActivity extends Activity {
   bottom.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,new int[]{0xf2000000,0xb3000000,0x00000000}));
   LinearLayout bar=new LinearLayout(this);bar.setOrientation(0);bar.setGravity(Gravity.CENTER_VERTICAL);
   left=Ui.text(this,"0:00",18,Color.WHITE);right=Ui.text(this,"",18,0xffbdbdbd);right.setGravity(Gravity.END);
-  FrameLayout tr=new FrameLayout(this);
+  // The knob grows when the line has focus: neither the line nor its row may cut it off.
+  bar.setClipChildren(false);FrameLayout tr=new FrameLayout(this);tr.setClipChildren(false);tr.setClipToPadding(false);
   track=new View(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));tr.addView(track,new FrameLayout.LayoutParams(-1,dp(6),Gravity.CENTER_VERTICAL));
   played=new View(this);played.setBackground(Ui.shape(Ui.RED,dp(3),0,0));tr.addView(played,new FrameLayout.LayoutParams(0,dp(6),Gravity.CENTER_VERTICAL|Gravity.START));
   knob=new View(this);GradientDrawable kd=new GradientDrawable();kd.setShape(GradientDrawable.OVAL);kd.setColor(Ui.RED);kd.setStroke(dp(2),Color.WHITE);knob.setBackground(kd);tr.addView(knob,new FrameLayout.LayoutParams(dp(16),dp(16),Gravity.CENTER_VERTICAL|Gravity.START));
@@ -702,9 +707,11 @@ public final class KikPlayerActivity extends Activity {
   if(!visible)return;visible=false;closeMenu();progressFocus=false;fade(top,false);fade(bottom,false);placeSubtitles();
  }
  private void placeSubtitles(){FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)subtitle.getLayoutParams();int margin=visible?Math.max(dp(140),bottom.getHeight()-dp(40)):dp(48);if(lp.bottomMargin!=margin){lp.bottomMargin=margin;subtitle.setLayoutParams(lp);}
-  // The rating card rises above the open controls, as «Пропустити рекламу» does.
-  if(ask!=null){FrameLayout.LayoutParams al=(FrameLayout.LayoutParams)ask.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(28);if(al.bottomMargin!=at){al.bottomMargin=at;ask.setLayoutParams(al);}}
-  if(nextCard!=null){FrameLayout.LayoutParams nl=(FrameLayout.LayoutParams)nextCard.getLayoutParams();int at=visible?bottom.getHeight()+dp(8):dp(52);if(nl.bottomMargin!=at){nl.bottomMargin=at;nextCard.setLayoutParams(nl);}}}
+  // The rating card, «Пропустити рекламу» and «Наступна серія» rise with the open controls to just over the progress line.
+  // The controls' dark fade starts well above that line: rising over the whole fade put them half way up the screen (13.11).
+  int over=bottom.getHeight()-bottom.getPaddingTop()+dp(12);
+  lift(ask,visible?over:dp(28));lift(skipAd,visible?over:dp(52));lift(nextCard,visible?over:dp(52));}
+ private static void lift(View v,int at){if(v==null)return;FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)v.getLayoutParams();if(lp.bottomMargin!=at){lp.bottomMargin=at;v.setLayoutParams(lp);}}
  private void fade(final View v,boolean on){
   v.animate().cancel();
   if(!Ui.animations()){v.setAlpha(on?1:0);v.setTranslationY(0);v.setVisibility(on?View.VISIBLE:View.GONE);return;}
@@ -805,7 +812,8 @@ public final class KikPlayerActivity extends Activity {
   if(player!=null){long watched=watchTracker.sample(now,prepared?pos():0,prepared&&!seeking&&active&&playWhenReady&&player.isPlaying());watchedPending+=watched;watchedItem+=watched;}
   if(prepared&&player!=null){
    long p=pos(),d=dur();left.setText(Ui.time(p));right.setText(d>0?"-"+Ui.time(d-p):"");
-   int w=((View)played.getParent()).getWidth();ViewGroup.LayoutParams lp=played.getLayoutParams();int width=d>0&&w>0?(int)(w*Math.min(1f,(float)p/d)):0;if(lp.width!=width){lp.width=width;played.setLayoutParams(lp);}knob.setTranslationX(Math.max(0,lp.width-dp(8)));
+   // The red line ends under the knob's centre; the knob stays on the line at both ends (PlaybackPolicy.knobAt).
+   int w=((View)played.getParent()).getWidth(),k=dp(16),at=PlaybackPolicy.knobAt(w,k,p,d);ViewGroup.LayoutParams lp=played.getLayoutParams();int width=d>0&&w>0?at+k/2:0;if(lp.width!=width){lp.width=width;played.setLayoutParams(lp);}knob.setTranslationX(at);
    String icon=playWhenReady?"❚❚":"▶";if(!icon.contentEquals(controls.get(playIndex).getText()))controls.get(playIndex).setText(icon);
    if(!cues.isEmpty()){String txt="";for(Object[] c:cues)if(p>=(Long)c[0]&&p<=(Long)c[1]){txt=(String)c[2];break;}if(!txt.equals(subtitle.getText().toString()))subtitle.setText(txt);}
   }
