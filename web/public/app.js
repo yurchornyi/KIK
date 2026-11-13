@@ -576,6 +576,8 @@ function downloadState(x){
 }
 const episodeLabel=x=>'С'+x.season+' · Е'+x.episode+(x.episodeTitle&&!/^(Серія|Серия)\s*\d+$/.test(x.episodeTitle)?' · '+x.episodeTitle:'');
 function watchedFor(x){const r=latestFor(x.link,x.season||'',x.episode||'');return r?.dur>0?r.pos/r.dur:0;}
+/** Minutes left of a saved file that was started and not finished (it plays on from there), else 0. */
+function minutesLeft(x){const r=x.status==='done'?latestFor(x.link,x.season||'',x.episode||''):null,w=r?.dur>0?r.pos/r.dur:0;return w>.02&&w<.93?Math.max(1,Math.ceil((r.dur-r.pos)/60000)):0;}
 /** The poster stays with the title while any of its files is on the device (the service worker shows it offline). */
 function tellWorker(type,url){const sw=globalThis.navigator?.serviceWorker;if(!url||!sw)return;sw.ready.then(r=>r.active?.postMessage({type,url})).catch(()=>{});}
 
@@ -692,7 +694,7 @@ async function episodePicker(f,item){
 
 function fillDownloadRow(node,x){
  const bar=node.querySelector('.dl-bar i');if(bar)bar.style.width=(x.status==='done'?Math.round(watchedFor(x)*100):dlPercent(x))+'%';
- const s=node.querySelector('.dl-state');if(s)s.textContent=downloadState(x);
+ const s=node.querySelector('.dl-state'),left=minutesLeft(x);if(s)s.textContent=downloadState(x)+(left?' · ще '+left+' хв':'');
 }
 function downloadRow(x,film=false){
  const watched=x.status==='done'?watchedFor(x):0;
@@ -716,8 +718,8 @@ function downloadGroup(xs){
  const poster=x.poster?el('img',{class:'dl-poster',src:x.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer',onError:e=>e.target.replaceWith(stub())}):stub();
  let meta,actions=[],watchedBar=null,rows=null,foot=null;
  if(eps.length===1){
-  const one=eps[0],seen=one.status==='done'?latestFor(one.link,one.season||'',one.episode||''):null,w=seen?.dur>0?seen.pos/seen.dur:0,started=w>.02&&w<.93;
-  meta=[x.series?episodeLabel(one):x.year,one.status==='done'?downloadState(one):null,w>.93?'переглянуто':started?'ще '+Math.max(1,Math.ceil((seen.dur-seen.pos)/60000))+' хв':null];
+  const one=eps[0],w=one.status==='done'?watchedFor(one):0,left=minutesLeft(one),started=left>0;
+  meta=[x.series?episodeLabel(one):x.year,one.status==='done'?downloadState(one):null,w>.93?'переглянуто':started?'ще '+left+' хв':null];
   if(one.status==='done'){
    actions=[button(started?'▶ Продовжити':'▶ Дивитися',()=>playDownload(one),'pill primary small'),iconButton(DL_ICON.trash,'Видалити «'+x.title+'» з пристрою',removeAll,'dl-icon dl-remove')];
    if(started){const fill=el('i');fill.style.width=Math.round(w*100)+'%';watchedBar=el('div',{class:'dl-bar dl-watched','aria-hidden':'true'},fill);}
@@ -725,7 +727,7 @@ function downloadGroup(xs){
  }else{
   const next=done.find(d=>watchedFor(d)<=.93)||done[0],coming=eps.length-done.length;
   meta=[done.length?plural(done.length,'серія','серії','серій')+' на пристрої':null,coming?'завантаження: '+plural(coming,'серія','серії','серій'):null,formatBytes(size)];
-  if(next)actions=[button('▶ С'+next.season+' · Е'+next.episode,()=>playDownload(next),'pill primary small')];
+  if(next)actions=[button((minutesLeft(next)?'▶ Продовжити С':'▶ С')+next.season+' · Е'+next.episode,()=>playDownload(next),'pill primary small')];
   rows=el('ul',{class:'dl-rows'},eps.map(d=>downloadRow(d)));
   foot=button([],removeAll,'text-button dl-remove-all');foot.innerHTML=DL_ICON.trash;foot.append('Видалити все · '+formatBytes(size));
  }
