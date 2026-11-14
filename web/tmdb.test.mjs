@@ -93,7 +93,7 @@ test('a title TMDB does not know by its card name is found by the original name 
 
 test('an anime series filed under /animation/ is found as a series when the film search finds nothing',async()=>{
  const show={id:209867,name:'Провожающая в последний путь Фрирен',original_name:'葬送のフリーレン',first_air_date:'2023-09-29'};
- const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/search/tv'))return Response.json({results:[show]});if(url.includes('/tv/209867'))return Response.json({networks:[],images:{posters:[],backdrops:[]}});return Response.json({results:[]});};
+ const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/search/tv'))return Response.json({results:[show]});if(url.includes('/tv/209867'))return Response.json({networks:[],images:{posters:[poster],backdrops:[backdrop]}});return Response.json({results:[]});};
  const r=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/animation/adventures/71000-sousou-no-frieren-2023.html',title:'Провожающая в последний путь Фрирен',year:'2023'},{token:'test-only'});
  assert.equal(r.artwork?.id,209867);assert.ok(calls.some(u=>u.includes('/search/movie')));assert.ok(calls.some(u=>u.includes('/tv/209867')));
 });
