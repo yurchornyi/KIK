@@ -34,13 +34,16 @@ final class Studios {
   *  card on Home, up to 25 batches of 12 behind the rows and posters (14.11, TCL), and each answer repainted every badge. */
  private static void load(Context context){
   if(loaded)return;loaded=true;
-  try{JSONObject o=new JSONObject(context.getApplicationContext().getSharedPreferences(STORE,0).getString("cards","{}"));long now=System.currentTimeMillis();
+  // Kept for this list of studios only: a version that knows more of them asks again about titles it had none for.
+  android.content.SharedPreferences prefs=context.getApplicationContext().getSharedPreferences(STORE,0);if(!known().equals(prefs.getString("studios","")))return;
+  try{JSONObject o=new JSONObject(prefs.getString("cards","{}"));long now=System.currentTimeMillis();
    for(Iterator<String> it=o.keys();it.hasNext();){String key=it.next();JSONArray v=o.optJSONArray(key);long at=v==null?0:v.optLong(1);if(v!=null&&at<=now&&now-at<KEEP_MS){cache.put(key,v.optString(0));found.put(key,at);}}}
   catch(Exception ignored){}
  }
+ private static String known(){StringBuilder b=new StringBuilder();for(String[] x:ALL)b.append(x[0]).append(',');return b.toString();}
  private static void save(Context context){
   try{JSONObject o=new JSONObject();for(Map.Entry<String,String> e:cache.entrySet()){Long at=found.get(e.getKey());if(at!=null)o.put(e.getKey(),new JSONArray().put(e.getValue()).put(at.longValue()));}
-   context.getApplicationContext().getSharedPreferences(STORE,0).edit().putString("cards",o.toString()).apply();}
+   context.getApplicationContext().getSharedPreferences(STORE,0).edit().putString("cards",o.toString()).putString("studios",known()).apply();}
   catch(JSONException ignored){}
  }
  /** The emblem pill (14.11, owner's pick «А»): the studio's own mark in its colours (Netflix's red ribbon N, Prime's
