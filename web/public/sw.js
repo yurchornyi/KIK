@@ -3,7 +3,7 @@
  *  - Fingerprinted files (?v=, see build.mjs) never change at their URL: kept once, served from here.
  *  - Posters of downloaded titles are kept on the page's request (downloads.js) and shown from here only offline.
  *  - KIK's API and every video byte go straight to the network: never touched, never stored here. */
-const SHELL='kik-shell-v1',POSTERS='kik-posters',ICONS=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/apple-touch-icon.png'];
+const SHELL='kik-shell-v1',POSTERS='kik-posters',ICONS=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-512-maskable.png','/apple-touch-icon.png'];
 self.addEventListener('install',e=>{e.waitUntil(fill().catch(()=>{}).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{for(const k of await caches.keys())if(k.startsWith('kik-shell')&&k!==SHELL)await caches.delete(k);await self.clients.claim();})());});
 
@@ -43,7 +43,7 @@ self.addEventListener('fetch',e=>{
  if(u.pathname.startsWith('/api/')||u.pathname==='/sw.js'||u.pathname==='/download-worker.js')return;
  if(r.mode==='navigate'){if(u.pathname==='/')e.respondWith(page(r,wait));return;}
  if(u.searchParams.has('v')){e.respondWith(fixed(r));return;}
- if(/^\/(?:avatars\/[\w-]+\.svg|logo\.svg|tmdb-logo\.svg|icon\.svg|icon-\d+\.png|apple-touch-icon\.png|manifest\.webmanifest)$/.test(u.pathname))e.respondWith(fresh(r,wait));
+ if(/^\/(?:avatars\/[\w-]+\.svg|logo\.svg|tmdb-logo\.svg|icon\.svg|icon-\d+(?:-maskable)?\.png|apple-touch-icon\.png|manifest\.webmanifest)$/.test(u.pathname))e.respondWith(fresh(r,wait));
 });
 
 /** downloads.js keeps the poster of every downloaded title and lets it go with the title's last file. */
