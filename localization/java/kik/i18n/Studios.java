@@ -29,20 +29,21 @@ final class Studios {
  private static final WeakHashMap<FrameLayout,String> shown=new WeakHashMap<FrameLayout,String>();
  private static boolean busy,loaded;private static long retryAt;
  private static final String TAG="kik-studio-badge",STORE="kik_studios";
- private static final int LIMIT=800;private static final long KEEP_MS=14L*86_400_000L;
+ private static final int LIMIT=800;private static final long KEEP_MS=14L*86_400_000L,NONE_MS=86_400_000L;
  static void paint(FrameLayout frame,String id){
   String now=id==null?"":id;if(now.equals(shown.get(frame))&&(now.isEmpty()||frame.findViewWithTag(TAG)!=null))return;shown.put(frame,now);
   View old=frame.findViewWithTag(TAG);if(old!=null)frame.removeView(old);String[] studio=null;for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(id))studio=s;if(studio==null)return;
   Context c=frame.getContext();frame.addView(badge(c,studio),new FrameLayout.LayoutParams(-2,Ui.dp(c,22),Gravity.TOP|Gravity.START){{setMargins(Ui.dp(c,7),Ui.dp(c,7),0,0);}});
  }
- /** Answers are kept a fortnight on the TV, those without a studio too: a start used to ask the service again about every
-  *  card on Home, up to 25 batches of 12 behind the rows and posters (14.11, TCL), and each answer repainted every badge. */
+ /** Answers with a studio are kept a fortnight on the TV, those without one a day: a start used to ask the service again
+  *  about every card on Home, up to 25 batches of 12 behind the rows and posters (14.11, TCL), and each answer repainted every
+  *  badge. A day, because the service keeps finding more titles' studios (14.11: 120 → 249 of 331 found on TMDB). */
  private static void load(Context context){
   if(loaded)return;loaded=true;
   // Kept for this list of studios only: a version that knows more of them asks again about titles it had none for.
   android.content.SharedPreferences prefs=context.getApplicationContext().getSharedPreferences(STORE,0);if(!known().equals(prefs.getString("studios","")))return;
   try{JSONObject o=new JSONObject(prefs.getString("cards","{}"));long now=System.currentTimeMillis();
-   for(Iterator<String> it=o.keys();it.hasNext();){String key=it.next();JSONArray v=o.optJSONArray(key);long at=v==null?0:v.optLong(1);if(v!=null&&at<=now&&now-at<KEEP_MS){cache.put(key,v.optString(0));found.put(key,at);}}}
+   for(Iterator<String> it=o.keys();it.hasNext();){String key=it.next();JSONArray v=o.optJSONArray(key);long at=v==null?0:v.optLong(1);if(v!=null&&at<=now&&now-at<(v.optString(0).isEmpty()?NONE_MS:KEEP_MS)){cache.put(key,v.optString(0));found.put(key,at);}}}
   catch(Exception ignored){}
  }
  private static String known(){StringBuilder b=new StringBuilder();for(String[] x:ALL)b.append(x[0]).append(',');return b.toString();}

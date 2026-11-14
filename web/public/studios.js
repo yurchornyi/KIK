@@ -14,6 +14,9 @@ export const STUDIOS=[
  {id:'discovery',name:'Discovery',mark:'discovery',networks:[64,4353],companies:['Discovery Channel','Discovery Studios','Discovery Docs'],categories:['series','films']}
 ];
 export const studioById=id=>STUDIOS.find(s=>s.id===id)||null;
+/** The studio rules in a few letters: an answer kept by the server under other rules is not used (14.11: Marvel's films
+ *  kept Disney-less answers for a week after Marvel became Disney's). */
+export const STUDIO_RULES=(()=>{let h=2166136261;for(const c of JSON.stringify(STUDIOS.map(s=>[s.id,s.networks,s.companies,s.within||''])))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h.toString(36);})();
 /** Catalogue sections a studio makes: Pixar only animated films, Hulu series and animated series; the rest, every one.
  *  Filtered by a studio, a section it does not make is empty however many pages are read (14.11, owner: «нічого немає від Pixar, Hulu»). */
 export const makes=(studio,category)=>!!studio&&(!studio.categories||studio.categories.includes(category));

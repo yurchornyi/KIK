@@ -111,3 +111,9 @@ test('a section the studios never make ends at once, without a TMDB request',asy
  assert.deepEqual(result,{items:[],hasMore:false,page:1});assert.equal(calls.length,0);
  await assert.doesNotReject(api.lookup({studio:'netflix,apple,hbo,prime,disney,hulu,paramount,warner,pixar,natgeo,discovery',category:'series'},{token}));
 });
+
+test('the studio rules have a short fingerprint that changes with them',async()=>{
+ const {STUDIO_RULES,STUDIOS}=await import('./public/studios.js');
+ assert.match(STUDIO_RULES,/^[0-9a-z]{4,8}$/);
+ const disney=STUDIOS.find(s=>s.id==='disney');assert.ok(disney.companies.includes('Marvel Studios'));
+});
