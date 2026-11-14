@@ -14,7 +14,7 @@ import {preferredQuality} from './preferences.js';
 import {createManagement} from './manage.js';
 import {storage} from './storage.js';
 import {beaconPayload,SYNC_BATCH} from './sync-queue.js';
-import {createCatalogueView,catalogueSelection,selectionQuery,infoLine,newRelease} from './catalogue-view.js';
+import {createCatalogueView,catalogueSelection,selectionQuery,infoLine} from './catalogue-view.js';
 import {oops} from './oops.js';
 import {createDownloads,formatBytes,defaultDownloadQuality,DOWNLOAD_QUALITIES,watchedCopies,nextToSave} from './downloads.js';
 import {installRefresh} from './refresh.js';
@@ -939,25 +939,20 @@ function holidayDress(flags){const plan=holidayPlan(flags);if(!plan)return;
  if(plan.id==='ny'){const now=new Date();if(now.getMonth()===11)setTimeout(maybeFireworks,new Date(now.getFullYear()+1,0,1,0,0,2)-now);maybeFireworks();}}
 /** Home's rows after the personal ones, in the same order as on the TV (14.11, owner: «Так, роби» to one order for both):
  *  each kind's week's Top 10 and then its new releases — films, series, documentaries — then «Зараз дивляться»,
- *  «Мультфільми», «Аніме». [id, title, kind, section]:
+ *  «Мультфільми», «Аніме». [id, title, kind]:
  *  - top: «Топ-10 … цього тижня» (/api/shelf, shelves.mjs): what the world watches this week, found on the catalogue, in its
  *    order; it keeps its ten beside big numbers, even a title another row shows too (uniqueShelves leaves it whole);
- *  - fresh: «Нові фільми», «Нові серіали» (14.11, owner: the old «Фільми на вечір» and «Ще одна серія?» were the source's
- *    all-time popular lists): the source's newest additions of this year and last only (newRelease, FreshPolicy on the TV),
- *    up to three pages until a row has 12;
  *  - watching: the source's «Зараз дивляться», its first page, as on the TV;
- *  - otherwise a shelf of KIK's service: «Нові документальні», «Мультфільми», «Аніме». */
-const HOME_ROWS=[['films','Топ-10 фільмів цього тижня','top'],['new-films','Нові фільми','fresh','films'],['series','Топ-10 серіалів цього тижня','top'],['new-series','Нові серіали','fresh','series'],
+ *  - otherwise a shelf of KIK's service (shelves.mjs): «Нові фільми», «Нові серіали», «Нові документальні» (the source's
+ *    newest of this year and last only, read by the service once for every device; 14.11, owner: «щоб в ліміти влазило і
+ *    все оптимізуй» — each device used to read up to three pages per row itself), «Мультфільми», «Аніме». */
+const HOME_ROWS=[['films','Топ-10 фільмів цього тижня','top'],['new-films','Нові фільми'],['series','Топ-10 серіалів цього тижня','top'],['new-series','Нові серіали'],
  ['documentary','Топ-10 документальних цього тижня','top'],['new-documentary','Нові документальні'],['watching','Зараз дивляться','watching'],['cartoons','Мультфільми'],['anime','Аніме']];
-async function freshList(category){const out=[],seen=new Set();
- for(let page=1;page<=3&&out.length<12;page++){let r;try{r=await api('/api/catalogue?category='+category+'&filter=last&page='+page);}catch(e){if(page===1)throw e;break;}
-  for(const i of r.items||[]){const k=keyOf(i.link);if(newRelease(i)&&!seen.has(k)){seen.add(k);out.push(i);}}if(!r.items?.length||r.hasMore===false)break;}
- return out;}
 /** These rows come from KIK's service on their own (home-rows.js): kept in this browser and shown at once, a row on its
  *  way holds its place, a failed request is asked again. */
 let rowStore=null;
-function homeRows(){return rowStore||=createRowStore({storage,load:id=>{const [,,kind,section]=HOME_ROWS.find(r=>r[0]===id)||[];
-  return kind==='fresh'?freshList(section):kind==='watching'?api('/api/catalogue?category=&filter=watching&page=1').then(r=>(r.items||[]).slice(0,15)):api('/api/shelf?id='+id).then(r=>r.items);},
+function homeRows(){return rowStore||=createRowStore({storage,load:id=>{const [,,kind]=HOME_ROWS.find(r=>r[0]===id)||[];
+  return kind==='watching'?api('/api/catalogue?category=&filter=watching&page=1').then(r=>(r.items||[]).slice(0,15)):api('/api/shelf?id='+id).then(r=>r.items);},
  onChange:()=>{if(state.tab==='home')backgroundRender();}});}
 const rowOf=(id,title,extra={})=>{const v=homeRows().view(id);return {title,items:v.items,pending:v.pending,...extra};};
 function catalogueRows(){homeRows().ask(HOME_ROWS.map(r=>r[0]));
