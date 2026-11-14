@@ -74,14 +74,14 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
  async function resolve(identity,token,link){
   const signal=AbortSignal.timeout(6500);
   const queries=[...new Set([identity.original,...(identity.aliases?.length?identity.aliases:[identity.title])].filter(Boolean))].slice(0,3);
-  async function search(query){
+  async function search(query,who=identity){
    const language=/[ієїґ]/i.test(query)?'uk-UA':/[а-яё]/i.test(query)?'ru-RU':'en-US';
    const params=new URLSearchParams({query,language,include_adult:'false',page:'1'});
    if(identity.year)params.set(identity.kind==='tv'?'first_air_date_year':'year',String(identity.year));
    const data=await request(`/search/${identity.kind}?${params}`,token,signal);
-   const found=matchTitle(identity,data.results);if(found)return found;
+   const found=matchTitle(who,data.results);if(found)return found;
    // Regional release years can differ; validate the bounded year difference ourselves.
-   if(identity.year){params.delete(identity.kind==='tv'?'first_air_date_year':'year');const nearby=await request(`/search/${identity.kind}?${params}`,token,signal);return matchTitle(identity,nearby.results);}
+   if(identity.year){params.delete(identity.kind==='tv'?'first_air_date_year':'year');const nearby=await request(`/search/${identity.kind}?${params}`,token,signal);return matchTitle(who,nearby.results);}
    return null;
   }
   let match=null;
@@ -91,7 +91,8 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
   // (14.11, owner: «чого не оприділили … Netflix»). Only for a title not found, and once per lookup.
   if(!match&&!identity.original&&originalOf){
    let original='';try{original=String(await originalOf(link)||'').trim();}catch{}
-   if(original&&!queries.includes(original))match=await search(original);
+   // The page's original name is a name of the title too: a result is matched against it as well.
+   if(original&&!queries.includes(original))match=await search(original,{...identity,original});
   }
   if(!match)return null;
   const details=await request(`/${identity.kind}/${match.id}?append_to_response=images&include_image_language=uk,en,null`,token,signal);
