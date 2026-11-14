@@ -1,6 +1,6 @@
 import {readJson as body} from './request-body.mjs';
 import {protectPlayback,serveMedia} from './media-access.mjs';
-import {resolvePlayback} from './playback-sources.mjs';
+import {resolvePlayback} from './playback-sources.mjs';import {cachedStream,streamKey} from './stream-cache.mjs';
 import {localizedCards,localizedFilm,localizedRecords,localizedGenres} from './localization.mjs';
 import {recommendations} from './recommendations.mjs';import {aiReady} from './sentra-ai.mjs';
 import {validAvatar,AVATARS} from './public/avatars.js';
@@ -217,7 +217,12 @@ async function api(request,env,ctx){
   return edgeCached(ctx,key,1800,()=>resolvePlayback(b.link,String(b.voice),"","",{attempt:0,method:"episodes"}),v=>Array.isArray(v.episodes)&&v.episodes.length>0);}
   return json(await resolvePlayback(b.link,String(b.voice),"","",{attempt:b.recovery_attempt??0,method:"episodes"}));}
  if(path==="/api/episodes"||path==="/api/stream"){
-  if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),result=await resolvePlayback(b.link,String(b.voice),String(b.season||""),String(b.episode||""),{attempt:b.recovery_attempt??0,method:path.endsWith("episodes")?"episodes":"stream"});return json(path==="/api/stream"?await protectPlayback(result,request,env,Date.now(),{direct:b.direct===true}):result);
+  if(request.method!=="POST")fail("Використайте POST",405);const b=await body(request,8192),season=String(b.season||""),episode=String(b.episode||""),attempt=b.recovery_attempt??0,load=()=>resolvePlayback(b.link,String(b.voice),season,episode,{attempt,method:path.endsWith("episodes")?"episodes":"stream"});
+  if(path==="/api/episodes")return json(await load());
+  // The same film, voice and episode within two hours: the links found before, without asking the source (stream-cache.mjs).
+  let key=null;try{key=streamKey(url.origin,{link:canonicalLink(titleKey(String(b.link||""))),voice:b.voice,season,episode});}catch{}
+  const result=await cachedStream(key,{attempt,load,keep:p=>ctx.waitUntil(p)});
+  return json(await protectPlayback(result,request,env,Date.now(),{direct:b.direct===true}));
  }
  fail("Не знайдено",404);
 }
@@ -231,4 +236,4 @@ function secure(response){const r=new Response(response.body,response);r.headers
 async function scheduled(_event,env){await synopsisNight(env.DB,env).then(out=>console.log("KIK night loglines",JSON.stringify(out)),e=>console.warn("KIK night loglines failed",e?.message||e));}
 export default {scheduled,async fetch(request,env,ctx){try{const path=new URL(request.url).pathname;if(path==="/pair")return secure(pairRedirect(request));const out=secure(path.startsWith("/api/")?await api(request,env,ctx):await asset(request,env));
  // The offline service worker (public/sw.js) keeps the posters of downloaded titles: only it may fetch https images itself.
- if(path==="/sw.js")out.headers.set("Content-Security-Policy",out.headers.get("Content-Security-Policy").replace("connect-src 'self'","connect-src 'self' https:"));return out;}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname.replace(/^\/api\/media\/.*/,"/api/media/[redacted]"),status,e.status?"handled":"unexpected");return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз.",...e.sourcePaused||e.sourceBusy?{retry:true}:{}},status,status===429?{"Retry-After":"60"}:{}));}}};
+ if(path==="/sw.js")out.headers.set("Content-Security-Policy",out.headers.get("Content-Security-Policy").replace("connect-src 'self'","connect-src 'self' https:"));return out;}catch(e){const status=e.status||400;console.warn("KIK request failed",new URL(request.url).pathname.replace(/^\/api\/media\/.*/,"/api/media/[redacted]"),status,e.status?"handled":"unexpected",e.sourcePaused?"source paused":e.sourceBusy?"source busy":"");return secure(json({error:e.status?e.message:"Не вдалося виконати запит. Спробуйте ще раз.",...e.sourcePaused||e.sourceBusy?{retry:true}:{}},status,status===429?{"Retry-After":"60"}:{}));}}};

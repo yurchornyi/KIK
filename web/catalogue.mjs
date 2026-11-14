@@ -3,7 +3,7 @@ import {socketHttp} from "./source-transport.mjs";
 import {sha256} from "@noble/hashes/sha2.js";
 import {titleKey} from "./sync.mjs";
 export const HOSTS=["hdrezka.sh","hdrezka.website","rezka.ag","hdrezka.ag"],UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36";
-const cookies=new Map(),pages=new Map();let host=HOSTS[0],pausedUntil=0,refusals=0,nextRequestAt=0;
+const cookies=new Map(),pages=new Map();let host=HOSTS[0],pausedUntil=0,pauseKind='',probeAt=0,refusals=0,nextRequestAt=0;
 const one=(h,re)=>h.match(re)?.[1]??null;
 export function sourceRefusal(status,html){return /подозрительная активность с вашего IP/i.test(html)?'ip':status===429||status===403&&!html.includes('anubis_challenge')?'refused':null;}
 function retryDelay(value){if(!value)return 0;const seconds=Number(value);if(Number.isFinite(seconds))return Math.min(86400000,Math.max(0,seconds)*1000);const date=Date.parse(value);return Number.isFinite(date)?Math.min(86400000,Math.max(0,date-Date.now())):0;}
@@ -18,14 +18,21 @@ function paused(){return Object.assign(Error('Джерело фільмів ти
  *  so a viewer who gave up (a closed tab, a TV timeout) never holds the line for everyone else. Background work (similar
  *  titles) only takes a slot that is about to be free, so a title someone opens never waits behind it. */
 export async function sourceSlot(task,until=Infinity,background=false){
- if(Date.now()<pausedUntil)throw paused();
+ const probing=Date.now()<pausedUntil&&mayProbe({background,kind:pauseKind,now:Date.now(),probeAt});
+ if(probing)probeAt=Date.now()+PROBE_EVERY;
+ if(Date.now()<pausedUntil&&!probing)throw paused();
  const start=Math.max(Date.now(),nextRequestAt),wait=start-Date.now();
  if(wait>(background?1500:18000)||start>until-1500)throw busy();
  nextRequestAt=start+1000;
  if(wait>0)await new Promise(resolve=>setTimeout(resolve,wait));
- if(Date.now()<pausedUntil)throw paused();
+ if(Date.now()<pausedUntil&&!probing)throw paused();
  return task();
 }
+/** While the source is paused after a refusal, one viewer's request every 30 s still goes to it: an answer ends the pause
+ *  for everyone (a 429 often lasts seconds, and one Worker's pause used to keep every film shut for 2 minutes or more);
+ *  another refusal leaves the pause as it was. Never for background work, and never during an IP ban. */
+export const PROBE_EVERY=30000;
+export function mayProbe({background=false,kind='',now=Date.now(),probeAt=0}={}){return !background&&kind!=='ip'&&now>=probeAt;}
 export function text(h){return h==null?null:h.replace(/<br\s*\/?>/gi,"\n").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&quot;/g,'"').replace(/&#039;|&apos;/g,"'").replace(/&laquo;/g,"«").replace(/&raquo;/g,"»").replace(/&mdash;/g,"—").replace(/&ndash;/g,"–").replace(/&amp;/g,"&").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n)).replace(/[ \t\r]+/g," ").trim();}
 async function send(url,form=null,timeout=15000,until=Infinity,background=false){
  for(let hop=0;hop<6;hop++){
@@ -33,7 +40,7 @@ async function send(url,form=null,timeout=15000,until=Infinity,background=false)
   const headers={"Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Encoding":"gzip","User-Agent":UA,"Accept-Language":"uk-UA,uk;q=0.9,ru;q=0.8","Cookie":[...jar].map(([k,v])=>`${k}=${v}`).join("; ")};
   if(!headers.Cookie)delete headers.Cookie;
   if(form){headers["Content-Type"]="application/x-www-form-urlencoded; charset=UTF-8";headers["X-Requested-With"]="XMLHttpRequest";headers.Referer=u.origin+"/";headers.Origin=u.origin;}
-  const {r,content}=await sourceSlot(async()=>{const r=await socketHttp(url,{method:form?"POST":"GET",headers,body:form,redirect:"manual",timeout:Math.min(timeout,until-Date.now())}),content=await r.text();const refusal=sourceRefusal(r.status,content);if(refusal){if(Date.now()>=pausedUntil)pausedUntil=Date.now()+refusalPause(refusal,++refusals,retryDelay(r.headers.get('Retry-After')));throw paused();}refusals=0;return {r,content};},until,background);
+  const {r,content}=await sourceSlot(async()=>{const r=await socketHttp(url,{method:form?"POST":"GET",headers,body:form,redirect:"manual",timeout:Math.min(timeout,until-Date.now())}),content=await r.text();const refusal=sourceRefusal(r.status,content);if(refusal){if(Date.now()>=pausedUntil){pausedUntil=Date.now()+refusalPause(refusal,++refusals,retryDelay(r.headers.get('Retry-After')));pauseKind=refusal;console.warn("KIK source refused",refusal,r.status,u.hostname,"pause",Math.round((pausedUntil-Date.now())/1000)+"s");}throw paused();}if(pausedUntil>Date.now())console.warn("KIK source answered a probe, pause ended");refusals=0;pausedUntil=0;pauseKind='';return {r,content};},until,background);
   for(const cookie of r.headers.getSetCookie()){const pair=cookie.split(";",1)[0],at=pair.indexOf("=");if(at>0)jar.set(pair.slice(0,at),pair.slice(at+1));}
   if(r.status>=300&&r.status<400){url=new URL(r.headers.get("Location"),url).href;form=null;continue;}
   if(!r.ok&&!content.includes("anubis_challenge"))throw Error("Catalogue "+u.hostname+u.pathname+" HTTP "+r.status+" server="+r.headers.get("server")+" "+(one(content,/<title>(.*?)<\/title>/is)||content.slice(0,120)));if(content.length>3*1024*1024)throw Error("Catalogue limit");return {html:content,origin:u.hostname};

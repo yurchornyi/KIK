@@ -549,3 +549,4 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 /* #main takes the focus for the skip link and after a page change (tabindex=-1). A tap on an empty spot gave it the
    phone's blue focus ring, seen as a blue line across the bottom of Home (14.11, owner): the page itself shows no ring. */
 #main:focus,#main:focus-visible{outline:none}
+.forget-ask{margin:14px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}.forget-ask p{margin:0 0 12px;color:var(--muted);line-height:1.45}.forget-ask strong{display:block;color:#fff;margin-bottom:2px}.forget-ask .actions{display:flex;gap:10px;flex-wrap:wrap}
