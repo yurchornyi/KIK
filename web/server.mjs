@@ -94,7 +94,7 @@ async function api(request,env,ctx){
  // edge: fresh for 6 hours, answering for up to a week while TMDB or the source is down. A shelf not whole yet (time ran
  // out, the source was busy) answers as it is and is not kept: the next request goes on with it.
  if(path==="/api/shelf"&&request.method==="GET"){const id=url.searchParams.get("id")||"";if(!Object.hasOwn(SHELVES,id))fail("Невідома полиця");if(!env.TMDB_READ_TOKEN)fail("Полиця тимчасово недоступна",503);
-  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v=1"),21600,async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000}),list:params=>catalogue(params,{background:true,budget:8000})});return {items:await localizedCards(db,found.items),...(found.partial?{partial:true}:{})};},v=>!v.partial,2*86400);}
+  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v=2"),21600,async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000}),list:params=>catalogue(params,{background:true,budget:8000})});return {items:await localizedCards(db,found.items),...(found.partial?{partial:true}:{})};},v=>!v.partial,2*86400);}
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // An admin adds the email; the person then picks a password. A reset password is created again the same way.
