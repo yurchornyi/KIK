@@ -23,11 +23,11 @@ import org.json.*;
 public final class HomeActivity extends Activity {
  static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
 
- static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description;boolean resume,wideArt;float progress;long left;}
+ static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description,season,episode;boolean resume,wideArt,next;float progress;long left,pos;}
  static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content,heroInfo;private ScrollView scroll;private Oops oops;private volatile Throwable rowError;
- private TextView heroTitle,heroMeta,heroSub,heroText;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
+ private TextView heroTitle,heroMeta,heroSub,heroText,heroEyebrow,heroLeft;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
  private Item hero;private String focusedLink;private Runnable heroTask=()->{};private final Set<String> laterLinks=new HashSet<String>();
  private static final android.view.animation.Interpolator EASE=new android.view.animation.DecelerateInterpolator(1.6f);private boolean expanded,loadedOnce;
  private final Handler main=new Handler(Looper.getMainLooper());
@@ -71,12 +71,17 @@ public final class HomeActivity extends Activity {
   heroTitle=text("",32,Color.WHITE);heroTitle.setTypeface(Typeface.DEFAULT_BOLD);heroTitle.setLetterSpacing(-0.01f);heroTitle.setShadowLayer(dp(10),0,dp(1),0x99000000);heroTitle.setSingleLine(true);heroTitle.setEllipsize(TextUtils.TruncateAt.END);
   heroMeta=text("",15,0xffd8d8dc);heroMeta.setTypeface(Ui.MEDIUM);heroMeta.setSingleLine(true);heroMeta.setEllipsize(TextUtils.TruncateAt.END);heroSub=text("",14,0xffd8d8dc);heroSub.setSingleLine(true);
   heroText=text("",14,0xffd0d0d4);heroText.setLines(HERO_LINES);heroText.setEllipsize(TextUtils.TruncateAt.END);heroText.setLineSpacing(0,1.12f);
-  holidayGreeting(info);info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
+  holidayGreeting(info);
+  // Which kind of slide it is, as on the website (14.11, owner's mock-up): red for a title still to finish, grey for a pick.
+  heroEyebrow=text("",12,0xffcfcfd6);heroEyebrow.setTypeface(Typeface.DEFAULT_BOLD);heroEyebrow.setLetterSpacing(0.2f);heroEyebrow.setSingleLine(true);heroEyebrow.setIncludeFontPadding(false);info.addView(heroEyebrow);space(info,8);
+  info.addView(heroTitle,new LinearLayout.LayoutParams(Ui.contentWidth(this,650,80),-2));space(info,5);info.addView(heroMeta);space(info,3);// Resume state reads like Netflix: a thin progress bar, then "Сезон 32 · Серія 1 · ще 15 хв".
   heroResume=new LinearLayout(this);heroResume.setOrientation(0);heroResume.setGravity(Gravity.CENTER_VERTICAL);
   FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0xff4a4a50,dp(2),0,0));heroBar=new View(this);heroBar.setBackground(Ui.shape(RED,dp(2),0,0));track.addView(heroBar,new FrameLayout.LayoutParams(0,-1));
   LinearLayout.LayoutParams trackLp=new LinearLayout.LayoutParams(dp(120),dp(4));trackLp.setMargins(0,0,dp(12),0);heroResume.addView(track,trackLp);heroResume.addView(heroSub);
   // The resume line is as tall as a line of the description below: one takes the other's place, so the buttons stay put.
-  info.addView(heroResume,new LinearLayout.LayoutParams(-2,heroText.getLineHeight()));heroResume.setVisibility(View.GONE);space(info,8);
+  info.addView(heroResume,new LinearLayout.LayoutParams(-2,heroText.getLineHeight()));heroResume.setVisibility(View.GONE);
+  // Then how much is left and where it stopped; with the resume line it takes two lines of the description's place.
+  heroLeft=text("",13,0xffa9a9b2);heroLeft.setSingleLine(true);heroLeft.setEllipsize(TextUtils.TruncateAt.END);info.addView(heroLeft,new LinearLayout.LayoutParams(-2,heroText.getLineHeight()));heroLeft.setVisibility(View.GONE);space(info,8);
   heroWidth=Ui.contentWidth(this,500,80);info.addView(heroText,new LinearLayout.LayoutParams(heroWidth,-2));space(info,14);
   LinearLayout buttons=new LinearLayout(this);buttons.setOrientation(0);buttons.setClipChildren(false);buttons.setClipToPadding(false);
   // The row's padding leaves room for the focus ring and zoom; pulled back by it, the buttons start where the title does, as on the film page.
@@ -349,6 +354,7 @@ public final class HomeActivity extends Activity {
   for(Progress.Entry e:Progress.recent(this,profile)){
    if(e.finished()&&e.season==null)continue;
    Item i=new Item();i.link=e.link;i.title=e.title;i.poster=e.poster;i.resume=true;
+   if(e.season!=null&&!"0".equals(e.season)){i.season=e.season;i.episode=e.episode;}i.pos=e.pos;i.next=e.finished();
    i.progress=e.dur>0?Math.min(1f,(float)e.pos/e.dur):0;
    i.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"наступна серія":"з "+Ui.time(e.pos));
    long left=e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;i.left=e.finished()?0:left;
@@ -470,7 +476,7 @@ public final class HomeActivity extends Activity {
   View[] focus=appendRowViews(rows);first=focus[0];again=focus[1];
   space(content,40);
   if(rows.isEmpty()){heroTitle.setText("Ласкаво просимо");heroText.setText("Завантажуємо новинки… Тим часом можна відкрити «Фільми», «Серіали» або «Пошук».");watch.setVisibility(View.GONE);more.setVisibility(View.GONE);return;}
-  watch.setVisibility(View.VISIBLE);more.setVisibility(View.VISIBLE);later.setVisibility(View.VISIBLE);
+  watch.setVisibility(View.VISIBLE);more.setVisibility(View.VISIBLE);later.setVisibility(hero!=null&&hero.resume?View.GONE:View.VISIBLE);
   watch.setOnClickListener(v->{if(hero!=null){startActivity(new Intent(this,FilmActivity.class).putExtra("link",hero.link).putExtra("title",tr(hero.title)).putExtra("poster",hero.poster).putExtra("play",true));overridePendingTransition(android.R.anim.fade_in,android.R.anim.fade_out);}});
   if(again!=null&&!actionFocused){((ViewGroup)again).getChildAt(0).requestFocus();return;}
   startSlides(rows);
@@ -643,8 +649,8 @@ public final class HomeActivity extends Activity {
  }
 
  // ---------- featured slideshow ----------
- /** As on the website, the hero features recommendations, never a title already in «Продовжити перегляд»; it turns to the
-  *  next one (up to 10) every 9 s, wherever the focus is. A focused card takes a turn of the show: see feature(). */
+ /** As on the website: up to three titles still to finish, then recommendations, ten slides; it turns to the next one
+  *  every 9 s while the hero's buttons do not have the focus. A focused card takes a turn of the show: see feature(). */
  private final List<Item> slides=new ArrayList<Item>();private int slide;private LinearLayout dots;
  private final Runnable nextSlide=()->{if(destroyed||slides.isEmpty())return;if(foreground&&!expanded&&!heroFocused())showSlide((slide+1)%slides.size());else{scheduleSlide();paintDots();}};
  /** The hero's buttons have the focus: the title on them stays — no next slide, no card passed on the way up taking it
@@ -653,25 +659,31 @@ public final class HomeActivity extends Activity {
  private boolean heroFocused(){return watch!=null&&(watch.hasFocus()||later.hasFocus()||more.hasFocus());}
  private List<Item> candidates=new ArrayList<Item>();private String slideKeys="";
  private void startSlides(List<Row> rows){
+  // The same show as the website's (14.11, owner): up to three titles still to finish, the last one watched first, then
+  // the recommendations (never a title already started).
+  List<Item> mine=new ArrayList<Item>();for(Row r:rows)if(RESUME_ROW.equals(r.title))for(Item i:r.items){if(mine.size()>=3)break;mine.add(i);}
   Set<String> started=new HashSet<String>();for(Row r:rows)for(Item i:r.items)if(i.resume)started.add(norm(i.link));
   List<Item> found=new ArrayList<Item>();Set<String> seen=new HashSet<String>();
   for(int pass=0;pass<2&&found.isEmpty();pass++)for(Row r:rows){if(pass==0&&!r.personalized)continue;for(Item i:r.items){if(found.size()>=24)break;if(!i.resume&&!started.contains(norm(i.link))&&seen.add(norm(i.link)))found.add(i);}}
-  if(found.isEmpty())found.add(rows.get(0).items.get(0));
+  if(found.isEmpty()&&mine.isEmpty())found.add(rows.get(0).items.get(0));
   // Home redraws every few seconds while it syncs: the same picks keep the slide on screen and its timer.
-  StringBuilder keys=new StringBuilder();for(Item i:found)keys.append(norm(i.link)).append(',');
+  StringBuilder keys=new StringBuilder();for(Item i:mine)keys.append('>').append(norm(i.link)).append(',');for(Item i:found)keys.append(norm(i.link)).append(',');
   if(keys.toString().equals(slideKeys)&&!slides.isEmpty())return;
-  slideKeys=keys.toString();candidates=found;arrange();prefetchSynopses(slides);keepTurn();wideArt(found);
+  slideKeys=keys.toString();resumeSlides=mine;candidates=found;arrange();prefetchSynopses(slides);keepTurn();List<Item> art=new ArrayList<Item>(mine);art.addAll(found);wideArt(art);
  }
- /** Up to 10 slides. Once three or more picks have a wide picture, only those are shown, so the hero is always filled
- *  like the website's; until then (or without enough), the rest follow with their posters. */
- private void arrange(){slides.clear();for(Item x:candidates)if(x.wideArt&&slides.size()<10)slides.add(x);if(slides.size()>=3)return;for(Item x:candidates)if(!x.wideArt&&slides.size()<10)slides.add(x);}
+ /** Ten slides: the titles still to finish first, then the picks with a wide picture, then the other picks with their
+  *  poster (the website's heroSlides). */
+ private List<Item> resumeSlides=new ArrayList<Item>();
+ private void arrange(){slides.clear();for(Item x:resumeSlides)if(slides.size()<10)slides.add(x);for(Item x:candidates)if(x.wideArt&&slides.size()<10)slides.add(x);for(Item x:candidates)if(!x.wideArt&&slides.size()<10)slides.add(x);}
  /** Wide 16:9 pictures for the candidates, as the website's hero shows; a title without one keeps its poster. */
  private void wideArt(final List<Item> want){
   final List<String> links=new ArrayList<String>(),titles=new ArrayList<String>();for(Item x:want)if(!x.wideArt){links.add(x.link);titles.add(x.title==null?"":x.title);}
   if(links.isEmpty())return;
+  final String show=slideKeys;
   Ui.bg(()->{final Map<String,String> art=TvChannels.backdrops(this,links,titles);main.post(()->{if(destroyed)return;boolean any=false;
    for(Item x:want){String w=art.get(norm(x.link));if(w==null)continue;x.wide=w;x.wideArt=true;any=true;if(hero==x)Images.crossfade(w,heroImage);}
-   if(!any||slides.isEmpty()||want!=candidates)return;arrange();prefetchSynopses(slides);keepTurn();});});
+   // Arranged again only for the show these pictures were asked for (a single title's picture changes no order).
+   if(!any||slides.isEmpty()||want.size()<2||!show.equals(slideKeys))return;arrange();prefetchSynopses(slides);keepTurn();});});
  }
  private void showSlide(int n){borrowed=false;slide=n;setHero(slides.get(n));scheduleSlide();paintDots();}
  /** One turn ends, the next begins; a borrowed turn ends too, even with a single slide. */
@@ -726,28 +738,39 @@ public final class HomeActivity extends Activity {
  *  ~50 times a second, 32 ms a frame on the TCL, for as long as Home was open (14.11: 509 frames in 10 s of idle Home,
  *  every one late), and a press of the remote waited behind those frames. */
  private void paintDots(){main.removeCallbacks(dotStep);dotFill=null;dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
-  if(!on){View d=new View(this);d.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));dots.addView(d,lp);continue;}
-  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));fill.setPivotX(0);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
+  boolean mine=slides.get(k).resume;
+  if(!on){View d=new View(this);d.setBackground(Ui.shape(mine?0x88e50914:0x55ffffff,dp(3),0,0));dots.addView(d,lp);continue;}
+  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(mine?0x66e50914:0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(mine?0xffff3b44:Color.WHITE,dp(3),0,0));fill.setPivotX(0);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
   dotFill=fill;dotStep.run();}}
  private static final long DOT_STEP_MS=500;private View dotFill;
  private final Runnable dotStep=new Runnable(){public void run(){
   View fill=dotFill;if(destroyed||fill==null)return;long spent=slideAt==0?0:Math.min(SLIDE_MS,android.os.SystemClock.uptimeMillis()-slideAt);
   fill.setScaleX(spent/(float)SLIDE_MS);if(spent<SLIDE_MS)main.postDelayed(this,DOT_STEP_MS);}};
 
+ /** «Сезон 2 · Серія 2» beside the red bar; after a finished episode, the one that comes next. */
+ private static String resumeLine(Item i){if(i.next)return i.season!=null?"Далі наступна серія · після S"+i.season+"E"+i.episode:"Переглянуто";return i.season!=null?"Сезон "+i.season+" · Серія "+i.episode:"Фільм";}
+ /** «Залишилось 38 хв · зупинилися на 14:22». */
+ private static String leftLine(Item i){if(i.next)return "Попередню серію переглянуто";StringBuilder b=new StringBuilder();if(i.left>0)b.append("Залишилось ").append(i.left).append(" хв");if(i.pos>0){if(b.length()>0)b.append(" · ");b.append("зупинилися на ").append(Ui.time(i.pos));}return b.toString();}
  private void setHero(Item i){
   // setLines, not setMaxLines: the description kept its four-line height under the resume line, so the buttons dropped a
   // line whenever a title with progress came on (14.11, owner: «там воно падає»).
-  if(i==hero)return;hero=i;expanded=false;heroText.setLines(i.resume?HERO_LINES-1:HERO_LINES);
+  if(i==hero)return;hero=i;expanded=false;
+  // A title still to finish: the resume line and how much is left take two lines of the description's place, so the
+  // buttons stay where they are on every slide.
+  heroText.setLines(i.resume?HERO_LINES-2:HERO_LINES);
+  heroEyebrow.setText(i.resume?"ПРОДОВЖИТИ ПЕРЕГЛЯД":"РЕКОМЕНДУЄМО ДЛЯ ВАС");heroEyebrow.setTextColor(i.resume?0xffff6b70:0xffcfcfd6);
   heroTitle.setText(tr(i.title));
   heroMeta.setText(facts(i));
-  heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.GONE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();
-  // Continue fills up to where the title was left and says how much is left, like the launcher's Now Playing card.
-  HeroActions.label(watch,i.resume?(i.left>0?"Продовжити · ще "+Ui.minutes(i.left):"Продовжити"):"Дивитися",HeroActions.PLAY);
+  heroSub.setText(i.resume?resumeLine(i):"");heroLeft.setText(i.resume?leftLine(i):"");heroResume.setVisibility(i.resume?View.VISIBLE:View.GONE);heroLeft.setVisibility(i.resume?View.VISIBLE:View.GONE);
+  heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*(i.next?1f:i.progress)));heroBar.requestLayout();
+  // «Продовжити S2E2» says what it starts; a title being watched needs no «Мій список» (the website's slide is the same).
+  HeroActions.label(watch,!i.resume?"Дивитися":i.next?"Наступна серія":i.season!=null?"Продовжити S"+i.season+"E"+i.episode:"Продовжити",HeroActions.PLAY);
   Ui.watched(watch,i.resume&&i.left>0?i.progress:0);
+  later.setVisibility(i.resume?View.GONE:View.VISIBLE);
   paintLater();
   heroDescription(i);details(i);
   Images.crossfade(i.wide!=null?i.wide:i.poster,heroImage);if(!i.wideArt&&!candidates.contains(i))wideArt(java.util.Collections.singletonList(i));
-  for(View v:new View[]{heroTitle,heroMeta,heroResume,heroText}){v.animate().cancel();v.setAlpha(0.35f);v.animate().alpha(1f).setDuration(240).setInterpolator(EASE).withLayer().start();}
+  for(View v:new View[]{heroEyebrow,heroTitle,heroMeta,heroResume,heroLeft,heroText}){v.animate().cancel();v.setAlpha(0.35f);v.animate().alpha(1f).setDuration(240).setInterpolator(EASE).withLayer().start();}
  }
 
  // ---------- watch later ----------
