@@ -457,6 +457,7 @@ public final class HomeActivity extends Activity {
   recommendedLine=null;recommendedHeading=null;recommendationKeys="";
   recommendationLines.clear();recommendationSignatures.clear();rowViews.clear();shownRows=new ArrayList<Row>(rows);tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
   while(content.getChildCount()>2)content.removeViewAt(2);
+  rowsGeneration++;eagerRows=EAGER_ROWS;
   View first=null;
   View again=null;
   View[] focus=appendRowViews(rows);first=focus[0];again=focus[1];
@@ -469,24 +470,49 @@ public final class HomeActivity extends Activity {
   if(initial){watch.requestFocus();scroll.scrollTo(0,0);}else if(actionFocused)watch.requestFocus();
  }
 
- private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];
+ /** Rows whose cards are built before the first frame: they fill the screen under the hero. The others get theirs right after,
+  *  a row per message between frames and key presses. All of Home's ~300 cards at once held the main thread for 1.2 s on the
+  *  TCL (14.11, 1.39: «Skipped 71 frames», rows 1.9 s after start). */
+ private static final int EAGER_ROWS=3;
+ private int rowsGeneration,eagerRows=EAGER_ROWS;
+ private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];final List<Object[]> later=new ArrayList<Object[]>();
   for(Row r:rows){
    TextView h=rowHeading(r.title);View head=h;
    if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));head=header;}
-   content.addView(head);HorizontalScrollView hs=rowLine(r);LinearLayout line=(LinearLayout)hs.getChildAt(0);content.addView(hs);rowViews.put(r.title,new View[]{head,hs});
+   // The card the viewer was on comes back at once, wherever its row is.
+   boolean now=eagerRows>0;if(!now&&focusedLink!=null)for(Item i:r.items)if(focusedLink.equals(i.link)){now=true;break;}
+   if(now&&eagerRows>0)eagerRows--;
+   content.addView(head);HorizontalScrollView hs=rowLine(r,now);LinearLayout line=(LinearLayout)hs.getChildAt(0);content.addView(hs);rowViews.put(r.title,new View[]{head,hs});
+   if(!now){line.setTag(r);later.add(new Object[]{r,line});}
    if(r.personalized){recommendedLine=line;recommendedHeading=h;recommendationKeys=recommendationKeys(r);}
    if(r.recommendationId!=null){recommendationLines.put(r.recommendationId,line);recommendationSignatures.put(r.recommendationId,recommendationKeys(r));}
    for(int n=0;n<line.getChildCount();n++){View c=line.getChildAt(n);Item i=r.items.get(n);if(focus[0]==null)focus[0]=c;if(focus[1]==null&&focusedLink!=null&&focusedLink.equals(i.link))focus[1]=c;}
   }
+  fillLater(later);
   return focus;
  }
+ /** The deferred rows' cards, a row per message. A row already filled meanwhile (its recommendations arrived) or a page
+  *  rebuilt since is left alone. */
+ private void fillLater(final List<Object[]> later){
+  if(later.isEmpty())return;final int gen=rowsGeneration;final long started=SystemClock.elapsedRealtime();
+  main.post(new Runnable(){public void run(){
+   if(destroyed||gen!=rowsGeneration)return;
+   while(!later.isEmpty()){Object[] p=later.remove(0);Row r=(Row)p[0];LinearLayout line=(LinearLayout)p[1];if(line.getTag()!=r||line.getChildCount()>0)continue;line.setTag(null);fillLine(line,r);break;}
+   if(!later.isEmpty())main.post(this);else Log.d("KIK.Load","Home rows filled in "+(SystemClock.elapsedRealtime()-started)+"ms");
+  }});
+ }
  private TextView rowHeading(String title){TextView h=text(title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);return h;}
- private HorizontalScrollView rowLine(Row r){
+ private HorizontalScrollView rowLine(Row r){return rowLine(r,true);}
+ private HorizontalScrollView rowLine(Row r,boolean cards){
   // The focused card stands where the first one does, its poster under the heading's first letter, and the row glides under it.
   HorizontalScrollView hs=new Glide.Row(this).shelf(dp(32));hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
   LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);
-  final boolean top=topRow(r.title);int n=0;for(Item i:r.items){View c=card(i);if(top&&n<10)c=ranked(c,n+1);line.addView(c);n++;}return hs;
+  // A row still waiting for its cards (fillLater) is as tall as a filled one, so nothing below it moves when they come.
+  if(cards)fillLine(line,r);else line.setMinimumHeight(cardHeight());return hs;
  }
+ private void fillLine(LinearLayout line,Row r){final boolean top=topRow(r.title);int n=0;for(Item i:r.items){View c=card(i);if(top&&n<10)c=ranked(c,n+1);line.addView(c);n++;}}
+ private int cardHeight=0;
+ private int cardHeight(){if(cardHeight==0){Item sample=new Item();sample.title="Ж";sample.year="2026";sample.genre="Драма";View c=card(sample);c.measure(View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));cardHeight=c.getMeasuredHeight();}return cardHeight;}
  /** «Мій список» on the hero changes one row: it is redrawn in place (added after «Продовжити перегляд» or taken away), so the
   *  other rows keep their scroll, the hero and its focus stay, and the next load sees nothing to rebuild. */
  private void refreshLaterRow(){

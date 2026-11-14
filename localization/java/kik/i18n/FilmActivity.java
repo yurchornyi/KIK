@@ -70,9 +70,9 @@ public final class FilmActivity extends Activity {
  }
  @Override protected void onResume(){super.onResume();paintTaste();if(film!=null){pickVoice();buildVoices();Progress.Entry last=Progress.get(this,link);if(last!=null&&last.season!=null&&film.seasons.contains(last.season))season=last.season;paintWatch();if(film.series)showEpisodes();}}
 
- private int loadGeneration;
+ private int loadGeneration;private long loadStarted;
  private void load(){
-  final long started=android.os.SystemClock.elapsedRealtime();
+  final long started=android.os.SystemClock.elapsedRealtime();loadStarted=started;
   final int generation=++loadGeneration;
   Ui.bg(()->{
    try{
@@ -119,7 +119,7 @@ public final class FilmActivity extends Activity {
   final List<Site.Card> items=new ArrayList<Site.Card>();for(Site.Card c:list)if(!Progress.norm(c.link).equals(Progress.norm(f.link))&&!disliked.contains(RecommendationRanker.key(c.link))&&items.size()<12)items.add(c);if(items.isEmpty())return;
   // The service already sends Ukrainian names; the page's own list still needs translating.
   List<String> words=new ArrayList<String>();for(Site.Card c:items){if(!named)words.add(c.title);if(c.genre()!=null)words.add(c.genre());}final Map<String,String> got=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);
-  Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(got);similar.removeAllViews();
+  Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(got);similar.removeAllViews();android.util.Log.d("KIK.Load","Film suggestions "+(android.os.SystemClock.elapsedRealtime()-loadStarted)+"ms");
    for(final Site.Card c:items){final String title=named?c.title:tr(c.title),year=c.year();similar.addView(Ui.card(this,title,Ui.join(year,tr(c.genre())),c.poster,null,0,null,()->open(this,c.link,title,c.poster,year)));}
    similarHeader.setVisibility(View.VISIBLE);});
  }

@@ -89,6 +89,17 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           bash scripts/auto-release.sh
 
+      # A dry run keeps its APK for three days, so a branch is tried on the TV before it merges
+      # (`gh run download <run> --repo yurchornyi/KIK -n kik-dry-run`): the Mac builds nothing.
+      - name: Keep the dry run's APK
+        if: inputs.dry_run
+        uses: actions/upload-artifact@v4
+        with:
+          name: kik-dry-run
+          path: outputs/KIK-*.apk
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Forget the key
         if: always()
         run: rm -rf work/signing
