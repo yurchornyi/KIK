@@ -95,7 +95,7 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now}={})
   token=token.trim();
   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity)+'\n'+token));
   const digest=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
-  const key=new Request(new URL('/__artwork-cache/v3/'+digest,origin));
+  const key=new Request(new URL('/__artwork-cache/v4/'+digest,origin));
   const hit=memory.get(digest);if(hit&&hit.until>now())return hit.value;
   for(const [mark,at] of active)if(now()-at>ACTIVE_FOR)active.delete(mark);
   if(active.size>=12)return {configured:true,artwork:null,retryAfter:10};
