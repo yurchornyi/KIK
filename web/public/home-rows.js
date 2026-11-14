@@ -1,6 +1,6 @@
 /**
  * The Home rows the website asks KIK's service for on their own: the two Top 10s, «Нові фільми», «Нові серіали»,
- * «Мультфільми» and «Аніме» (14.11, owner: «то десь видно, то десь там не видно»). They came after the page, each at its
+ * «Топ-10 документальних цього тижня», «Нові документальні», «Мультфільми» and «Аніме» (14.11, owner: «то десь видно, то десь там не видно»). They came after the page, each at its
  * own time, pushing the rows under them down («1» of a Top 10 jumping up), and a request that failed once left its row
  * out until the next visit. Now:
  *  - the last good answer of each row is kept in this browser for KEEP_FOR and shown at once, then refreshed quietly;

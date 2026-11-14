@@ -931,13 +931,16 @@ function holidayDress(flags){const plan=holidayPlan(flags);if(!plan)return;
 const TOP_SHELVES=[['films','Топ-10 фільмів цього тижня'],['series','Топ-10 серіалів цього тижня']];
 /** «Нові фільми», «Нові серіали» (14.11, owner: the old «Фільми на вечір» and «Ще одна серія?» were the source's all-time
  *  popular lists, «Втеча з Шоушенка» and the like): the source's newest additions of this year and last only (newRelease,
- *  FreshPolicy on the TV), up to three pages until a row has 12. Then TMDB's «Мультфільми» and «Аніме», as on the TV. */
-const NEW_ROWS=[['new-films','films','Нові фільми'],['new-series','series','Нові серіали']],MORE_SHELVES=[['cartoons','Мультфільми'],['anime','Аніме']];
+ *  FreshPolicy on the TV), up to three pages until a row has 12. Then the two documentary rows, as the series have theirs
+ *  (14.11, owner: «2 розділа має бути для докум», like «Топ-10 серіалів цього тижня» and «Нові серіали»): the week's
+ *  Top 10 with its numbers and the source's new documentaries, both from KIK's service (shelves.mjs). Then TMDB's
+ *  «Мультфільми» and «Аніме», as on the TV. */
+const NEW_ROWS=[['new-films','films','Нові фільми'],['new-series','series','Нові серіали']],MORE_SHELVES=[['documentary','Топ-10 документальних цього тижня',true],['new-documentary','Нові документальні'],['cartoons','Мультфільми'],['anime','Аніме']];
 async function freshList(category){const out=[],seen=new Set();
  for(let page=1;page<=3&&out.length<12;page++){let r;try{r=await api('/api/catalogue?category='+category+'&filter=last&page='+page);}catch(e){if(page===1)throw e;break;}
   for(const i of r.items||[]){const k=keyOf(i.link);if(newRelease(i)&&!seen.has(k)){seen.add(k);out.push(i);}}if(!r.items?.length||r.hasMore===false)break;}
  return out;}
-/** These six rows come from KIK's service on their own (home-rows.js): kept in this browser and shown at once, a row on
+/** These eight rows come from KIK's service on their own (home-rows.js): kept in this browser and shown at once, a row on
  *  its way holds its place, a failed request is asked again. */
 let rowStore=null;
 function homeRows(){return rowStore||=createRowStore({storage,load:id=>{const fresh=NEW_ROWS.find(r=>r[0]===id);return fresh?freshList(fresh[1]):api('/api/shelf?id='+id).then(r=>r.items);},onChange:()=>{if(state.tab==='home')backgroundRender();}});}
@@ -945,7 +948,8 @@ const rowOf=(id,title,extra={})=>{const v=homeRows().view(id);return {title,item
 function topTenRows(){homeRows().ask(TOP_SHELVES.map(([id])=>id));
  return TOP_SHELVES.map(([id,title])=>{const r=rowOf(id,title,{subtitle:'Що дивляться у світі цього тижня',rank:true});return {...r,items:allowed(r.items).slice(0,10)};}).filter(r=>r.items.length||r.pending);}
 function newRows(){homeRows().ask([...NEW_ROWS.map(r=>r[0]),...MORE_SHELVES.map(r=>r[0])]);
- return [...NEW_ROWS.map(([id,,title])=>rowOf(id,title)),...MORE_SHELVES.map(([id,title])=>rowOf(id,title))].map(r=>({...r,items:allowed(r.items).filter(i=>liked(i.link)>=0)})).filter(r=>r.items.length||r.pending);
+ // A Top 10 keeps its ten (topTenRows); the other rows leave out what the profile disliked.
+ return [...NEW_ROWS.map(([id,,title])=>rowOf(id,title)),...MORE_SHELVES.map(([id,title,rank])=>rowOf(id,title,rank?{subtitle:'Що дивляться у світі цього тижня',rank:true}:{}))].map(r=>({...r,items:r.rank?allowed(r.items).slice(0,10):allowed(r.items).filter(i=>liked(i.link)>=0)})).filter(r=>r.items.length||r.pending);
 }
 function holidayRow(){return holidayFilms?.items.length?[{title:holidayFilms.title,items:allowed(holidayFilms.items).filter(i=>liked(i.link)>=0),subtitle:'Добірка KIK до свята'}]:[];}
 /** New Year's fireworks over the home banner: once, in the first ten minutes of 1 January, while the home is on screen. */

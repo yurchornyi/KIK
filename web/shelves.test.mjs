@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {shelf,candidates,shelfQueries,SHELVES} from './shelves.mjs';
+import {shelf,candidates,shelfQueries,SHELVES,freshRelease} from './shelves.mjs';
 import {pickCard} from './holiday-films.mjs';
 
 // Search cards as the catalogue gives them: the source's Russian name, «year, country, genre», a link with the year.
@@ -10,7 +10,7 @@ const NOW=Date.UTC(2026,10,14);
 function tmdb(lists){const asked=[];return {asked,fetcher:async url=>{asked.push(url);const path=new URL(url).pathname;const results=lists[path];return {ok:!!results,status:results?200:404,json:async()=>({results})};}};}
 
 test('the week\'s Top 10s are TMDB\'s trending films and trending series; cartoons and anime are this year\'s and last year\'s',()=>{
- assert.deepEqual(Object.keys(SHELVES).sort(),['anime','cartoons','films','series']);assert.equal(SHELVES.films.limit,10);assert.equal(SHELVES.series.limit,10);
+ assert.deepEqual(Object.keys(SHELVES).sort(),['anime','cartoons','documentary','films','new-documentary','series']);assert.equal(SHELVES.films.limit,10);assert.equal(SHELVES.series.limit,10);
  assert.deepEqual(shelfQueries('films',NOW).map(([k,p])=>[k,p.split('?')[0]]),[['movie','/trending/movie/week']]);
  assert.deepEqual(shelfQueries('series',NOW).map(([k,p])=>[k,p.split('?')[0]]),[['tv','/trending/tv/week']]);
  const [m,t]=shelfQueries('cartoons',NOW).map(([,p])=>new URLSearchParams(p.split('?')[1]));
@@ -57,4 +57,31 @@ test('a shelf out of time is partial and goes on from where it stopped; without 
  assert.deepEqual(next.items.map(i=>i.title).slice(0,3),['Кино 0','Кино 1','Кино 2'],'found titles come from the cache, in order');
  await assert.rejects(shelf('films',{token:'',fetcher,search}),e=>e.status===503);
  await assert.rejects(shelf('popular',{token:'t',fetcher,search}),e=>e.status===400);
+});
+
+test('«Топ-10 документальних»: the documentaries among the week\'s trends first, then this year\'s and last year\'s most popular',()=>{
+ const q=shelfQueries('documentary',NOW);assert.equal(SHELVES.documentary.limit,10);
+ assert.deepEqual(q.filter(([,,tier])=>tier===0).map(([k,p])=>[k,p.split('?')[0],new URLSearchParams(p.split('?')[1]).get('page')]),
+  [['movie','/trending/movie/week','1'],['tv','/trending/tv/week','1'],['movie','/trending/movie/week','2'],['tv','/trending/tv/week','2'],['movie','/trending/movie/week','3'],['tv','/trending/tv/week','3']]);
+ const [dm,dt]=q.filter(([,,tier])=>tier===1).map(([k,p])=>[k,new URLSearchParams(p.split('?')[1])]);
+ assert.deepEqual([dm[0],dt[0]],['movie','tv']);assert.equal(dm[1].get('with_genres'),'99');assert.equal(dm[1].get('primary_release_date.gte'),'2025-01-01');
+ assert.equal(dt[1].get('without_genres'),'10764,10767,10763','reality, talk and news shows stay out');
+ const doc=(id,name,date,genres=[99])=>movie(id,name,name,date,{genre_ids:genres}),show=(id,name,date,genres=[99])=>series(id,name,name,date,{genre_ids:genres});
+ const lists=[{kind:'movie',tier:0,results:[doc(1,'Drama',`2026-01-01`,[18]),doc(2,'Doc A','2026-02-01')]},{kind:'tv',tier:0,results:[show(3,'Reality','2026-01-01',[99,10764]),show(4,'Doc B','2025-03-01')]},
+  {kind:'movie',tier:0,results:[doc(5,'Doc C','2024-05-01')]},{kind:'movie',tier:1,results:[doc(2,'Doc A','2026-02-01'),doc(6,'Doc D','2025-01-01')]},{kind:'tv',tier:1,results:[show(7,'Doc E','2026-04-01')]}];
+ assert.deepEqual(candidates('documentary',lists).map(e=>e.queries[0]),['Doc A','Doc B','Doc C','Doc E','Doc D'],'trends first (page 2 after page 1), then the fill in turns; a title once, no drama, no reality');
+ assert.deepEqual(candidates('films',[{kind:'movie',results:[doc(1,'Drama','2026-01-01',[18])]}]).map(e=>e.queries[0]),['Drama'],'other shelves keep every genre');
+});
+test('«Нові документальні»: the source\'s newest documentary series and films of this year and last, in turns',async()=>{
+ const doc=(section,n,year)=>({link:`https://hdrezka.sh/${section}/documentary/${n}-doc-${year}.html`,title:'Doc '+n,info:year+(section==='series'?' - ...':'')+', США, Документальные'});
+ const pages={'series:1':[doc('series',1,2026),doc('series',2,1999),doc('series',3,2025)],'series:2':[doc('series',4,2026)],'series:3':[],
+  'films:1':[doc('films',10,2026),doc('films',11,2012)],'films:2':[doc('films',12,2025),doc('films',10,2026)],'films:3':[]};
+ const asked=[];const list=async({category,genre,filter,page})=>{asked.push([category,genre,filter,page]);return pages[category+':'+page]||[];};
+ const r=await shelf('new-documentary',{list,now:()=>NOW});
+ assert.deepEqual(r.items.map(i=>i.title),['Doc 1','Doc 10','Doc 3','Doc 12','Doc 4'],'a series and a film in turns, old ones and repeats left out');
+ assert.equal(r.partial,false);assert.ok(asked.every(([,genre,filter])=>genre==='documentary'&&filter==='last'));
+ assert.equal(freshRelease({info:'2025 - ..., США'},NOW),true);assert.equal(freshRelease({info:'2024, США'},NOW),false);assert.equal(freshRelease({info:'США'},NOW),false);
+ const half=await shelf('new-documentary',{list:async p=>{if(p.category==='films')throw Error('down');return pages['series:'+p.page]||[];},now:()=>NOW});
+ assert.deepEqual(half.items.map(i=>i.title),['Doc 1','Doc 3','Doc 4']);assert.equal(half.partial,true,'a failed section is not kept');
+ await assert.rejects(shelf('new-documentary',{list:async()=>{throw Error('down');},now:()=>NOW}),/down/);
 });
