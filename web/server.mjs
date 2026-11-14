@@ -168,7 +168,7 @@ async function api(request,env,ctx){
   const search=new URLSearchParams(params).toString(),key=new Request(url.origin+path+(search?"?"+search+"&":"?")+"__presentation=uk5");
   return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params,warm?{background:true}:{}))};return {...result,items:await localizedCards(db,result.items)};});
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk2"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  // A whole «Схожі» list is kept three days (was 12 hours): TMDB's picks and the source's «see also» change slowly, and
  // the TV keeps its copy as long (RecommendationMetadata.picks) — fewer source pages and TMDB requests, the same list.
@@ -177,7 +177,11 @@ async function api(request,env,ctx){
   // title page is read first; when the whole list is not ready in 9 seconds, the answer is what the page itself says
   // (its «see also», its franchise and genres, marked `partial`), and the whole list is finished and stored after it.
   // `warm=1` (the home's taste rows fetching ahead): the title page is background work, like the searches after it.
-  const page=await film(link,url.searchParams.get("warm")==="1"?{background:true}:{}),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:params=>catalogue(params,{background:true})});
+  // Each search for one of TMDB's picks is kept a day at the edge: a list that ran out of time keeps what it found, and the
+  // next try asks the source only for the rest.
+  const pickSearch=async params=>{const at=new Request(url.origin+"/__pick-search?q="+encodeURIComponent(params.query)+"&__v=1"),kept=await caches.default.match(at).catch(()=>null);if(kept)return kept.json();
+   const found=await catalogue(params,{background:true});ctx?.waitUntil?.(caches.default.put(at,new Response(JSON.stringify([...found]),{headers:{"Content-Type":"application/json","Cache-Control":"public, max-age=86400"}})).catch(()=>{}));return found;};
+  const page=await film(link,url.searchParams.get("warm")==="1"?{background:true}:{}),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:pickSearch});
   const answer=async(items,seconds)=>{const r=json({items:await localizedCards(db,items),picks:items.picks,parts:await localizedCards(db,items.parts),genres:items.genres,year:items.year,...(items.partial?{partial:true}:{})});r.headers.set("Cache-Control","public, max-age="+seconds);return r;};
   const items=await within(whole,9000);
   if(items){const r=await answer(items,items.partial?600:SIMILAR_FOR);ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}

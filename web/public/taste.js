@@ -39,6 +39,16 @@ const PAGES=Object.fromEntries(Object.entries({
 export const titleId=address=>{const m=String(address||'').match(ADDRESS);return m?m[1]+'/'+m[3]:'';};
 /** The Ukrainian name of a genre slug («comedy» → «Комедії»), or ''. */
 export const genreName=slug=>LABEL.get(slug)||'';
+/** The source lists where and how long a title was made among its genres: «Зарубежные», «Русские», «Украинские»,
+ *  «Полнометражные». They are not genres (14.11, owner: «Зарубіжне кіно — такої категорії в нас нема»), so a title shows
+ *  only its real ones, each once; with none left, the genre in its address (`/series/documentary/…` → «Документальні»). */
+const ORIGIN=new Set(['foreign','russian','ukrainian','full-length']);
+export function shownGenres(genres=[],link=''){
+ const out=[],seen=new Set();
+ for(const g of genres||[]){const slug=NAMES.get(fold(g)),key=slug||fold(g);if(!key||ORIGIN.has(slug)||seen.has(key))continue;seen.add(key);out.push(g);}
+ if(!out.length){const slug=String(link||'').match(ADDRESS)?.[2];if(slug&&LABEL.has(slug)&&!ORIGIN.has(slug))out.push(LABEL.get(slug));}
+ return out;
+}
 /**
  * What the ranker knows of a title, from {link or key, info, also}. The address gives the section, the main genre and the
  * year; `info` is a catalogue line («2011, США, Комедії»; the TV sends «2011, Комедії, Драми») or a genre list saved with a

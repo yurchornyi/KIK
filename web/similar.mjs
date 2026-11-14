@@ -20,8 +20,12 @@ async function tmdb(path,token,fetcher){
 async function pool(items,limit,job){const out=new Array(items.length);let next=0;await Promise.all(Array.from({length:Math.min(limit,items.length)},async()=>{while(next<items.length){const i=next++;out[i]=await job(items[i]).catch(()=>null);}}));return out;}
 /** What `task` gives when it settles within `ms`; else null, and the task goes on (its caller keeps the result when it comes). */
 export const within=(task,ms)=>{let timer;return Promise.race([task,new Promise(resolve=>{timer=setTimeout(resolve,ms,null);})]).finally(()=>clearTimeout(timer));};
-export async function similar(link,{token,load,search,fetcher=globalThis.fetch}){
- const f=await load(link),self=titleKey(f.link||link),kind=f.series?'tv':'movie';let picks=[],partial=false;
+/** A search the source refused as busy (other titles' lists asking at the same time: Home asks for up to six at once) is
+ *  asked again after BUSY_PAUSE while SEARCH_FOR lasts, instead of losing that pick (14.11: «Тому що ви дивилися
+ *  «Сімпсони»» held 4 titles, none of TMDB's ten found, because every search had been refused). */
+export const BUSY_PAUSE=1200,SEARCH_FOR=20000;
+export async function similar(link,{token,load,search,fetcher=globalThis.fetch,pause=ms=>new Promise(r=>setTimeout(r,ms)),now=Date.now}){
+ const started=now(),f=await load(link),self=titleKey(f.link||link),kind=f.series?'tv':'movie';let picks=[],partial=false;
  const imdb=f.imdb||f.imdbRef;
  if(token&&imdb)try{
   const found=await tmdb('/find/'+encodeURIComponent(imdb)+'?external_source=imdb_id',token,fetcher),item=(kind==='tv'?found.tv_results:found.movie_results)?.[0];
@@ -30,7 +34,7 @@ export async function similar(link,{token,load,search,fetcher=globalThis.fetch})
    if(recs.length<6)recs=recs.concat((await tmdb(`/${kind}/${item.id}/similar?language=ru-RU&page=1`,token,fetcher).catch(()=>({}))).results||[]);
    recs=recs.filter(r=>Number.isSafeInteger(r.id)&&!r.adult&&(r.title||r.name)).map(r=>({...r,media_type:r.media_type||kind})).slice(0,10);
    // Searches run as background work on the source, two at a time, so a title someone opens goes first.
-   picks=(await pool(recs,2,async r=>{try{return (await search({query:(r.title||r.name).slice(0,150)})).slice(0,10).find(c=>sameWork(r,c));}catch(e){partial=true;throw e;}})).filter(Boolean);
+   picks=(await pool(recs,2,async r=>{for(;;)try{return (await search({query:(r.title||r.name).slice(0,150)})).slice(0,10).find(c=>sameWork(r,c));}catch(e){if(e?.sourceBusy&&!e.sourcePaused&&now()-started<SEARCH_FOR){await pause(BUSY_PAUSE);continue;}partial=true;throw e;}})).filter(Boolean);
   }
  }catch(e){partial=true;console.warn('KIK similar: TMDB unavailable',e?.message);}
  const out=[],seen=new Set([self]);let named=0;for(const [i,c] of [...picks,...(f.related||[])].entries()){const key=titleKey(c.link);if(seen.has(key))continue;seen.add(key);out.push(c);if(i<picks.length)named++;if(out.length>=LIMIT)break;}

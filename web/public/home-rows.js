@@ -7,7 +7,10 @@
  *  - a row still on its way is `pending`: Home draws its place (app.js placeholderShelf), so nothing below it moves;
  *  - a failed request is asked again after RETRIES; only then does a row with nothing kept leave the page;
  *  - an empty answer counts as a failed one (14.11: a shelf the service was still putting together came back empty, and
- *    «Топ-10 серіалів цього тижня» left the page instead of being asked again, its kept answer replaced by nothing).
+ *    «Топ-10 серіалів цього тижня» left the page instead of being asked again, its kept answer replaced by nothing);
+ *  - an unfinished answer (`{items, partial:true}`: the service still putting a shelf together) is shown only when nothing
+ *    fuller is on screen, is never kept, and is asked again like a failed one (14.11: on the phone «Топ-10 фільмів» held one
+ *    title and «Топ-10 серіалів» two for hours: the kept copy was the unfinished one, and a home-screen KIK seldom reloads).
  */
 export const KEEP_FOR=12*3600000,RETRIES=[3000,10000,30000,60000],KEY='kik-home-rows';
 
@@ -22,8 +25,10 @@ export function createRowStore({storage,load,onChange=()=>{},now=Date.now,wait=(
  }
  function attempt(id,tries){
   const row=rows.get(id);
-  Promise.resolve().then(()=>load(id)).then(items=>{
+  Promise.resolve().then(()=>load(id)).then(answer=>{
+   const items=Array.isArray(answer)?answer:answer?.items,partial=!Array.isArray(answer)&&!!answer?.partial;
    if(!Array.isArray(items)||!items.length)throw Error('Row '+id);
+   if(partial){if(!(row.items?.length>=items.length)){row.items=items;row.pending=false;onChange(id);}throw Error('Row '+id+' unfinished');}
    const before=JSON.stringify(row.items||[]);row.items=items;row.at=now();row.pending=false;kept[id]={items,at:row.at};save();
    if(JSON.stringify(items)!==before)onChange(id);
   }).catch(()=>{

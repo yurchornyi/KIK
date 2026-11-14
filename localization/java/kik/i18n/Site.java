@@ -202,8 +202,9 @@ public final class Site {
  /** Titles on the last parsed page of this thread before the country filter; 0 means the source has no more pages. */
  public static int lastRaw(){Integer n=RAW.get();return n==null?0:n;}
  /** Shared KIK edge cache supplies browsing data; the TV contacts the source only for an opened title or playback. */
- private static List<Card> serviceCards(String path)throws IOException{
-  JSONArray items=FreeSources.get(path,30000).optJSONArray("items");if(items==null)throw new IOException("Catalogue response unavailable");
+ private static List<Card> serviceCards(String path)throws IOException{return cards(FreeSources.get(path,30000));}
+ private static List<Card> cards(JSONObject d)throws IOException{
+  JSONArray items=d.optJSONArray("items");if(items==null)throw new IOException("Catalogue response unavailable");
   List<Card> out=new ArrayList<Card>();int raw=0;
   for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;
    String link=x.optString("link"),title=x.optString("sourceTitle",x.optString("title"));if(!FreeSources.rezka(link)||title.isEmpty())continue;
@@ -217,7 +218,10 @@ public final class Site {
  }
  /** A Home shelf TMDB picks on KIK's service (web/shelves.mjs): «films» and «series» (the week's Top 10s), «cartoons», «anime»;
   *  HDRezka is never asked. */
- public static List<Card> shelf(String id)throws IOException{return serviceCards("/api/shelf?id="+FreeSources.enc(id));}
+ public static ShelfCards shelf(String id)throws IOException{JSONObject d=FreeSources.get("/api/shelf?id="+FreeSources.enc(id),30000);ShelfCards out=new ShelfCards();out.addAll(cards(d));out.partial=d.optBoolean("partial");return out;}
+ /** A shelf the service had not finished yet (`partial`: a cold edge, the source busy) holds only what it found so far, often
+  *  one or two titles. Home shows it only when it has nothing fuller, and asks again soon instead of keeping it six hours. */
+ public static final class ShelfCards extends ArrayList<Card>{public boolean partial;}
  /** TMDB's «viewers of this title also watch» for a title, found on the catalogue: the first `picks` cards of KIK's
   *  /api/similar (as background work there, warm=1). A list the service could not finish in time (partial) is not an
   *  answer yet; a country the viewer hid is left out. */

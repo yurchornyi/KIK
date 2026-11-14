@@ -1,5 +1,6 @@
 import {cleanVoices} from './public/playback-recovery.js';
 import {hash} from './auth.mjs';
+import {shownGenres} from './public/taste.js';
 // Only settled translations are shared across requests: a Worker request cannot await another request's I/O, which never
 // settles once that request is cancelled (06.11 audit), so each request asks Google itself for what is not known yet.
 const memory=new Map();
@@ -25,7 +26,7 @@ export async function localizedCards(db,items){const parts=[];for(let at=0;at<it
  for(const [part,tr] of await Promise.all(parts.map(async part=>[part,await translatePublic(db,part.flatMap(i=>[i.title,...unknownInfo(i.info)]))])))for(const i of part)out.push({...i,sourceTitle:i.sourceTitle||i.title,sourceInfo:i.sourceInfo||i.info,title:tr.get(i.title)||i.title,info:localizedInfo(i.info,tr)});return out;}
 /** Source genre names in Ukrainian (dictionary first, then the shared translation cache), sorted for a picker. */
 export async function localizedGenres(db,items){const tr=new Map();for(let at=0;at<items.length;at+=30)for(const [k,v] of await translatePublic(db,items.slice(at,at+30).map(g=>g.name)))tr.set(k,v);return items.map(g=>({...g,sourceName:g.name,name:WORDS[g.name]||tr.get(g.name)||g.name})).sort((a,b)=>a.name.localeCompare(b.name,'uk'));}
-export async function localizedFilm(db,f){const tr=await translatePublic(db,[f.title,f.description,f.country,f.duration,...(f.genres||[])]);return {...f,related:await localizedCards(db,f.related||[]),voices:cleanVoices(f.voices).map(v=>({...v,name:displayVoice(v.name)})),sourceTitle:f.sourceTitle||f.title,title:tr.get(f.title)||f.title,description:tr.get(f.description)||f.description,country:WORDS[f.country]||tr.get(f.country)||f.country,duration:tr.get(f.duration)||f.duration,genres:(f.genres||[]).map(g=>WORDS[g]||tr.get(g)||g)};}
+export async function localizedFilm(db,f){const tr=await translatePublic(db,[f.title,f.description,f.country,f.duration,...(f.genres||[])]);return {...f,related:await localizedCards(db,f.related||[]),voices:cleanVoices(f.voices).map(v=>({...v,name:displayVoice(v.name)})),sourceTitle:f.sourceTitle||f.title,title:tr.get(f.title)||f.title,description:tr.get(f.description)||f.description,country:WORDS[f.country]||tr.get(f.country)||f.country,duration:tr.get(f.duration)||f.duration,genres:shownGenres((f.genres||[]).map(g=>WORDS[g]||tr.get(g)||g),f.link)};}
 
 export function displayVoice(name){let s=String(name||'').replace(/\b(?:HD)?rezka\s*studio\b/ig,'Студійна озвучка');const words={"Новый канал":"Новий канал","Украинский":"Українська","Русский":"Російська","Английский":"Англійська","Оригинал":"Оригінал","Многоголосый":"Багатоголосе","Двухголосый":"Двоголосе","Одноголосый":"Одноголосе","Профессиональный":"Професійне","Любительский":"Аматорське","Закадровый":"Закадрове","Субтитры":"Субтитри"};for(const [a,b] of Object.entries(words))s=s.replace(new RegExp(a,'gi'),b);return s;}
 

@@ -24,7 +24,7 @@ public final class HomeActivity extends Activity {
  static final int BG=0xff0d0d0f,RED=0xffe50914,GREY=0xffa3a3a8,CARD=0xff1b1b1f;
 
  static final class Item{String link,title,poster,wide,year,genre,rating,age,duration,sub,heroLine,description,season,episode;boolean resume,wideArt,next;float progress;long left,pos;}
- static final class Row{String title,recommendationId;boolean personalized;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
+ static final class Row{String title,recommendationId;boolean personalized,partial;List<Item> items=new ArrayList<Item>();Row(String t){title=t;}}
 
  private FrameLayout root;private ImageView heroImage;private LinearLayout content,heroInfo;private ScrollView scroll;private Oops oops;private volatile Throwable rowError;
  private TextView heroTitle,heroMeta,heroSub,heroText,heroEyebrow,heroLeft;private LinearLayout heroResume;private View heroBar;private Button watch,more,later;private volatile int loadGeneration;private volatile boolean destroyed;
@@ -407,7 +407,7 @@ public final class HomeActivity extends Activity {
    try{Row r=new Row(ROWS[idx][0]);final boolean onlyNew=newRow(ROWS[idx][0]);final int thisYear=Calendar.getInstance().get(Calendar.YEAR);Set<String> seen=new HashSet<String>();
     // A TMDB shelf comes whole from KIK's service. «Нове» rows: the site's «last» list also holds old films it has just
     // added, so they are skipped and a page or two more is read.
-    if(ROWS[idx][2].startsWith("shelf:")){for(Site.Card c:Site.shelf(ROWS[idx][2].substring(6))){if(!seen.add(c.link))continue;Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}}
+    if(ROWS[idx][2].startsWith("shelf:")){Site.ShelfCards cards=Site.shelf(ROWS[idx][2].substring(6));r.partial=cards.partial;for(Site.Card c:cards){if(!seen.add(c.link))continue;Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}}
     else for(int page=1;page<=(onlyNew?FreshPolicy.PAGES:1)&&r.items.size()<15;page++){
      List<Site.Card> cards;try{cards=Site.list(ROWS[idx][1],null,ROWS[idx][2],page);}catch(IOException e){if(page==1)throw e;break;}
      for(Site.Card c:cards){if(onlyNew&&!FreshPolicy.fresh(c.year(),thisYear)||!seen.add(c.link))continue;Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}
@@ -425,7 +425,9 @@ public final class HomeActivity extends Activity {
   Log.d("KIK.Load","Home rows from the service "+(SystemClock.elapsedRealtime()-started)+"ms");
   List<Row> rows=new ArrayList<Row>();boolean missing=false;
   for(int k=0;k<out.length;k++){Row r=out[k];
-   if(r==null||r.items.isEmpty()){missing=true;r=null;for(Row p:previous)if(p.title.equals(ROWS[k][0])&&!p.items.isEmpty()){r=p;break;}}
+   // An unfinished shelf (14.11: «Топ-10» with one or two titles) counts as missing: last time's fuller row stays, and the
+   // page asks again in MISSING_RETRY_MS. With nothing fuller kept, its few titles are better than an empty place.
+   if(r==null||r.items.isEmpty()||r.partial){missing=true;Row found=r!=null&&!r.items.isEmpty()?r:null;r=found;for(Row p:previous)if(p.title.equals(ROWS[k][0])&&!p.items.isEmpty()&&(found==null||p.items.size()>found.items.size())){r=p;break;}}
    if(r!=null)rows.add(r);}
   rowsMissing=missing;rows.addAll(genreRows(taste,rows));if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
   // Second in the list, after the row already on screen; placeShelf puts it in its place on the page. Never alone: without

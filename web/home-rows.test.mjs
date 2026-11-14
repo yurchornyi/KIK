@@ -55,3 +55,22 @@ test('an empty answer is asked again and never replaces a kept row',async()=>{
  const fresh=createRowStore({storage:memory(),load:async()=>[],wait:()=>{}});fresh.ask(['series']);await tick();await tick();
  assert.equal(fresh.view('series').pending,true,'nothing kept: its place is held while it is asked again');
 });
+
+test('an unfinished shelf is shown only over nothing fuller, never kept, and asked again',async()=>{
+ const ten=Array.from({length:10},(_,n)=>film(n+1));
+ // A fuller kept Top 10 stays; the unfinished answer is not saved; the next try brings the whole row.
+ const storage=memory({[KEY]:JSON.stringify({films:{items:ten,at:Date.now()}})}),waits=[];let calls=0;
+ const store=createRowStore({storage,load:async()=>{calls++;return calls===1?{items:[film(1)],partial:true}:ten.slice(0,9);},wait:(fn,ms)=>waits.push([fn,ms])});
+ store.ask(['films']);await tick();await tick();
+ assert.equal(store.view('films').items.length,10,'the kept ten stay on screen');assert.deepEqual(waits.map(w=>w[1]),[RETRIES[0]]);
+ assert.equal(JSON.parse(storage.getItem(KEY)).films.items.length,10,'the unfinished answer is not kept');
+ waits[0][0]();await tick();await tick();
+ assert.equal(calls,2);assert.equal(store.view('films').items.length,9);
+ // Nothing kept: the few titles show at once, are not saved, and the row is asked again.
+ const empty=memory(),later=[];let n=0,changed=0;
+ const fresh=createRowStore({storage:empty,load:async()=>(++n===1?{items:[film(1),film(2)],partial:true}:ten),onChange:()=>changed++,wait:(fn,ms)=>later.push(fn)});
+ fresh.ask(['series']);await tick();await tick();
+ assert.deepEqual(fresh.view('series'),{items:[film(1),film(2)],pending:false});assert.equal(empty.getItem(KEY),null);assert.equal(later.length,1);
+ later[0]();await tick();await tick();
+ assert.equal(fresh.view('series').items.length,10);assert.equal(JSON.parse(empty.getItem(KEY)).series.items.length,10);assert.equal(changed,2);
+});
