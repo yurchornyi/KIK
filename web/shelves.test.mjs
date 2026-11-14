@@ -85,3 +85,19 @@ test('«Нові документальні»: the source\'s newest documentary 
  assert.deepEqual(half.items.map(i=>i.title),['Doc 1','Doc 3','Doc 4']);assert.equal(half.partial,true,'a failed section is not kept');
  await assert.rejects(shelf('new-documentary',{list:async()=>{throw Error('down');},now:()=>NOW}),/down/);
 });
+
+test('«Топ-10 документальних» leaves out a film of the same name the source files under fiction, keeps history',async()=>{
+ const doc=(id,name)=>movie(id,name,name,'2026-01-01',{genre_ids:[99]});
+ const {fetcher}=tmdb({'/3/trending/movie/week':[doc(1,'Звук'),doc(2,'Война')],'/3/trending/tv/week':[],'/3/discover/movie':[],'/3/discover/tv':[]});
+ const at=(genre,slug,title)=>({link:`https://hdrezka.sh/films/${genre}/${slug}-2026.html`,title,info:'2026, США, x'});
+ const search=async({query})=>query==='Звук'?[at('drama','1-zvuk','Звук')]:query==='Война'?[at('historical','2-voyna','Война')]:[];
+ assert.deepEqual((await shelf('documentary',{token:'t',fetcher,search,cache:new Map(),now:()=>NOW})).items.map(i=>i.title),['Война']);
+});
+test('«Нові документальні» reads its pages one after another and stops at its budget',async()=>{
+ let running=0,most=0,clock=NOW;const list=async({category,page})=>{running++;most=Math.max(most,running);await new Promise(r=>setTimeout(r,1));running--;clock+=4000;
+  return page===1?[{link:`https://hdrezka.sh/${category}/documentary/${category==='series'?1:2}${page}-doc-2026.html`,title:category+page,info:'2026, США'}]:[];};
+ const r=await shelf('new-documentary',{list,now:()=>clock,budget:20000});
+ assert.equal(most,1,'one source request at a time');assert.deepEqual(r.items.map(i=>i.title),['series1','films1']);assert.equal(r.partial,false);
+ clock=NOW;const slow=await shelf('new-documentary',{list:async p=>{clock+=30000;return list(p);},now:()=>clock,budget:20000});
+ assert.equal(slow.partial,true,'out of time: not kept');assert.deepEqual(slow.items.map(i=>i.title),['series1']);
+});

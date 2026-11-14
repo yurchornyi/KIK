@@ -19,6 +19,10 @@ const API='https://api.themoviedb.org/3',DAY=86400000,RETRY=600000,BUDGET=20000;
 export const SHELVES={films:{limit:10},series:{limit:10},cartoons:{limit:15},anime:{limit:15},documentary:{limit:10},'new-documentary':{limit:15}};
 // TMDB's series can be a documentary and a reality, talk or news show at once: those stay out of «Документальне».
 const NOT_DOCUMENTARY=[10764,10767,10763];
+// A documentary found under one of the source's fiction genres is a film of the same name (14.11: «Історія звуку», a
+// drama, and «Назад у 90-ті», a fantasy, stood in «Топ-10 документальних»): it stays out. History, war, biography, music,
+// sport and travel stay in, as documentaries are often filed there («Друга світова війна з Томом Хенксом»).
+const FICTION=new Set(['arthouse','action','western','detective','kids','drama','erotic','horror','comedy','crime','melodrama','adventures','family','thriller','fiction','fantasy','short','realtv','standup','theatre']);
 const memo=new Map();
 
 /** The TMDB lists a shelf reads, films first: [kind, path, tier]. Discovery covers this year and last, up to today. A
@@ -61,19 +65,23 @@ const FRESH={'new-documentary':{genre:'documentary',categories:['series','films'
 /** This year's and last year's titles only, as «Нові серіали» (newRelease on the website, FreshPolicy on the TV): the
  *  source's «last» list also holds old titles it has just added. A series counts by the year it began. */
 export function freshRelease(card,now=Date.now()){const year=Number(String(card?.info||'').match(/\d{4}/)?.[0]),thisYear=new Date(now).getUTCFullYear();return year>thisYear-2&&year<=thisYear+1;}
-/** «Нові документальні»: up to three «last» pages of documentary series and of documentary films, new releases only, a
- *  series and a film in turns. A section that fails leaves the other's titles, `partial`, so the server does not keep it. */
-async function freshShelf(id,{list,now,limit}){
+/** «Нові документальні»: up to three «last» pages of documentary series, then of documentary films, new releases only,
+ *  shown a series and a film in turns. The pages are read one after another, as background work takes one source slot at
+ *  a time (14.11: read side by side, one section was refused as busy and the shelf came back partial). A page that fails
+ *  or the budget running out leaves what was read, `partial`, so the server does not keep it; nothing read at all fails. */
+async function freshShelf(id,{list,now,limit,budget}){
  if(typeof list!=='function')throw Object.assign(Error('Полиця тимчасово недоступна'),{status:503});
- const {genre,categories}=FRESH[id];
- const settled=await Promise.allSettled(categories.map(async category=>{const out=[];
-  for(let page=1;page<=FRESH_PAGES&&out.length<limit;page++){let cards;try{cards=await list({category,genre,filter:'last',page});}catch(e){if(page===1)throw e;break;}
+ const {genre,categories}=FRESH[id],started=now(),lists=[];let partial=false,failure=null;
+ for(const category of categories){const out=[];lists.push(out);
+  for(let page=1;page<=FRESH_PAGES&&out.length<limit;page++){
+   if(now()-started>budget){partial=true;break;}
+   let cards;try{cards=await list({category,genre,filter:'last',page});}catch(e){partial=true;failure??=e;break;}
    out.push(...(cards||[]).filter(c=>freshRelease(c,now())));if(!cards?.length)break;}
-  return out;}));
- if(settled.every(r=>r.status==='rejected'))throw settled[0].reason;
- const lists=settled.map(r=>r.status==='fulfilled'?r.value:[]),items=[],seen=new Set(),longest=Math.max(0,...lists.map(l=>l.length));
+ }
+ if(failure&&lists.every(l=>!l.length))throw failure;
+ const items=[],seen=new Set(),longest=Math.max(0,...lists.map(l=>l.length));
  for(let n=0;n<longest&&items.length<limit;n++)for(const l of lists){const card=l[n];if(!card)continue;let k;try{k=titleKey(card.link);}catch{continue;}if(seen.has(k))continue;seen.add(k);items.push(card);if(items.length>=limit)break;}
- return {items,partial:settled.some(r=>r.status==='rejected')};
+ return {items,partial};
 }
 
 async function request(path,token,fetcher){
@@ -90,7 +98,7 @@ async function request(path,token,fetcher){
  */
 export async function shelf(id,{token,search,list,fetcher=globalThis.fetch,now=Date.now,budget=BUDGET,cache=memo}={}){
  if(!Object.hasOwn(SHELVES,id))throw Object.assign(Error('Невідома полиця'),{status:400});
- if(Object.hasOwn(FRESH,id))return freshShelf(id,{list,now,limit:SHELVES[id].limit});
+ if(Object.hasOwn(FRESH,id))return freshShelf(id,{list,now,limit:SHELVES[id].limit,budget});
  if(!String(token||'').trim())throw Object.assign(Error('Полиця тимчасово недоступна'),{status:503});
  const started=now(),lists=await Promise.all(shelfQueries(id,started).map(async([kind,path,tier=0])=>({kind,tier,results:await request(path,token,fetcher)})));
  const items=[],seen=new Set(),limit=SHELVES[id].limit;let partial=false;
@@ -102,7 +110,9 @@ export async function shelf(id,{token,search,list,fetcher=globalThis.fetch,now=D
    if(cache.size>=600)cache.delete(cache.keys().next().value);cache.set(entry.id,hit);
   }
   if(hit.failed){partial=true;continue;}
-  const card=hit.card;if(!card)continue;let k;try{k=titleKey(card.link);}catch{continue;}if(seen.has(k))continue;seen.add(k);items.push(card);
+  const card=hit.card;if(!card)continue;let k;try{k=titleKey(card.link);}catch{continue;}if(seen.has(k))continue;
+  if(id==='documentary'&&FICTION.has(k.split('/')[1]))continue;
+  seen.add(k);items.push(card);
   if(items.length>=limit)break;
  }
  return {items,partial};
