@@ -6,7 +6,7 @@ import {adSkip} from './ad-skip.js';
 import {introSkip,nextOffer,openingLogo,NEXT_COUNTDOWN} from './episode-marks.js';
 import {creditsAt,askRating,asked,markAsked,said,LIKED,DISLIKED} from './rate-prompt.js';
 import {engagement,engagementWeight,engagementLabel,byTitle as titleGroups} from './watching.js';
-import {facetsOf,tasteModel,tastePages,rankByTaste,similarity,titleId,fade,devotion} from './taste.js';
+import {facetsOf,tasteModel,tastePages,rankByTaste,similarity,titleId,fade,devotion,becauseSeeds} from './taste.js';
 import {uniqueTitles,uniqueShelves} from './catalogue-identity.js';
 import {searchMatches,itemScore} from './search-match.js';
 import {AVATARS,avatarUrl} from './avatars.js';
@@ -214,7 +214,9 @@ function tasteSignals(){const out=[],seen=new Set(),noted=new Map();
  return out;}
 const strength=s=>s.w*(s.at?fade(s.at):1);
 /** The titles whose facts are worth a request: the six the taste rests on most, and the two latest dislikes (what is like them goes down). */
-function tasteSeeds(signals){const own=signals.filter(s=>!keyOf(s.link).startsWith('uaserials/'));return [...own.filter(s=>s.w>0).sort((a,b)=>strength(b)-strength(a)).slice(0,6),...own.filter(s=>s.w<=DISLIKED).slice(0,2)];}
+function tasteSeeds(signals){const own=signals.filter(s=>!keyOf(s.link).startsWith('uaserials/')),top=own.filter(s=>s.w>0).sort((a,b)=>strength(b)-strength(a)).slice(0,6),known=new Set(top.map(s=>keyOf(s.link)));
+ // Today's «Тому що ви дивилися» titles need their TMDB picks too, also when they are not among the six strongest.
+ return [...top,...becauseSeeds(signals).filter(s=>!known.has(keyOf(s.link))),...own.filter(s=>s.w<=DISLIKED).slice(0,2)];}
 /** The catalogue pages a taste asks for: what is popular in the genres it watches most (taste.js tastePages), and what is new in the two it watches most. */
 function wantedPages(model){const pages=tastePages(model);return [...pages.map(page=>page+'/popular'),...pages.slice(0,2).map(page=>page+'/last')];}
 /** True once everything the taste asks for has arrived (or failed): the AI order is asked for only then, once, with all the candidates. */
@@ -256,7 +258,7 @@ function tasteRanking(){if(recsMemo)return recsMemo;
   for(const item of allowed(facts.picks)){const k=s.w>0?add(item):keyIn(item.link);boost.set(k,(boost.get(k)||0)+strength(s));}
   // The next part of a franchise the profile watched or liked goes first, the one after it follows.
   const own=s.w>=3&&facts.parts.find(p=>p.current);if(own)allowed(facts.parts.filter(p=>p.num>own.num&&!gone.has(titleId(keyOf(p.link))||keyOf(p.link)))).slice(0,2).forEach((p,i)=>{const k=add(p);sequels.set(k,Math.max(sequels.get(k)||0,i?.35:1));});}
- recsMemo={signals,ranked:rankByTaste([...pool.values()],model,{keyOf:i=>keyIn(i.link),excluded,boost,sequels,limit:72})};setTimeout(()=>{recsMemo=null;},0);return recsMemo;}
+ recsMemo={signals,gone,ranked:rankByTaste([...pool.values()],model,{keyOf:i=>keyIn(i.link),excluded,boost,sequels,limit:72})};setTimeout(()=>{recsMemo=null;},0);return recsMemo;}
 let enhanced={profile:'',signature:'',keys:[],mode:'standard',busy:false};
 function resetEnhanced(){enhanced={profile:'',signature:'',keys:[],mode:'standard',busy:false};recsMemo=null;}
 /**
@@ -266,12 +268,18 @@ function resetEnhanced(){enhanced={profile:'',signature:'',keys:[],mode:'standar
  */
 function recommendations(){const {signals,ranked}=tasteRanking(),base=uniqueTitles(ranked.map(x=>x.item));if(!state.user||!state.profile?.enhanced_recs)return base.slice(0,20);const owner=state.user.id+':'+state.profile.id,signature=owner+'|'+JSON.stringify([...data('rating'),...data('later'),...data('progress')].map(r=>[r.kind,r.key,r.updated_at]))+'|'+base.map(i=>keyOf(i.link)).join(',');if(!enhanced.busy&&enhanced.signature!==signature&&base.length>=3&&state.since&&tasteSettled(signals)){enhanced.busy=true;enhanced.signature=signature;enhanced.profile=owner;api('/api/recommendations',{profile_id:state.profile.id,items:base.slice(0,72).map(i=>({link:i.link,title:i.title,original:i.original,info:i.info,sourceInfo:i.sourceInfo,year:i.year,description:i.description}))}).then(r=>{if(state.user?.id+':'+state.profile?.id!==owner)return;enhanced.keys=r.keys||[];enhanced.mode=r.mode==='ai'&&(r.keys||[]).filter(k=>base.some(i=>keyOf(i.link)===k)).length>=3?'ai':'standard';if(state.tab==='home')backgroundRender();}).catch(()=>{}).finally(()=>{if(enhanced.profile===owner)enhanced.busy=false;});}if(enhanced.profile!==owner||enhanced.mode!=='ai')return base.slice(0,20);const byKey=new Map(base.map(i=>[keyOf(i.link),i])),ordered=[],take=key=>{const item=byKey.get(key);if(item){ordered.push(item);byKey.delete(key);}};for(const x of ranked)if(x.next>=1)take(x.key);for(const key of enhanced.keys)take(key);return [...ordered,...byKey.values()].slice(0,20);}
 /**
- * «Тому що ви дивилися …»: up to two rows, each around one title the taste rests on most: what its viewers also watch
- * and what the catalogue has like it, of one kind per row and without the titles of «Для вас».
+ * «Тому що ви дивилися …» (14.11, owner: «так але 2 рядка нехай буде»): up to two rows, each around one of today's titles
+ * (becauseSeeds: a like or a title watched in the last month, the six strongest turned daily). TMDB's picks for it come
+ * first — what its viewers also watch — then what the catalogue has like it; one kind per row, never a title watched,
+ * rated, saved or already in «Для вас».
  */
-function becauseRows(taken){const {signals,ranked}=tasteRanking(),rows=[],used=new Set(taken.map(i=>keyOf(i.link))),kinds=new Set();
- for(const s of tasteSeeds(signals)){if(s.w<3||!s.title)continue;const facts=seedFacts.get(keyOf(s.link));if(!facts)continue;const f=facetsOf(s),kind=f.section+'/'+f.slug;if(kinds.has(kind))continue;
-  const named=new Set(facts.picks.map(x=>keyOf(x.link))),items=ranked.filter(x=>!used.has(x.key)).map(x=>({x,v:(named.has(x.key)?1:0)+similarity(x.f,f)})).filter(y=>y.v>=.4).sort((a,b)=>b.v-a.v).slice(0,12).map(y=>y.x.item);
+function becauseRows(taken){const {signals,ranked,gone}=tasteRanking(),rows=[],used=new Set(taken.map(i=>keyOf(i.link))),kinds=new Set();
+ const fresh=i=>{const k=keyOf(i.link);return !used.has(k)&&!gone.has(titleId(k)||k)&&liked(i.link)>=0;};
+ for(const s of becauseSeeds(signals)){const facts=seedFacts.get(keyOf(s.link));if(!facts)continue;const f=facetsOf(s),kind=f.section+'/'+f.slug;if(kinds.has(kind))continue;
+  // TMDB's picks first: what viewers of this title also watch, in TMDB's order (/api/similar); then what the catalogue has like it.
+  const picks=allowed(facts.picks).filter(fresh),named=new Set(picks.map(i=>keyOf(i.link)));
+  const like=ranked.filter(x=>!used.has(x.key)&&!named.has(x.key)).map(x=>({x,v:similarity(x.f,f)})).filter(y=>y.v>=.4).sort((a,b)=>b.v-a.v).map(y=>y.x.item);
+  const items=uniqueTitles([...picks,...like]).slice(0,12);
   if(items.length<4)continue;kinds.add(kind);for(const i of items)used.add(keyOf(i.link));rows.push({title:(s.rated?'Тому що вам сподобалося «':'Тому що ви дивилися «')+s.title+'»',items});if(rows.length===2)break;}
  return rows;}
 

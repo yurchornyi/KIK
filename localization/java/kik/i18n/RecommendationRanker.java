@@ -15,8 +15,22 @@ final class RecommendationRanker {
  }
  static final class Signal {
   final String link,genre;final double weight;
+  /** What the title weighs as the ground of a «Тому що ви дивилися» row: a like, or watching in the last SEED_DAYS days
+   *  (its weight before the weeks wear it down); 0 for a title that cannot be one. */
+  final double seed;
   ContentSimilarity.Document document;
-  Signal(String link,String genre,double weight){this.link=link;this.genre=genre;this.weight=weight;}
+  Signal(String link,String genre,double weight){this(link,genre,weight,weight>=LIKED?weight:0);}
+  Signal(String link,String genre,double weight,double seed){this.link=link;this.genre=genre;this.weight=weight;this.seed=seed;}
+ }
+ /** «Тому що ви дивилися» (14.11, owner: a month's memory, turned daily, two rows): a row may stand on a liked title or one
+  *  watched in the last 30 days; of those, the SEEDS strongest, the list turned by two each day, so tomorrow's Home has
+  *  other titles' rows. Titles without a name cannot head a row. */
+ static final int SEED_DAYS=30,SEEDS=6;
+ static List<Signal> seeds(List<Signal> signals,Map<String,String> titles,long now,long zoneOffset){
+  List<Signal> all=new ArrayList<Signal>();for(Signal x:signals)if(x.seed>=3&&titles.get(key(x.link))!=null)all.add(x);
+  all.sort((a,b)->Double.compare(b.weight,a.weight));if(all.size()>SEEDS)all=new ArrayList<Signal>(all.subList(0,SEEDS));if(all.size()<2)return all;
+  int day=(int)Math.floorDiv(now+zoneOffset,86_400_000L),off=(int)Math.floorMod(day*2L,(long)all.size());
+  List<Signal> out=new ArrayList<Signal>(all.subList(off,all.size()));out.addAll(all.subList(0,off));return out;
  }
  static final class Query {
   final String category,genre;final double weight;

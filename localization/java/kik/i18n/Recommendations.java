@@ -30,7 +30,9 @@ final class Recommendations {
    boolean first=e.season==null||"1".equals(e.season)&&"1".equals(e.episode);
    double weight=e.observed&&RecommendationRanker.abandoned(e.watchedMs,e.pos,e.dur,e.ts,now,first)?RecommendationRanker.ABANDONED:RecommendationRanker.watchedWeight(engagement,e.dur,e.ts,now);if(weight<0)s.excluded.add(e.link);if(count>=20||weight==0||rated.contains(RecommendationRanker.key(e.link)))continue;
    s.titles.put(RecommendationRanker.key(e.link),e.title);
-   s.signals.add(new RecommendationRanker.Signal(e.link,null,weight));count++;
+   // Watched in the last SEED_DAYS days: it can head a «Тому що ви дивилися» row, with its weight before the weeks wear it.
+   double seed=weight>0&&now-e.ts>=0&&now-e.ts<=RecommendationRanker.SEED_DAYS*86_400_000L?RecommendationRanker.watchedWeight(engagement,e.dur,e.ts,e.ts):0;
+   s.signals.add(new RecommendationRanker.Signal(e.link,null,weight,seed));count++;
   }
   JSONArray saved=Progress.later(c,profile);count=0;
   for(int i=0;i<saved.length();i++){JSONObject o=saved.optJSONObject(i);if(o==null)continue;String link=o.optString("link","");s.excluded.add(link);if(count++<20&&!rated.contains(RecommendationRanker.key(link))){s.signals.add(new RecommendationRanker.Signal(link,Site.opt(o,"genre"),2));s.titles.put(RecommendationRanker.key(link),o.optString("title"));}}
@@ -101,17 +103,23 @@ final class Recommendations {
  }
  static List<HomeActivity.Row> rows(Context c,Snapshot s,List<HomeActivity.Row> catalogue){
   List<HomeActivity.Row> rows=new ArrayList<HomeActivity.Row>();HomeActivity.Row main=row(c,s,catalogue);if(!main.items.isEmpty())rows.add(main);
-  List<RecommendationRanker.Signal> seeds=new ArrayList<RecommendationRanker.Signal>();for(RecommendationRanker.Signal x:s.signals)if(x.weight>=3&&s.titles.get(RecommendationRanker.key(x.link))!=null)seeds.add(x);Collections.sort(seeds,(a,b)->Double.compare(b.weight,a.weight));
+  List<RecommendationRanker.Signal> seeds=seeds(s,System.currentTimeMillis());
   if(seeds.isEmpty())return rows;
   Map<String,HomeActivity.Item> items=items(c,s,catalogue);List<RecommendationRanker.Candidate> pool=pool(c,s,items);Set<String> excluded=new HashSet<String>(s.excluded);for(HomeActivity.Item x:main.items)excluded.add(x.link);
+  // What a row may not show again: watched, rated or saved titles, «Рекомендовано для вас» and an earlier row's.
+  Set<String> taken=new HashSet<String>();for(String l:excluded)taken.add(RecommendationRanker.key(l));for(RecommendationRanker.Signal x:s.signals)taken.add(RecommendationRanker.key(x.link));
   int count=0;Set<String> represented=new HashSet<String>();List<ContentSimilarity.Document> docs=new ArrayList<ContentSimilarity.Document>();for(RecommendationRanker.Candidate x:pool)docs.add(x.document);for(RecommendationRanker.Signal x:seeds)docs.add(x.document);ContentSimilarity.Index index=new ContentSimilarity.Index(docs);
   for(RecommendationRanker.Signal seed:seeds){
    String[] category=RecommendationRanker.parts(seed.link);String group=category[0]+"/"+category[1];if(!represented.add(group))continue;
    HomeActivity.Row reason=new HomeActivity.Row((seed.weight>=6?"Тому що вам подобається «":"Тому що ви дивилися «")+s.titles.get(RecommendationRanker.key(seed.link))+"»");reason.recommendationId=RecommendationRanker.key(seed.link);
    Set<String> seeAlso=new HashSet<String>();for(HomeActivity.Item x:RecommendationMetadata.related(c,seed.link))seeAlso.add(RecommendationRanker.key(x.link));
    List<RecommendationRanker.Signal> context=new ArrayList<RecommendationRanker.Signal>();context.add(seed);for(RecommendationRanker.Signal x:s.signals)if(x.weight<0)context.add(x);
-   for(RecommendationRanker.Candidate x:RecommendationRanker.rank(s.profile,context,excluded,pool,30)){if(!seeAlso.contains(x.key)&&index.similarity(x.link,x.genre,x.document,seed.link,seed.genre,seed.document)<0.25)continue;reason.items.add(items.get(RecommendationRanker.key(x.link)));if(reason.items.size()>=8)break;}
-   if(reason.items.size()>=3){rows.add(reason);for(HomeActivity.Item x:reason.items)excluded.add(x.link);if(++count==2)break;}
+   // TMDB's picks first (14.11, owner: what viewers of this title also watch, in TMDB's order, from KIK's /api/similar),
+   // then what the catalogue has like it, as before.
+   Set<String> inRow=new HashSet<String>();
+   for(HomeActivity.Item x:RecommendationMetadata.picks(c,seed.link)){String k=RecommendationRanker.key(x.link);if(reason.items.size()>=8)break;if(taken.contains(k)||s.disliked.contains(k)||!inRow.add(k))continue;reason.items.add(x);}
+   for(RecommendationRanker.Candidate x:RecommendationRanker.rank(s.profile,context,excluded,pool,30)){if(reason.items.size()>=8)break;if(inRow.contains(x.key)||!seeAlso.contains(x.key)&&index.similarity(x.link,x.genre,x.document,seed.link,seed.genre,seed.document)<0.25)continue;HomeActivity.Item item=items.get(RecommendationRanker.key(x.link));if(item==null||!inRow.add(RecommendationRanker.key(item.link)))continue;reason.items.add(item);}
+   if(reason.items.size()>=3){rows.add(reason);for(HomeActivity.Item x:reason.items){excluded.add(x.link);taken.add(RecommendationRanker.key(x.link));}if(++count==2)break;}
   }return rows;
  }
  /** «Не подобається» hides the title from the catalogue rows too; search, history and «Мій список» still show it. */
@@ -120,6 +128,8 @@ final class Recommendations {
   for(HomeActivity.Row r:rows){HomeActivity.Row copy=new HomeActivity.Row(r.title);copy.personalized=r.personalized;copy.recommendationId=r.recommendationId;for(HomeActivity.Item x:r.items)if(!s.disliked.contains(RecommendationRanker.key(x.link)))copy.items.add(x);if(!copy.items.isEmpty())out.add(copy);}
   return out;
  }
+ /** Today's «Тому що ви дивилися» titles (RecommendationRanker.seeds), turned by the local day. */
+ static List<RecommendationRanker.Signal> seeds(Snapshot s,long now){return RecommendationRanker.seeds(s.signals,s.titles,now,TimeZone.getDefault().getOffset(now));}
  static void enrich(Context c,Snapshot s,List<HomeActivity.Row> catalogue,BooleanSupplier valid){
   if(catalogue.isEmpty()||!WARMING.compareAndSet(false,true))return;
   ExecutorService workers=Executors.newFixedThreadPool(2);
@@ -130,6 +140,9 @@ final class Recommendations {
    List<HomeActivity.Item> exploration=new ArrayList<HomeActivity.Item>(items(c,s,catalogue).values());Collections.shuffle(exploration,new Random(Objects.hash(s.profile,System.currentTimeMillis()/86_400_000L)));
    for(HomeActivity.Item x:exploration)if(links.size()<8&&!s.excluded.contains(x.link)&&RecommendationMetadata.needs(c,x.link))links.add(x.link);
    List<Callable<Void>> jobs=new ArrayList<Callable<Void>>();for(String link:links)jobs.add(()->{if(valid.getAsBoolean()&&!Thread.currentThread().isInterrupted())try{RecommendationMetadata.remember(c,FreeSources.metadata(link));}catch(Exception e){RecommendationMetadata.failed(c,link);}return null;});
+   // TMDB's picks for today's «Тому що ви дивилися» titles, three a pass: a title's list is kept three days.
+   int asked=0;for(RecommendationRanker.Signal x:seeds(s,System.currentTimeMillis())){if(asked>=3)break;if(!RecommendationMetadata.needsPicks(c,x.link))continue;asked++;final String link=x.link;
+    jobs.add(()->{if(valid.getAsBoolean()&&!Thread.currentThread().isInterrupted())try{RecommendationMetadata.rememberPicks(c,link,Site.similarPicks(link));}catch(Exception e){RecommendationMetadata.picksFailed(c,link);}return null;});}
    workers.invokeAll(jobs,40,TimeUnit.SECONDS);
   }catch(InterruptedException e){Thread.currentThread().interrupt();}finally{workers.shutdownNow();WARMING.set(false);}
  }

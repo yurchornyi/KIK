@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {facetsOf,similarity,tasteModel,tastePages,affinity,rankByTaste,spread,titleId,fade,devotion,genreName} from './public/taste.js';
+import {facetsOf,similarity,tasteModel,tastePages,affinity,rankByTaste,spread,titleId,fade,devotion,genreName,becauseSeeds,SEEDS} from './public/taste.js';
 const link=(section,genre,id,year=2020)=>`https://hdrezka.sh/${section}/${genre}/${id}-nazva-${year}.html`;
 const card=(section,genre,id,info,year=2020)=>({key:`${section}/${genre}/${id}-nazva-${year}.html`,link:link(section,genre,id,year),title:'Назва '+id,info});
 const titles=list=>list.map(x=>x.item.title);
@@ -94,4 +94,21 @@ test('the genre pages worth offering are the genres a taste watches most, wherev
  // A page the section does not have, a format and an unknown genre ask for nothing; a weak hint asks for nothing either.
  assert.deepEqual(tastePages(tasteModel([{key:'cartoons/comedy/1768-simpsony-1989-latest.html',info:'Комедії, Для дорослих, Мультсеріали, Зарубіжне кіно, Сьонен',w:6},{key:'series/realtv/5-x-2020.html',info:'Реаліті-шоу, Для дорослих',w:4},{key:'films/horror/6-y-2020.html',w:1}])),['cartoons/comedy','series/realtv','cartoons/adult']);
  assert.deepEqual(tastePages(tasteModel([])),[]);assert.equal(tastePages(tasteModel(household),2).length,2);
+});
+
+test('«Тому що ви дивилися»: a like or a title watched in the last month, six at most, turned by two each local day',()=>{
+ const day=864e5,noon=20000*day+12*36e5;
+ // Watched this week, the freshest strongest; a title from two months ago, a saved one, a nameless one and a UASerials one cannot head a row.
+ const shows=[1,2,3,4,5,6].map(n=>({link:link('series','drama',n),title:'Show '+n,w:4,at:noon-n*36e5}));
+ const signals=[...shows.slice(0,4),{link:link('films','comedy',51),title:'Liked',w:6,rated:true},...shows.slice(4),
+  {link:link('films','drama',50),title:'Old',w:4,at:noon-60*day},{link:link('films','comedy',53),title:'Saved',w:2,at:noon},
+  {link:link('films','drama',52),title:'',w:4,at:noon},{link:'https://uaserials.com/1-x.html',title:'UA',w:4,at:noon}];
+ const today=becauseSeeds(signals,noon,0),titlesOf=list=>list.map(s=>s.title);
+ assert.equal(today.length,SEEDS);
+ assert.deepEqual(new Set(titlesOf(today)),new Set(['Liked','Show 1','Show 2','Show 3','Show 4','Show 5']),'a like counts; the weakest, old, saved, nameless and UASerials titles do not');
+ const first=d=>titlesOf(becauseSeeds(signals,noon+d*day,0)).slice(0,2);
+ assert.deepEqual(new Set([...first(0),...first(1),...first(2)]),new Set(titlesOf(today)),'three days turn through all six');
+ assert.notDeepEqual(first(0),first(1),'tomorrow stands on other titles');
+ assert.deepEqual(titlesOf(becauseSeeds(signals,noon+10*36e5,3*36e5)).slice(0,2),first(1),'the viewer\'s own day: 22:00 UTC is tomorrow three hours east');
+ assert.equal(becauseSeeds([shows[0]],noon,0).length,1);
 });
