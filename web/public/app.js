@@ -1,6 +1,6 @@
 import {createHeaderSearch} from './header-search.js';
 import {dropdown} from './dropdown.js';
-import {studioBadge,studioById} from './studios.js';
+import {studioBadge,studioById,STUDIO_RULES} from './studios.js';
 import {RecoveryPlan,cleanVoices,studioIntro,sponsoredVoice,runtimeMs,isPreview,preferDirect} from './playback-recovery.js';
 import {adSkip} from './ad-skip.js';
 import {introSkip,nextOffer,openingLogo,NEXT_COUNTDOWN} from './episode-marks.js';
@@ -104,8 +104,12 @@ function setRating(item,value){change('rating',keyOf(item.link),value?{link:item
 function rate(item,value){if(!state.user){auth();return;}const next=liked(item.link)===value?0:value;setRating(item,next);toast(said(next));}
 const artwork=new Map(),artWaiting=new Map();let artTimer=0,artBusy=false,artEnabled=true,artSaveTimer=0;
 /** Found artwork is kept for a week, so cards and the hero open with their final images instead of swapping them in. */
-const ART_KEY='kik-artwork:v1',ART_TTL=7*864e5;
-try{const now=Date.now();for(const [key,a] of JSON.parse(storage.getItem(ART_KEY)||'[]'))if(a?.poster&&now-(a.at||0)<ART_TTL)artwork.set(key,a);}catch{}
+// The answers are kept per studio rules (studios.js STUDIO_RULES), so new rules ask again: 14.11, «Саман: Прихована
+// правда» had been HBO on the service since 1.46, but the phone still showed it without a badge from an answer kept a week
+// before. An answer without a studio is kept a day, as on the TV (Studios.NONE_MS): TMDB adds networks later.
+const ART_KEY='kik-artwork:v2:'+STUDIO_RULES,ART_TTL=7*864e5,ART_NONE_TTL=864e5;
+for(const k of storage.keys())if(k.startsWith('kik-artwork:')&&k!==ART_KEY)storage.removeItem(k);
+try{const now=Date.now();for(const [key,a] of JSON.parse(storage.getItem(ART_KEY)||'[]'))if(a?.poster&&now-(a.at||0)<(a.studios?.length?ART_TTL:ART_NONE_TTL))artwork.set(key,a);}catch{}
 function saveArtwork(){clearTimeout(artSaveTimer);artSaveTimer=setTimeout(()=>storage.setItem(ART_KEY,JSON.stringify([...artwork].filter(([,a])=>a?.poster).slice(-300))),1500);}
 /** TMDB artwork for a catalogue item, batched and cached; resolves to null when unavailable. */
 function artworkFor(item,refresh=false){let key;try{key=keyOf(item.link);}catch{return Promise.resolve(null);}if(!artEnabled||!item.title)return Promise.resolve(null);if(refresh)artwork.delete(key);if(artwork.has(key))return Promise.resolve(artwork.get(key));
