@@ -120,7 +120,21 @@ const sourcePosters=new Map();
 function posterImage(a,url,lazy=false){const img=new Image();img.referrerPolicy='no-referrer';img.alt='';img.dataset.poster=url;if(lazy)img.loading='lazy';if(a?.poster){img.srcset=`${a.poster} 500w, ${a.posterLarge} 780w`+(a.posterOriginal&&a.posterWidth>780?`, ${a.posterOriginal} ${a.posterWidth}w`:'');img.sizes='(max-width:700px) 40vw, 220px';}img.src=url;return img;}
 function paintStudioBadge(image,ids){image.querySelector('.studio-badge')?.remove();const badge=studioBadge(ids);if(badge)image.append(badge);}
 /** The better poster fades in over the current one once decoded, so the card never flashes empty. */
-function upgradePoster(image,item){if(!artObserver||!item.link)return;image._art=async()=>{image._art=null;const a=await artworkFor(item);if(!image.isConnected)return;paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);const url=a?.poster||await fullPoster(item);if(!url||!image.isConnected||!a&&url===item.poster)return;const img=posterImage(a,url);img.className='art-in';img.onload=async()=>{try{await img.decode();}catch{}if(!image.isConnected)return;const old=[...image.querySelectorAll('img')],drop=()=>{for(const o of old)o.remove();};image.prepend(img);img.addEventListener('animationend',drop,{once:true});setTimeout(drop,700);};};artObserver.observe(image);}
+/** A card shows one poster, never one and a second later another (14.11, owner: «постер стає один і через секунду
+ *  міняється інший»). Known artwork paints at once (card()); otherwise the tile stays dark until KIK knows which poster it is —
+ *  TMDB's, else the source's sharper copy, else its thumbnail — for at most FIRST_POSTER_MS, then the thumbnail, and an
+ *  answer after that changes nothing. A poster already on the card (kept from the page before) stays; only its badge follows. */
+const FIRST_POSTER_MS=1500;
+function thumbPoster(item){return el('img',{src:item.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer','data-poster':item.poster});}
+function upgradePoster(image,item){
+ if(!artObserver||!item.link){if(item.poster&&!image.querySelector('img'))image.append(thumbPoster(item));return;}
+ image._art=async()=>{image._art=null;const shown=!!image.querySelector('img');let late=false;
+  const timer=shown?0:setTimeout(()=>{late=true;if(image.isConnected&&!image.querySelector('img')&&item.poster)image.append(thumbPoster(item));},FIRST_POSTER_MS);
+  const a=await artworkFor(item);if(!image.isConnected)return;paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);
+  if(shown||late)return;const url=a?.poster||await fullPoster(item)||item.poster;if(late||!url||!image.isConnected||image.querySelector('img'))return;clearTimeout(timer);
+  const img=posterImage(a,url);img.className='art-in';image.prepend(img);};
+ artObserver.observe(image);
+}
 const heroRefined=new Map();
 /** The wide picture of a slide. w1280 is plenty behind the hero gradients and arrives fast; the original joins only when it is small. */
 function backdropImage(a){const img=new Image();img.alt='';img.referrerPolicy='no-referrer';img.className='hero-art wide';img.dataset.src=a.backdrop;img.srcset=`${a.backdrop} 1280w`+(a.backdropOriginal&&a.backdropWidth>1280&&a.backdropWidth<=2200?`, ${a.backdropOriginal} ${a.backdropWidth}w`:'');img.sizes='100vw';return img;}
@@ -151,7 +165,7 @@ function upgradeHero(hero,item){
 /** Poster pictures already on screen, by title, while a page repaints: the new cards take them over, so nothing blinks. */
 const livePosters=new Map();
 function keepPosters(){livePosters.clear();for(const n of main.querySelectorAll('.poster[data-key] .poster-image img:not(.art-in)'))if(n.complete&&n.naturalWidth)livePosters.set(n.closest('.poster').dataset.key,n);}
-function card(item,progress=false,onClick){const image=el('div',{class:'poster-image'}),key=keyOf(item.link),a=artwork.get(key),known=a?.poster||sourcePosters.get(key),live=livePosters.get(key);paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);if(downloads.supported&&downloads.forTitle(item.link).some(x=>x.status==='done'))image.append(el('span',{class:'dl-badge',title:'Завантажено на цей пристрій'},'⤓'));if(live&&live.dataset.poster===(known||item.poster)){livePosters.delete(key);image.append(live);if(!known)upgradePoster(image,item);}else if(known)image.append(posterImage(a,known,true));else{upgradePoster(image,item);if(item.poster)image.append(el('img',{src:item.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer','data-poster':item.poster}));}if(progress&&item.dur>0){const i=el('i');i.style.width=Math.max(0,Math.min(100,item.pos/item.dur*100))+'%';image.append(el('div',{class:'progress'},i),el('span',{class:'continue-label'},'▶ ',item.next?'Наступна серія':item.season?`С${item.season} · Е${item.episode}`:`${Math.floor(item.pos/60000)} хв`));}let dwell=0;const warm=()=>{if(item.link&&!item.external)getFilm(item).catch(()=>{});};
+function card(item,progress=false,onClick){const image=el('div',{class:'poster-image'}),key=keyOf(item.link),a=artwork.get(key),known=a?.poster||sourcePosters.get(key),live=livePosters.get(key);paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);if(downloads.supported&&downloads.forTitle(item.link).some(x=>x.status==='done'))image.append(el('span',{class:'dl-badge',title:'Завантажено на цей пристрій'},'⤓'));if(live&&live.dataset.poster===(known||item.poster)){livePosters.delete(key);image.append(live);if(!known)upgradePoster(image,item);}else if(known)image.append(posterImage(a,known,true));else upgradePoster(image,item);if(progress&&item.dur>0){const i=el('i');i.style.width=Math.max(0,Math.min(100,item.pos/item.dur*100))+'%';image.append(el('div',{class:'progress'},i),el('span',{class:'continue-label'},'▶ ',item.next?'Наступна серія':item.season?`С${item.season} · Е${item.episode}`:`${Math.floor(item.pos/60000)} хв`));}let dwell=0;const warm=()=>{if(item.link&&!item.external)getFilm(item).catch(()=>{});};
  // Details start loading on hover, focus or touch, so the window opens complete instead of growing from «Завантаження…».
  return el('button',{class:'poster',type:'button','aria-label':item.title,'data-key':key,onClick:onClick||(()=>openDetails(item)),onPointerenter:e=>{if(e.pointerType==='mouse'){clearTimeout(dwell);dwell=setTimeout(warm,150);}},onPointerleave:()=>clearTimeout(dwell),onPointerdown:warm,onFocus:()=>{clearTimeout(dwell);dwell=setTimeout(warm,250);},onBlur:()=>clearTimeout(dwell)},image,el('span',{class:'poster-title'},item.title),el('span',{class:'poster-info'},infoLine(item.info)||item.year||(progress?'Продовжити перегляд':'Фільми та серіали')));}
 /** A row of cards; `rank` puts a big number before each card (the week's Top 10, as on the TV and on Netflix). */
@@ -300,12 +314,12 @@ let slideHeights=new Map(),slideTallest=0,slideMeasureTimer=0;
 function measureSlides(hero){
  slideHeights=new Map();slideTallest=0;if(!hero?.isConnected||slideshow.slides.length<2)return;
  const box=el('div',{class:'hero-measure','aria-hidden':'true'});hero.append(box);
- for(const s of slideshow.slides){const c=heroCopy(s);box.append(c);const h=c.getBoundingClientRect().height;slideHeights.set(keyOf(s.link),h);slideTallest=Math.max(slideTallest,h);}
- box.remove();
+ try{for(const s of slideshow.slides){const c=heroCopy(s);box.append(c);const h=c.getBoundingClientRect().height;slideHeights.set(keyOf(s.link),h);slideTallest=Math.max(slideTallest,h);}}
+ catch{slideHeights=new Map();slideTallest=0;}finally{box.remove?.();}
 }
-function steady(copy,item){if(!copy||!item)return;const h=slideHeights.get(keyOf(item.link));copy.style.setProperty('--slack',h!==undefined&&slideTallest>h?Math.round(slideTallest-h)+'px':'0px');}
+function steady(copy,item){if(!copy||!item)return;const h=slideHeights.get(keyOf(item.link));copy.style?.setProperty?.('--slack',h!==undefined&&slideTallest>h?Math.round(slideTallest-h)+'px':'0px');}
 function remeasureSlides(){clearTimeout(slideMeasureTimer);slideMeasureTimer=setTimeout(()=>{const hero=slideshow.hero;if(!hero?.isConnected)return;measureSlides(hero);steady(hero.querySelector('.hero-copy'),slideshow.slides[slideshow.index]);},200);}
-addEventListener('resize',remeasureSlides);document.fonts?.ready?.then(remeasureSlides);
+window.addEventListener('resize',remeasureSlides);document.fonts?.ready?.then(remeasureSlides);
 function showSlide(n){const hero=slideshow.hero,item=slideshow.slides[n];if(!hero?.isConnected||!item)return;slideshow.index=n;slideshow.shownAt=Date.now();
  // A turn only fades the words in place: the old rise moved the whole block, buttons too, down 12 px and back up at every
  // slide (14.11, owner). The block keeps the tallest slide's height (steady), so nothing under it moves either.

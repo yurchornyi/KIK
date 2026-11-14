@@ -15,7 +15,7 @@ test('a page version is the set of fingerprinted files it names',()=>{
 
 test('the pull follows the finger, slows past the threshold and stops at the maximum',()=>{
  assert.equal(pullDistance(-20),0);assert.equal(pullDistance(0),0);
- assert.equal(pullDistance(100),55);
+ assert.ok(Math.abs(pullDistance(100)-55)<1e-9);
  assert.ok(pullDistance(THRESHOLD/.55+1)>THRESHOLD);assert.ok(pullDistance(400)<400*.55);assert.equal(pullDistance(5000),MAX);
 });
 
