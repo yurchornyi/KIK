@@ -74,30 +74,38 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
  async function resolve(identity,token,link){
   const signal=AbortSignal.timeout(6500);
   const queries=[...new Set([identity.original,...(identity.aliases?.length?identity.aliases:[identity.title])].filter(Boolean))].slice(0,3);
-  async function search(query,who=identity){
-   const language=/[ієїґ]/i.test(query)?'uk-UA':/[а-яё]/i.test(query)?'ru-RU':'en-US';
+  async function search(query,who=identity,kind=identity.kind){
+   const language=/[ієїґ]/i.test(query)?'uk-UA':/[а-яё]/i.test(query)?'ru-RU':'en-US',yearKey=kind==='tv'?'first_air_date_year':'year';
    const params=new URLSearchParams({query,language,include_adult:'false',page:'1'});
-   if(identity.year)params.set(identity.kind==='tv'?'first_air_date_year':'year',String(identity.year));
-   const data=await request(`/search/${identity.kind}?${params}`,token,signal);
-   const found=matchTitle(who,data.results);if(found)return found;
+   if(identity.year)params.set(yearKey,String(identity.year));
+   const data=await request(`/search/${kind}?${params}`,token,signal);
+   const found=matchTitle(who,data.results);if(found)return {...found,kind};
    // Regional release years can differ; validate the bounded year difference ourselves.
-   if(identity.year){params.delete(identity.kind==='tv'?'first_air_date_year':'year');const nearby=await request(`/search/${identity.kind}?${params}`,token,signal);return matchTitle(who,nearby.results);}
+   if(identity.year){params.delete(yearKey);const nearby=await request(`/search/${kind}?${params}`,token,signal);const near=matchTitle(who,nearby.results);return near?{...near,kind}:null;}
    return null;
   }
+  // Found in three steps, each only when the one before found nothing (14.11, owner: «треба прокачати визначення сервісу»;
+  // 120 of 331 Home and catalogue titles were found before):
+  //  1. the card's names, as the kind its section says;
+  //  2. the same names as the other kind: anime and cartoon series live under /animation/ and /cartoons/, not /series/,
+  //     and were searched as films (78 of 86 anime missed);
+  //  3. the original name from the title's page on the source, both kinds: a row's card has only its Russian name, and TMDB
+  //     often has none for a new title yet («Пропавшая без вести: Натали Холлоуэй» is «Taken: Natalee Holloway», Netflix),
+  //     or spells it with «ё» the source leaves out («Зелёная миля»).
+  const other=identity.kind==='tv'?'movie':'tv';
   let match=null;
   for(const query of queries){match=await search(query);if(match)break;}
-  // A row's card has only its Russian name, and TMDB often has none for a new title yet («Пропавшая без вести: Натали
-  // Холлоуэй» is «Taken: Natalee Holloway», Netflix): its page on the source gives the original name to search by
-  // (14.11, owner: «чого не оприділили … Netflix»). Only for a title not found, and once per lookup.
+  if(!match)for(const query of queries){match=await search(query,identity,other);if(match)break;}
   if(!match&&!identity.original&&originalOf){
    let original='';try{original=String(await originalOf(link)||'').trim();}catch{}
    // The page's original name is a name of the title too: a result is matched against it as well.
-   if(original&&!queries.includes(original))match=await search(original,{...identity,original});
+   if(original&&!queries.includes(original)){const who={...identity,original};match=await search(original,who)||await search(original,who,other);}
   }
   if(!match)return null;
-  const details=await request(`/${identity.kind}/${match.id}?append_to_response=images&include_image_language=uk,en,null`,token,signal);
-  const artwork=selectImages(details.images||details,match.id,identity.kind),studios=studiosFor(details);
-  return artwork?{...artwork,studios}:studios.length?{source:'tmdb',id:match.id,kind:identity.kind,page:`https://www.themoviedb.org/${identity.kind}/${match.id}`,studios}:null;
+  const kind=match.kind;
+  const details=await request(`/${kind}/${match.id}?append_to_response=images&include_image_language=uk,en,null`,token,signal);
+  const artwork=selectImages(details.images||details,match.id,kind),studios=studiosFor(details);
+  return artwork?{...artwork,studios}:studios.length?{source:'tmdb',id:match.id,kind,page:`https://www.themoviedb.org/${kind}/${match.id}`,studios}:null;
  }
  async function lookup(input,{token,cache,origin='https://kik-artwork.invalid'}={}){
   const identity=artworkIdentity(input);
