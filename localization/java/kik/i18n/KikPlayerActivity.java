@@ -78,16 +78,6 @@ public final class KikPlayerActivity extends Activity {
  public static void open(Context c,Site.Film f,Site.Voice v,String season,String episode,String title,String poster){
   openingFilm=f;openingVoice=v;c.startActivity(new Intent(c,KikPlayerActivity.class).putExtra("season",season).putExtra("episode",episode).putExtra("title",title).putExtra("poster",poster));
  }
- /** A stream fetched on the title page while the viewer reads it, so OK starts at once. Links stay valid for minutes. */
- private static final class Warm{final String key;final Site.Voice voice;final Site.Stream stream;final long at=SystemClock.elapsedRealtime();Warm(String k,Site.Voice v,Site.Stream st){key=k;voice=v;stream=st;}}
- private static volatile Warm warm;private static volatile String warming;
- private static String warmKey(Site.Film f,Site.Voice v,String s,String e){return f.id+"|"+v.id+"|"+s+"|"+e;}
- static void prefetch(Context c,final Site.Film f,final Site.Voice v,final String s,final String e){
-  if(f==null||v==null||f.id==null||f.sourceUrl!=null)return;final String key=warmKey(f,v,s,e);Warm w=warm;
-  if(key.equals(warming)||w!=null&&key.equals(w.key)&&SystemClock.elapsedRealtime()-w.at<WARM_MS/2)return;warming=key;final Context app=c.getApplicationContext();
-  Ui.bg(()->{try{Site.Voice use=v;if(f.series&&s!=null){Site.Voice has=Site.voiceFor(f,s,e,Progress.voice(app,f.link));if(has!=null)use=has;}warm=new Warm(key,use,Site.stream(f,use,s,e,false));Log.d("KIK.Player","Prefetched "+key);}catch(Exception x){Log.w("KIK","Prefetch",x);}finally{if(key.equals(warming))warming=null;}});
- }
- private static Warm takeWarm(Site.Film f,Site.Voice v,String s,String e){Warm w=warm;if(w==null||!w.key.equals(warmKey(f,v,s,e))||SystemClock.elapsedRealtime()-w.at>WARM_MS)return null;warm=null;return w;}
  /** The episode list can name one episode more than once (an entry per voice): both steps skip to a different episode. */
  static Site.Episode previous(Site.Film f,String s,String e){Site.Episode before=null;for(Site.Episode x:f.episodes){boolean same=x.season.equals(s)&&x.episode.equals(e);if(same)return before;before=x;}return null;}
  static Site.Episode next(Site.Film f,String s,String e){boolean seen=false;for(Site.Episode x:f.episodes){boolean same=x.season.equals(s)&&x.episode.equals(e);if(seen&&!same)return x;if(same)seen=true;}return null;}
@@ -259,11 +249,11 @@ public final class KikPlayerActivity extends Activity {
    try{
     Site.Film updated=null;if(refreshEpisodes&&selectedFilm.series){Site.Film copy=new Site.Film();copy.link=selectedFilm.link;copy.id=selectedFilm.id;copy.favs=selectedFilm.favs;copy.origin=selectedFilm.origin;try{Site.episodesFor(copy,selected.id);if(!copy.episodes.isEmpty())updated=copy;}catch(Exception e){Log.w("KIK","Voice episodes",e);}}
     final Site.Film episodeData=updated;
-    Site.Voice use=selected;final Warm w=refreshEpisodes||recovering?null:takeWarm(selectedFilm,selected,ss,ee);if(w!=null){use=w.voice;Log.d("KIK.Player","Using prefetched stream");}
-    if(w==null&&selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,(refreshEpisodes||recovering)?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
+    Site.Voice use=selected;
+    if(selectedFilm.series&&ss!=null)try{Site.Voice has=Site.voiceFor(selectedFilm,ss,ee,(refreshEpisodes||recovering)?selected.id:Progress.voice(this,selectedFilm.link));if(has!=null)use=has;}catch(Exception e){Log.w("KIK","Voice coverage",e);}
     final Site.Voice playing=use;
     final boolean rotate=recovering&&refreshAttempt>0;
-    final Site.Stream s=w!=null?w.stream:Site.stream(selectedFilm,playing,ss,ee,rotate);
+    final Site.Stream s=Site.stream(selectedFilm,playing,ss,ee,rotate);
     h.post(()->{
      if(destroyed||gen!=generation)return;
      if(episodeData!=null){selectedFilm.seasons=new ArrayList<String>(episodeData.seasons);selectedFilm.episodes=new ArrayList<Site.Episode>(episodeData.episodes);}
