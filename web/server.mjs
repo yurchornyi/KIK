@@ -6,7 +6,7 @@ import {recommendations} from './recommendations.mjs';import {aiReady} from './s
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport,devices,revokeDevice,ownerFlags} from './management.mjs';
-import {holidayFilms,HOLIDAY_FILMS} from './holiday-films.mjs';import {shelfTitle} from './public/holidays.js';
+import {holidayFilms,HOLIDAY_FILMS} from './holiday-films.mjs';import {shelf,SHELVES} from './shelves.mjs';import {shelfTitle} from './public/holidays.js';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken,deviceName} from "./auth.mjs";
 import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -89,6 +89,11 @@ async function api(request,env,ctx){
  // not whole yet (time ran out, the source was busy) answers as it is and is not kept: the next request goes on with it.
  if(path==="/api/holiday-films"&&request.method==="GET"){const id=url.searchParams.get("id")||"";if(!Object.hasOwn(HOLIDAY_FILMS,id))fail("Невідоме свято");
   return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v=1"),86400,async()=>{const found=await holidayFilms(id,{search:params=>catalogue(params,{background:true,budget:8000})});return {items:await localizedCards(db,found.items),title:shelfTitle(id),...(found.partial?{partial:true}:{})};},v=>!v.partial,30*86400);}
+ // Home shelves TMDB picks (shelves.mjs: the week's Top 10, new cartoons, new anime), found on the source and kept at the
+ // edge: fresh for 6 hours, answering for up to a week while TMDB or the source is down. A shelf not whole yet (time ran
+ // out, the source was busy) answers as it is and is not kept: the next request goes on with it.
+ if(path==="/api/shelf"&&request.method==="GET"){const id=url.searchParams.get("id")||"";if(!Object.hasOwn(SHELVES,id))fail("Невідома полиця");if(!env.TMDB_READ_TOKEN)fail("Полиця тимчасово недоступна",503);
+  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v=1"),21600,async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000})});return {items:await localizedCards(db,found.items),...(found.partial?{partial:true}:{})};},v=>!v.partial,2*86400);}
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // An admin adds the email; the person then picks a password. A reset password is created again the same way.

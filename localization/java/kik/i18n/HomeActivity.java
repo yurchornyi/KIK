@@ -248,8 +248,10 @@ public final class HomeActivity extends Activity {
  }
 
  // ---------- data ----------
- /** Title, category, filter; a fourth column marks a row of new releases only (FreshPolicy: this year and last). */
- static final String[][] ROWS={{"Нове на KIK","","last","new"},{"Нові фільми","films","last","new"},{"Нові серіали","series","last","new"},{"Популярне","","popular"},{"Зараз дивляться","","watching"},{"Мультфільми","cartoons","last"},{"Аніме","animation","last"}};
+ /** Title, category, filter; a fourth column marks a row of new releases only (FreshPolicy: this year and last) or the
+  *  Top 10. A «shelf:» filter is a shelf TMDB picks on KIK's service (Site.shelf, 14.11: the source's «popular» was
+  *  mostly old titles, its new cartoons old ones it had just added). */
+ static final String[][] ROWS={{"Нове на KIK","","last","new"},{"Топ-10 цього тижня","","shelf:trending","top"},{"Нові фільми","films","last","new"},{"Нові серіали","series","last","new"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
  private static long refreshedAt;
  private static final Map<String,String[]> DETAILS=new ConcurrentHashMap<String,String[]>();
  private void load(){
@@ -363,9 +365,11 @@ public final class HomeActivity extends Activity {
    try{Row r=new Row(Holidays.shelfTitle(shelf));for(Site.Card c:Site.holidayFilms(shelf)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=20)break;}festive[0]=r;}
    catch(Exception e){Log.w("KIK","Home holiday shelf "+shelf+": "+e);}},"kik-home-shelf");threads.add(t);t.start();}
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
-   try{Row r=new Row(ROWS[idx][0]);final boolean onlyNew=ROWS[idx].length>3;final int thisYear=Calendar.getInstance().get(Calendar.YEAR);Set<String> seen=new HashSet<String>();
-    // «Нове» rows: the site's «last» list also holds old films it has just added, so they are skipped and a page or two more is read.
-    for(int page=1;page<=(onlyNew?FreshPolicy.PAGES:1)&&r.items.size()<15;page++){
+   try{Row r=new Row(ROWS[idx][0]);final boolean onlyNew=newRow(ROWS[idx][0]);final int thisYear=Calendar.getInstance().get(Calendar.YEAR);Set<String> seen=new HashSet<String>();
+    // A TMDB shelf comes whole from KIK's service. «Нове» rows: the site's «last» list also holds old films it has just
+    // added, so they are skipped and a page or two more is read.
+    if(ROWS[idx][2].startsWith("shelf:")){for(Site.Card c:Site.shelf(ROWS[idx][2].substring(6))){if(!seen.add(c.link))continue;Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}}
+    else for(int page=1;page<=(onlyNew?FreshPolicy.PAGES:1)&&r.items.size()<15;page++){
      List<Site.Card> cards;try{cards=Site.list(ROWS[idx][1],null,ROWS[idx][2],page);}catch(IOException e){if(page==1)throw e;break;}
      for(Site.Card c:cards){if(onlyNew&&!FreshPolicy.fresh(c.year(),thisYear)||!seen.add(c.link))continue;Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}
      if(Site.lastRaw()==0)break;
@@ -389,7 +393,10 @@ public final class HomeActivity extends Activity {
   getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",System.currentTimeMillis()).putString("shelf",shelf==null?"":shelf).putString("version",AppUpdater.version(this)).apply();
  }
  /** A row of new releases only (ROWS' fourth column): its saved cards pass FreshPolicy again, a year on as well. */
- static boolean newRow(String title){for(String[] r:ROWS)if(r.length>3&&r[0].equals(title))return true;return false;}
+ static boolean newRow(String title){return flagged(title,"new");}
+ /** The week's Top 10 (ROWS' fourth column «top»): its first ten cards stand beside big numbers. */
+ static boolean topRow(String title){return flagged(title,"top");}
+ private static boolean flagged(String title,String flag){for(String[] r:ROWS)if(r.length>3&&r[0].equals(title)&&r[3].equals(flag))return true;return false;}
  /** The cached rows; a holiday's film shelf only while it is still due (shelf). */
  private List<Row> fromCache(String shelf){
   List<Row> rows=new ArrayList<Row>();String due=shelf==null?null:Holidays.shelfTitle(shelf);
@@ -467,7 +474,8 @@ public final class HomeActivity extends Activity {
  private HorizontalScrollView rowLine(Row r){
   // The focused card stands where the first one does, its poster under the heading's first letter, and the row glides under it.
   HorizontalScrollView hs=new Glide.Row(this).shelf(dp(32));hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
-  LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);for(Item i:r.items)line.addView(card(i));return hs;
+  LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);
+  final boolean top=topRow(r.title);int n=0;for(Item i:r.items){View c=card(i);if(top&&n<10)c=ranked(c,n+1);line.addView(c);n++;}return hs;
  }
  /** «Мій список» on the hero changes one row: it is redrawn in place (added after «Продовжити перегляд» or taken away), so the
   *  other rows keep their scroll, the hero and its focus stay, and the next load sees nothing to rebuild. */
@@ -504,6 +512,25 @@ public final class HomeActivity extends Activity {
  }
  private void appendRows(List<Row> rows){if(rows.isEmpty())return;content.removeViewAt(content.getChildCount()-1);appendRowViews(rows);shownRows.addAll(rows);shownSignature=signature(shownRows);space(content,40);for(Row r:rows)for(Item i:r.items)if(tasteChoices.size()<40)tasteChoices.add(i);}
 
+ /** A Top 10 card: its big number first and the card over the number's right edge. The pair is one piece of the row, so
+  *  the shelf stands the number, not the poster, under the heading's first letter. */
+ private View ranked(View card,int n){
+  LinearLayout pair=new LinearLayout(this);pair.setOrientation(0);pair.setClipChildren(false);pair.setClipToPadding(false);
+  pair.addView(new Rank(this,n),new LinearLayout.LayoutParams(-2,dp(208)));
+  LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.leftMargin=-dp(24);pair.addView(card,lp);return pair;
+ }
+ /** The Top 10's number, as on Netflix: a dark figure with a grey outline standing on the poster's bottom line. */
+ static final class Rank extends View{
+  private final String n;private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG),edge=new Paint(Paint.ANTI_ALIAS_FLAG);private final float pad;
+  Rank(Context c,int n){
+   super(c);this.n=String.valueOf(n);pad=Ui.dp(c,4);Typeface face=Typeface.create("sans-serif-condensed",Typeface.BOLD);
+   for(Paint p:new Paint[]{fill,edge}){p.setTypeface(face);p.setTextSize(Ui.dp(c,190));p.setLetterSpacing(-.08f);}
+   fill.setColor(0xff0d0d0f);edge.setStyle(Paint.Style.STROKE);edge.setStrokeWidth(Ui.dp(c,3));edge.setStrokeJoin(Paint.Join.ROUND);edge.setColor(0xff8c8c92);
+   setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+  }
+  @Override protected void onMeasure(int w,int h){setMeasuredDimension((int)Math.ceil(edge.measureText(n)+2*pad),MeasureSpec.getSize(h));}
+  @Override protected void onDraw(Canvas c){float y=getHeight()-edge.getStrokeWidth();c.drawText(n,pad,y,fill);c.drawText(n,pad,y,edge);}
+ }
  /** A shelf card; the focused one stays at the row's left edge and the row slides under it, as on Netflix. */
  private View card(final Item i){
   LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setClipChildren(false);box.setClipToPadding(false);box.setPadding(dp(8),dp(8),dp(8),dp(6));

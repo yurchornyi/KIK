@@ -215,6 +215,9 @@ public final class Site {
  public static List<Card> list(String category,String genre,String filter,int page)throws IOException{
   return serviceCards("/api/catalogue?category="+FreeSources.enc(category==null?"":category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter==null?"last":filter)+"&page="+page);
  }
+ /** A Home shelf TMDB picks on KIK's service (web/shelves.mjs): «trending» (the week's Top 10), «cartoons», «anime»;
+  *  HDRezka is never asked. */
+ public static List<Card> shelf(String id)throws IOException{return serviceCards("/api/shelf?id="+FreeSources.enc(id));}
  /** A holiday's film shelf for Home (Holidays.shelfOn): KIK's service picks the films and answers in the catalogue's shape; HDRezka is never asked. */
  public static List<Card> holidayFilms(String id)throws IOException{return serviceCards("/api/holiday-films?id="+FreeSources.enc(id));}
  private static final long LIST_TTL_MS=30*60_000L;
