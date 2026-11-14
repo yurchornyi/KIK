@@ -526,3 +526,5 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 .hero-copy>.eyebrow{margin-top:var(--slack,0px)}
 .hero-copy.turn{animation:none}.hero-copy.turn>:not(.actions):not(.hero-dots){animation:hero-fade .4s ease both}
 .hero-measure{position:absolute;inset:0 auto auto 0;width:100%;display:flex;align-items:flex-start;visibility:hidden;pointer-events:none;z-index:-1}.hero-measure .hero-copy{animation:none;flex:none}
+/* A row still on its way (app.js placeholderShelf): dark cards of the real cards' size, softly pulsing; no clicks. */
+.poster.placeholder{pointer-events:none}.poster.placeholder .poster-image{animation:pulse 1.5s infinite}.shelf[aria-busy=true] .rank{opacity:.35}
