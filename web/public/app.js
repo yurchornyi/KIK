@@ -314,7 +314,7 @@ let slideHeights=new Map(),slideTallest=0,slideMeasureTimer=0;
 function measureSlides(hero){
  slideHeights=new Map();slideTallest=0;if(!hero?.isConnected||slideshow.slides.length<2)return;
  const box=el('div',{class:'hero-measure','aria-hidden':'true'});hero.append(box);
- try{for(const s of slideshow.slides){const c=heroCopy(s);box.append(c);const h=c.getBoundingClientRect().height;slideHeights.set(keyOf(s.link),h);slideTallest=Math.max(slideTallest,h);}}
+ try{for(const s of slideshow.slides){const c=heroCopy(s);box.replaceChildren(c);const h=c.getBoundingClientRect().height;slideHeights.set(keyOf(s.link),h);slideTallest=Math.max(slideTallest,h);}}
  catch{slideHeights=new Map();slideTallest=0;}finally{box.remove?.();}
 }
 function steady(copy,item){if(!copy||!item)return;const h=slideHeights.get(keyOf(item.link));copy.style?.setProperty?.('--slack',h!==undefined&&slideTallest>h?Math.round(slideTallest-h)+'px':'0px');}

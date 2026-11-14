@@ -525,4 +525,4 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
    slide shorter than the tallest one gets the difference above its first line. .hero-measure lays the slides out unseen. */
 .hero-copy>.eyebrow{margin-top:var(--slack,0px)}
 .hero-copy.turn{animation:none}.hero-copy.turn>:not(.actions):not(.hero-dots){animation:hero-fade .4s ease both}
-.hero-measure{position:absolute;inset:0 auto auto 0;width:100%;display:flex;visibility:hidden;pointer-events:none;z-index:-1}.hero-measure .hero-copy{animation:none;flex:none}
+.hero-measure{position:absolute;inset:0 auto auto 0;width:100%;display:flex;align-items:flex-start;visibility:hidden;pointer-events:none;z-index:-1}.hero-measure .hero-copy{animation:none;flex:none}
