@@ -11,7 +11,10 @@ export function dropdown(select,label='',settings={}){
  if(settings.icon){trigger.innerHTML=settings.icon;trigger.classList.add('studio-filter');wrap.classList.add('studio-dropdown');}else{if(label)trigger.append(caption);trigger.append(value,arrow);}
  select.tabIndex=-1;select.setAttribute('aria-hidden','true');select.classList.add('dropdown-native');
  const name=()=>select.getAttribute('aria-label')||label;
- const paint=()=>{const o=select.selectedOptions[0];if(o&&settings.preview)value.replaceChildren(...settings.preview(o));else value.textContent=o?(settings.value?settings.value(o):o.textContent):'—';trigger.disabled=select.disabled||!select.options.length;value.title=o?o.textContent:'';trigger.title=name()+': '+value.title;trigger.setAttribute('aria-label',trigger.title);};
+ // `fit`: the pill is as wide as its longest choice (hidden copies of every choice size it), so its menu opens exactly as
+ // wide as the pill with every choice on one line (14.11, owner: the catalogue's order on a phone).
+ if(settings.fit)value.classList.add('fit');
+ const paint=()=>{const o=select.selectedOptions[0];if(o&&settings.preview)value.replaceChildren(...settings.preview(o));else if(settings.fit){const shown=make('span');shown.textContent=o?o.textContent:'—';value.replaceChildren(shown,...[...select.options].filter(x=>!x.hidden).map(x=>{const s=make('span','dropdown-sizer');s.setAttribute('aria-hidden','true');s.textContent=x.textContent;return s;}));}else value.textContent=o?(settings.value?settings.value(o):o.textContent):'—';trigger.disabled=select.disabled||!select.options.length;value.title=o?o.textContent:'';trigger.title=name()+': '+value.title;trigger.setAttribute('aria-label',trigger.title);};
  // Programmatic `select.value = …` fires no event, so the pill repaints itself.
  for(const key of ['value','selectedIndex']){const d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,key);Object.defineProperty(select,key,{configurable:true,get(){return d.get.call(this);},set(v){d.set.call(this,v);paint();}});}
  new MutationObserver(()=>{paint();if(openPanel?.select===select)openPanel.hidePopover();}).observe(select,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['disabled','hidden','selected','label']});
@@ -27,7 +30,9 @@ export function dropdown(select,label='',settings={}){
 function open(select,trigger,title,settings={}){
  if(openPanel?.matches(':popover-open')){const same=openPanel.trigger===trigger;openPanel.hidePopover();if(same)return;}
  const doc=select.ownerDocument,panel=doc.createElement('div'),list=doc.createElement('div'),head=doc.createElement('div');
- panel.className='dropdown-panel';panel.popover='auto';head.className='dropdown-head';head.textContent=title;
+ panel.className='dropdown-panel';panel.popover='auto';
+ // A `fit` pill's menu is set in the pill's own type, so the choices that sized the pill fit its width exactly.
+ if(trigger.querySelector('.dropdown-value.fit')){panel.classList.add('pill-width');panel.style.fontSize=getComputedStyle(trigger).fontSize;}head.className='dropdown-head';head.textContent=title;
  list.className='dropdown-list';list.setAttribute('role','listbox');list.setAttribute('aria-label',title);
  list.id='kik-options-'+(++nextId);trigger.setAttribute('aria-controls',list.id);
  let restoreFocus=false,tabTarget=null;
@@ -57,8 +62,8 @@ function place(panel,trigger){
  const r=trigger.getBoundingClientRect(),gap=8,margin=12,below=innerHeight-r.bottom-gap-margin,above=r.top-gap-margin;
  // An icon-only pill (the studio filter) is too narrow to hold names: its panel gets room for them.
  const many=panel.querySelector('.dropdown-list.many'),base=r.width<80?Math.max(r.width,240):r.width;let width=Math.min(many?Math.max(base,innerWidth<=720?360:520):base,innerWidth-margin*2);
- // A menu is as wide as its longest choice and never narrower than its field, so no choice is broken mid-word (14.11: a
- // phone's narrow «Популярні» pill split «Популя-рні» and «Нові надход-ження»); a phone that cannot fit one lets it wrap.
+ // A menu is as wide as its field, and wider only when its longest choice needs it, so no choice is broken mid-word (14.11:
+ // a phone's narrow «Популярні» pill split «Популя-рні» and «Нові надход-ження»); a phone that cannot fit one lets it wrap.
  // A two-column list keeps its own width. The CSS max-width would clamp the measured width to the room and keep a
  // too-long choice on one clipped line.
  if(!many){panel.classList.add('fit');panel.style.minWidth='0';panel.style.maxWidth='none';panel.style.width='max-content';const natural=Math.ceil(panel.getBoundingClientRect().width),room=innerWidth-margin*2;panel.style.maxWidth='';panel.classList.toggle('fit',natural<=room);width=Math.min(Math.max(natural,Math.min(base,room)),room);}
