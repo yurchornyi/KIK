@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {shelf,candidates,shelfQueries,SHELVES,freshRelease} from './shelves.mjs';
+import {shelf,candidates,shelfQueries,SHELVES,freshRelease,shelfFreshFor} from './shelves.mjs';
 import {pickCard} from './holiday-films.mjs';
 
 // Search cards as the catalogue gives them: the source's Russian name, «year, country, genre», a link with the year.
@@ -10,7 +10,7 @@ const NOW=Date.UTC(2026,10,14);
 function tmdb(lists){const asked=[];return {asked,fetcher:async url=>{asked.push(url);const path=new URL(url).pathname;const results=lists[path];return {ok:!!results,status:results?200:404,json:async()=>({results})};}};}
 
 test('the week\'s Top 10s are TMDB\'s trending films and trending series; cartoons and anime are this year\'s and last year\'s',()=>{
- assert.deepEqual(Object.keys(SHELVES).sort(),['anime','cartoons','documentary','films','new-documentary','series']);assert.equal(SHELVES.films.limit,10);assert.equal(SHELVES.series.limit,10);
+ assert.deepEqual(Object.keys(SHELVES).sort(),['anime','cartoons','documentary','films','new-documentary','new-films','new-series','series']);assert.equal(SHELVES.films.limit,10);assert.equal(SHELVES.series.limit,10);
  assert.deepEqual(shelfQueries('films',NOW).map(([k,p])=>[k,p.split('?')[0]]),[['movie','/trending/movie/week']]);
  assert.deepEqual(shelfQueries('series',NOW).map(([k,p])=>[k,p.split('?')[0]]),[['tv','/trending/tv/week']]);
  const [m,t]=shelfQueries('cartoons',NOW).map(([,p])=>new URLSearchParams(p.split('?')[1]));
@@ -62,7 +62,7 @@ test('a shelf out of time is partial and goes on from where it stopped; without 
 test('«Топ-10 документальних»: the documentaries among the week\'s trends first, then this year\'s and last year\'s most popular',()=>{
  const q=shelfQueries('documentary',NOW);assert.equal(SHELVES.documentary.limit,10);
  assert.deepEqual(q.filter(([,,tier])=>tier===0).map(([k,p])=>[k,p.split('?')[0],new URLSearchParams(p.split('?')[1]).get('page')]),
-  [['movie','/trending/movie/week','1'],['tv','/trending/tv/week','1'],['movie','/trending/movie/week','2'],['tv','/trending/tv/week','2'],['movie','/trending/movie/week','3'],['tv','/trending/tv/week','3']]);
+  [['movie','/trending/movie/week','1'],['tv','/trending/tv/week','1'],['movie','/trending/movie/week','2'],['tv','/trending/tv/week','2']]);
  const [dm,dt]=q.filter(([,,tier])=>tier===1).map(([k,p])=>[k,new URLSearchParams(p.split('?')[1])]);
  assert.deepEqual([dm[0],dt[0]],['movie','tv']);assert.equal(dm[1].get('with_genres'),'99');assert.equal(dm[1].get('primary_release_date.gte'),'2025-01-01');
  assert.equal(dt[1].get('without_genres'),'10764,10767,10763','reality, talk and news shows stay out');
@@ -115,4 +115,15 @@ test('a busy source is asked again after a pause, not remembered as a failure; o
  let busyOnce=true;const list=async({category,page})=>{if(busyOnce){busyOnce=false;throw busyError();}return page===1&&category==='series'?[{link:'https://hdrezka.sh/series/documentary/90-doc-2026.html',title:'Doc',info:'2026, США'}]:[];};
  const fresh=await shelf('new-documentary',{list,now:()=>clock,pause});
  assert.deepEqual(fresh.items.map(i=>i.title),['Doc'],'the busy page is read again');assert.equal(fresh.partial,false);
+});
+
+test('«Нові фільми» and «Нові серіали» are the service\'s rows: the section\'s newest of this year and last, read once for every device',async()=>{
+ const card=(section,n,year)=>({link:`https://hdrezka.sh/${section}/drama/${n}-x-${year}.html`,title:'T'+n,info:year+', США, Драмы'});
+ const asked=[];const list=async({category,genre,filter,page})=>{asked.push([category,genre,filter,page]);return page===1?[card(category,1,2026),card(category,2,2001),card(category,3,2025)]:[];};
+ const films=await shelf('new-films',{list,now:()=>NOW});
+ assert.deepEqual(films.items.map(i=>i.title),['T1','T3'],'an old film the source has just added stays out');assert.equal(films.partial,false);
+ assert.deepEqual(asked,[['films','','last',1],['films','','last',2]],'films only, the source\'s «last» list, until a page comes back empty');
+ asked.length=0;await shelf('new-series',{list,now:()=>NOW});assert.ok(asked.every(([c])=>c==='series'));
+ assert.equal(SHELVES['new-films'].limit,15);assert.equal(SHELVES['new-series'].limit,15);
+ assert.equal(shelfFreshFor('new-films'),3600,'the newest are read again hourly, as the catalogue pages were');assert.equal(shelfFreshFor('films'),21600);
 });

@@ -262,8 +262,10 @@ public final class HomeActivity extends Activity {
   *  mostly old titles, its new cartoons old ones it had just added). The two documentary rows after «Нові серіали», as the series have theirs (14.11, owner: «2 розділа має бути для докум»):
   *  the week's Top 10 and the source's new documentaries, both shelves of KIK's service (shelves.mjs). The website has the
   *  same rows in the same order (app.js HOME_ROWS; 14.11, owner: one order for both). «Нове на KIK» is gone: it was the
-  *  source's newest of every section, and its first cards were those of «Нові фільми». */
- static final String[][] ROWS={{"Топ-10 фільмів цього тижня","","shelf:films","top"},{"Нові фільми","films","last","new"},{"Топ-10 серіалів цього тижня","","shelf:series","top"},{"Нові серіали","series","last","new"},{"Топ-10 документальних цього тижня","","shelf:documentary","top"},{"Нові документальні","","shelf:new-documentary"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
+  *  source's newest of every section, and its first cards were those of «Нові фільми». «Нові фільми» and «Нові серіали»
+  *  are shelves too (14.11, owner: «все оптимізуй шо можна але якість шоб не погіршилась»): the service reads the source's
+  *  newest once for every device and keeps only this year's and last year's, where each TV read up to three pages. */
+ static final String[][] ROWS={{"Топ-10 фільмів цього тижня","","shelf:films","top"},{"Нові фільми","","shelf:new-films","new"},{"Топ-10 серіалів цього тижня","","shelf:series","top"},{"Нові серіали","","shelf:new-series","new"},{"Топ-10 документальних цього тижня","","shelf:documentary","top"},{"Нові документальні","","shelf:new-documentary"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
  private static long refreshedAt;
  private static final Map<String,String[]> DETAILS=new ConcurrentHashMap<String,String[]>();
  private void load(){

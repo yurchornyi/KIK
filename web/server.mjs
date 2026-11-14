@@ -6,7 +6,7 @@ import {recommendations} from './recommendations.mjs';import {aiReady} from './s
 import {validAvatar,AVATARS} from './public/avatars.js';
 import {publicArtworkPreview,previewArtwork} from './artwork-preview.mjs';
 import {admin,registrationAllowed,cleanSettings,storedSettings,DEFAULT_SETTINGS,logoutOtherSessions,siteReport,devices,revokeDevice,ownerFlags} from './management.mjs';
-import {holidayFilms,HOLIDAY_FILMS} from './holiday-films.mjs';import {shelf,SHELVES} from './shelves.mjs';import {shelfTitle} from './public/holidays.js';
+import {holidayFilms,HOLIDAY_FILMS} from './holiday-films.mjs';import {shelf,SHELVES,shelfFreshFor} from './shelves.mjs';import {shelfTitle} from './public/holidays.js';
 import {hash,randomToken,passwordHash,equal,cookie,identity,session,validUsername,normalizeEmail,validEmail,remember,requestToken,deviceName} from "./auth.mjs";
 import {exchange,titleKey,canonicalLink} from "./sync.mjs";
 import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
@@ -97,7 +97,7 @@ async function api(request,env,ctx){
   // Each shelf's own edge key: a new one makes every data centre build the shelf again at once, so only a shelf whose
   // kept copies are wrong gets one (14.11: «Топ-10 документальних» kept two namesakes; the key bumped for all shelves left
   // the phone and the TV without their Top 10s, «Мультфільми» and «Аніме» while they were rebuilt).
-  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v="+(SHELF_KEYS[id]||1)),21600,async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000}),list:params=>catalogue(params,{background:true,budget:8000})});
+  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v="+(SHELF_KEYS[id]||1)),shelfFreshFor(id),async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000}),list:params=>catalogue(params,{background:true,budget:8000})});
    // A shelf still being put together with nothing found yet (a cold edge, the source busy) is an error to ask again, not
    // an empty row the website and the TV would keep (14.11: «Топ-10 серіалів цього тижня» gone from both for hours).
    if(found.partial&&!found.items.length)throw Object.assign(Error('Добірка ще складається. Спробуйте за хвилину.'),{status:503,sourceBusy:true});
@@ -170,7 +170,9 @@ async function api(request,env,ctx){
  }
  if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
- if(path==="/api/similar"&&request.method==="GET"){const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=2"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
+ // A whole «Схожі» list is kept three days (was 12 hours): TMDB's picks and the source's «see also» change slowly, and
+ // the TV keeps its copy as long (RecommendationMetadata.picks) — fewer source pages and TMDB requests, the same list.
+ if(path==="/api/similar"&&request.method==="GET"){const SIMILAR_FOR=3*86400;const link=url.searchParams.get("link")||"";if(titleKey(link).startsWith("uaserials/"))return json({items:[]});const key=new Request(url.origin+path+"?link="+encodeURIComponent(canonicalLink(titleKey(link)))+"&__v=2"),hit=await caches.default.match(key).catch(()=>null);if(hit)return new Response(hit.body,hit);
   // TMDB's picks are looked up on the source one search after another, which can take longer than a viewer waits. The
   // title page is read first; when the whole list is not ready in 9 seconds, the answer is what the page itself says
   // (its «see also», its franchise and genres, marked `partial`), and the whole list is finished and stored after it.
@@ -178,8 +180,8 @@ async function api(request,env,ctx){
   const page=await film(link,url.searchParams.get("warm")==="1"?{background:true}:{}),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:params=>catalogue(params,{background:true})});
   const answer=async(items,seconds)=>{const r=json({items:await localizedCards(db,items),picks:items.picks,parts:await localizedCards(db,items.parts),genres:items.genres,year:items.year,...(items.partial?{partial:true}:{})});r.headers.set("Cache-Control","public, max-age="+seconds);return r;};
   const items=await within(whole,9000);
-  if(items){const r=await answer(items,items.partial?600:43200);ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
-  ctx?.waitUntil?.(whole.then(async list=>caches.default.put(key,await answer(list,list.partial?600:43200))).catch(()=>{}));
+  if(items){const r=await answer(items,items.partial?600:SIMILAR_FOR);ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}
+  ctx?.waitUntil?.(whole.then(async list=>caches.default.put(key,await answer(list,list.partial?600:SIMILAR_FOR))).catch(()=>{}));
   return answer(await similar(link,{token:"",load:async()=>page,search:async()=>[]}).then(list=>Object.assign(list,{partial:true})),60);}
  if(!user)fail("Увійдіть у свій обліковий запис",401);
  if(path.startsWith("/api/media/")){if(!["GET","HEAD"].includes(request.method))fail("Метод недоступний",405);return serveMedia(request,env,{waitUntil:p=>ctx.waitUntil(p)});}

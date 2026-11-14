@@ -6,9 +6,12 @@
  *  - cartoons: the most popular animated films and series of this year and last, anime aside;
  *  - anime: the most popular Japanese animation of this year and last;
  *  - documentary: «Топ-10 документальних цього тижня» (14.11, owner: two documentary rows «як Топ-10 серіалів цього
- *    тижня, Нові серіали»): the documentaries among TMDB's trending films and series of the week, then, to fill ten, the
+ *    тижня, Нові серіали»): the documentaries among TMDB's trending films and series of the week (two pages each), then, to fill ten, the
  *    most popular documentaries of this year and last; reality, talk and news shows aside («реаліті-шоу ні»);
- *  - new-documentary: «Нові документальні», not TMDB's: the source's newest documentary series and films (freshShelf).
+ *  - new-documentary: «Нові документальні», not TMDB's: the source's newest documentary series and films (freshShelf);
+ *  - new-films, new-series: «Нові фільми», «Нові серіали», the source's newest of the section (freshShelf). Each device
+ *    read up to three «last» pages for them on every Home load (14.11, owner: «щоб в ліміти влазило і все оптимізуй»);
+ *    now the service reads them once and keeps the row at the edge like any shelf.
  * Each title is found on the catalogue by its Russian and original names and its year (holiday-films.mjs), in TMDB's
  * order. One search at a time as background work; server.mjs keeps a whole shelf at the edge (/api/shelf).
  */
@@ -19,7 +22,7 @@ const API='https://api.themoviedb.org/3',DAY=86400000,RETRY=600000,BUDGET=20000,
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 /** The source busy: background work takes only a slot about to be free (catalogue.mjs sourceSlot). Not a failure. */
 const busy=e=>!!e?.sourceBusy&&!e?.sourcePaused;
-export const SHELVES={films:{limit:10},series:{limit:10},cartoons:{limit:15},anime:{limit:15},documentary:{limit:10},'new-documentary':{limit:15}};
+export const SHELVES={films:{limit:10},series:{limit:10},cartoons:{limit:15},anime:{limit:15},documentary:{limit:10},'new-documentary':{limit:15},'new-films':{limit:15},'new-series':{limit:15}};
 // TMDB's series can be a documentary and a reality, talk or news show at once: those stay out of «Документальне».
 const NOT_DOCUMENTARY=[10764,10767,10763];
 // A documentary found under one of the source's fiction genres is a film of the same name (14.11: «Історія звуку», a
@@ -39,7 +42,8 @@ export function shelfQueries(id,now=Date.now()){
  if(id==='cartoons')return [discover('movie',{}),discover('tv',{})];
  if(id==='anime')return [discover('tv',{with_original_language:'ja'}),discover('movie',{with_original_language:'ja'})];
  if(id==='documentary'){const week=(kind,page)=>[kind,'/trending/'+kind+'/week?language=ru-RU&page='+page,0];
-  return [week('movie',1),week('tv',1),week('movie',2),week('tv',2),week('movie',3),week('tv',3),[...discover('movie',{with_genres:'99'}),1],[...discover('tv',{with_genres:'99',without_genres:NOT_DOCUMENTARY.join(',')}),1]];}
+  // Two pages of each week's trends: a third added a documentary or two for two more TMDB requests; the fill covers the rest.
+  return [week('movie',1),week('tv',1),week('movie',2),week('tv',2),[...discover('movie',{with_genres:'99'}),1],[...discover('tv',{with_genres:'99',without_genres:NOT_DOCUMENTARY.join(',')}),1]];}
  throw Object.assign(Error('Невідома полиця'),{status:400});
 }
 
@@ -64,7 +68,10 @@ export function candidates(id,lists){
 }
 
 /** A shelf the source fills itself: its genre's newest additions (the «last» list) in these sections, in turns. */
-const FRESH={'new-documentary':{genre:'documentary',categories:['series','films']}},FRESH_PAGES=3;
+/** How long the edge keeps a shelf before it is read again in the background: an hour for the source's newest (as its
+ *  catalogue pages, so a title it adds shows as soon as before), six hours for TMDB's lists. */
+export const shelfFreshFor=id=>Object.hasOwn(FRESH,id)?3600:21600;
+const FRESH={'new-documentary':{genre:'documentary',categories:['series','films']},'new-films':{genre:'',categories:['films']},'new-series':{genre:'',categories:['series']}},FRESH_PAGES=3;
 /** This year's and last year's titles only, as «Нові серіали» (newRelease on the website, FreshPolicy on the TV): the
  *  source's «last» list also holds old titles it has just added. A series counts by the year it began. */
 export function freshRelease(card,now=Date.now()){const year=Number(String(card?.info||'').match(/\d{4}/)?.[0]),thisYear=new Date(now).getUTCFullYear();return year>thisYear-2&&year<=thisYear+1;}
