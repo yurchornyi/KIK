@@ -18,6 +18,7 @@ import {createCatalogueView,catalogueSelection,selectionQuery,infoLine,newReleas
 import {oops} from './oops.js';
 import {createDownloads,formatBytes,defaultDownloadQuality,DOWNLOAD_QUALITIES,watchedCopies,nextToSave} from './downloads.js';
 import {installRefresh} from './refresh.js';
+import {createRowStore} from './home-rows.js';
 import {loadFlags,currentFlags} from './flags.js';
 import {holidayPlan,dressUp,holidayIntro,HOLIDAY_INTRO_MS,fireworksDue,fireworksOver} from './holiday-mark.js';
 const $=s=>document.querySelector(s),main=$('#main'),modal=$('#modal'),modalContent=$('#modal-content'),playerModal=$('#player-modal');
@@ -170,6 +171,12 @@ function card(item,progress=false,onClick){const image=el('div',{class:'poster-i
  return el('button',{class:'poster',type:'button','aria-label':item.title,'data-key':key,onClick:onClick||(()=>openDetails(item)),onPointerenter:e=>{if(e.pointerType==='mouse'){clearTimeout(dwell);dwell=setTimeout(warm,150);}},onPointerleave:()=>clearTimeout(dwell),onPointerdown:warm,onFocus:()=>{clearTimeout(dwell);dwell=setTimeout(warm,250);},onBlur:()=>clearTimeout(dwell)},image,el('span',{class:'poster-title'},item.title),el('span',{class:'poster-info'},infoLine(item.info)||item.year||(progress?'Продовжити перегляд':'Фільми та серіали')));}
 /** A row of cards; `rank` puts a big number before each card (the week's Top 10, as on the TV and on Netflix). */
 function shelf(title,items,subtitle='',progress=false,rank=false){if(!items.length)return null;return el('section',{class:'shelf'+(rank?' top-ten':'')},el('div',{class:'shelf-head'},el('h2',{},title),el('span',{class:'subtle'},subtitle)),el('div',{class:'shelf-line'},items.slice(0,24).map((i,n)=>rank?el('div',{class:'ranked'},el('span',{class:'rank','aria-hidden':'true'},String(n+1)),card(i,progress)):card(i,progress))));}
+/** A row still on its way (home-rows.js): its heading and dark cards of the very size its posters will have, so the rows
+ *  under it never move when it comes (14.11, owner: «1» of a Top 10 jumped up while Home loaded). */
+function placeholderShelf(title,rank=false){
+ const tile=n=>{const c=el('div',{class:'poster placeholder','aria-hidden':'true'},el('div',{class:'poster-image'}),el('span',{class:'poster-title'},'\u00a0'),el('span',{class:'poster-info'},'\u00a0'));return rank?el('div',{class:'ranked'},el('span',{class:'rank','aria-hidden':'true'},String(n+1)),c):c;};
+ return el('section',{class:'shelf'+(rank?' top-ten':''),'aria-busy':'true'},el('div',{class:'shelf-head'},el('h2',{},title),el('span',{class:'subtle'},'')),el('div',{class:'shelf-line'},Array.from({length:6},(_,n)=>tile(n))));
+}
 function tokens(s){return (s||'').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)||[];}
 const COUNTRIES=[['Россия','Росія'],['СССР','СРСР'],['Беларусь','Білорусь'],['Казахстан','Казахстан'],['Узбекистан','Узбекистан'],['Индия','Індія'],['Турция','Туреччина'],['Китай','Китай'],['Южная Корея','Південна Корея'],['Япония','Японія']],COUNTRY_DEFAULT=['Россия','СССР','Беларусь','Казахстан'];
 /** Countries hidden from catalogue, search and recommendations on this device. Mirrors CountryFilter.java. */
@@ -358,7 +365,7 @@ function profileGate(){if(main.querySelector('.profile-gate'))return;main.replac
 function gate(){if(main.querySelector('.gate:not(.profile-gate)'))return;main.replaceChildren(el('section',{class:'gate'},el('div',{class:'gate-copy'},el('div',{class:'eyebrow'},'ОДИН ПРОФІЛЬ. УСІ ВАШІ ПРИСТРОЇ.'),el('h1',{},'Увійдіть, щоб дивитися'),el('div',{class:'actions'},button('Увійти',()=>auth(),'pill red'),button('Створити обліковий запис',()=>auth(true),'pill')))));}
 function render(){pageDirty=false;if(['home','catalogue','later','history','search'].includes(state.tab))downloads.quiet(8000);document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='downloads'){renderDownloads();return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmTaste();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
  // A tap or click on the hero holds its slide for another turn, so a title just saved or opened never slips away under the finger.
- hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);measureSlides(hero);steady(hero.querySelector('.hero-copy'),featured);const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},...holidayRow(),{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),...newRows(),{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);shelves.splice(2+holidayRow().length,0,...topTenRows());for(const r of shelves){const row=shelf(r.title,r.items,r.subtitle||'',r.progress,r.rank);if(row)rows.append(row);}
+ hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);measureSlides(hero);steady(hero.querySelector('.hero-copy'),featured);const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},...holidayRow(),{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),...newRows(),{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);shelves.splice(2+holidayRow().length,0,...topTenRows());for(const r of shelves){const row=r.pending&&!r.items.length?placeholderShelf(r.title,r.rank):shelf(r.title,r.items,r.subtitle||'',r.progress,r.rank);if(row)rows.append(row);}
  // The viewer's own rows stay when the source is down; the catalogue under them retries by itself.
  if(state.catalogueError)rows.append(oops({error:state.catalogueFailure,retry:loadCatalogue,key:'home',size:'compact'}));
  // A shelf the viewer has scrolled along keeps its place through a repaint (a sync, a closed window).
@@ -883,22 +890,24 @@ function holidayDress(flags){const plan=holidayPlan(flags);if(!plan)return;
 /** «Топ-10 фільмів / серіалів цього тижня» (/api/shelf, shelves.mjs; the TV has the same rows, as on Netflix): what the
  *  world watches this week, found on the catalogue, in its order. Asked once a page load; they come after the
  *  recommendations and keep their ten, even a title another row shows too. */
-const TOP_SHELVES=[['films','Топ-10 фільмів цього тижня'],['series','Топ-10 серіалів цього тижня']];let topLists={},topAsked=false;
-function topTenRows(){if(!topAsked){topAsked=true;for(const [id] of TOP_SHELVES)api('/api/shelf?id='+id).then(r=>{topLists[id]=Array.isArray(r.items)?r.items:[];if(topLists[id].length&&state.tab==='home')backgroundRender();}).catch(()=>{});}
- return TOP_SHELVES.map(([id,title])=>({title,items:allowed(topLists[id]||[]).slice(0,10),subtitle:'Що дивляться у світі цього тижня',rank:true})).filter(r=>r.items.length);}
+const TOP_SHELVES=[['films','Топ-10 фільмів цього тижня'],['series','Топ-10 серіалів цього тижня']];
 /** «Нові фільми», «Нові серіали» (14.11, owner: the old «Фільми на вечір» and «Ще одна серія?» were the source's all-time
  *  popular lists, «Втеча з Шоушенка» and the like): the source's newest additions of this year and last only (newRelease,
  *  FreshPolicy on the TV), up to three pages until a row has 12. Then TMDB's «Мультфільми» and «Аніме», as on the TV. */
-const NEW_ROWS=[['films','Нові фільми'],['series','Нові серіали']],MORE_SHELVES=[['cartoons','Мультфільми'],['anime','Аніме']];let newLists={},newAsked=false;
+const NEW_ROWS=[['new-films','films','Нові фільми'],['new-series','series','Нові серіали']],MORE_SHELVES=[['cartoons','Мультфільми'],['anime','Аніме']];
 async function freshList(category){const out=[],seen=new Set();
  for(let page=1;page<=3&&out.length<12;page++){let r;try{r=await api('/api/catalogue?category='+category+'&filter=last&page='+page);}catch(e){if(page===1)throw e;break;}
   for(const i of r.items||[]){const k=keyOf(i.link);if(newRelease(i)&&!seen.has(k)){seen.add(k);out.push(i);}}if(!r.items?.length||r.hasMore===false)break;}
  return out;}
-function newRows(){
- if(!newAsked){newAsked=true;const shown=()=>{if(state.tab==='home')backgroundRender();};
-  for(const [id] of NEW_ROWS)freshList(id).then(items=>{newLists[id]=items;if(items.length)shown();}).catch(()=>{});
-  for(const [id] of MORE_SHELVES)api('/api/shelf?id='+id).then(r=>{topLists[id]=Array.isArray(r.items)?r.items:[];if(topLists[id].length)shown();}).catch(()=>{});}
- return [...NEW_ROWS.map(([id,title])=>({title,items:allowed(newLists[id]||[]).filter(i=>liked(i.link)>=0)})),...MORE_SHELVES.map(([id,title])=>({title,items:allowed(topLists[id]||[]).filter(i=>liked(i.link)>=0)}))].filter(r=>r.items.length);
+/** These six rows come from KIK's service on their own (home-rows.js): kept in this browser and shown at once, a row on
+ *  its way holds its place, a failed request is asked again. */
+let rowStore=null;
+function homeRows(){return rowStore||=createRowStore({storage,load:id=>{const fresh=NEW_ROWS.find(r=>r[0]===id);return fresh?freshList(fresh[1]):api('/api/shelf?id='+id).then(r=>r.items);},onChange:()=>{if(state.tab==='home')backgroundRender();}});}
+const rowOf=(id,title,extra={})=>{const v=homeRows().view(id);return {title,items:v.items,pending:v.pending,...extra};};
+function topTenRows(){homeRows().ask(TOP_SHELVES.map(([id])=>id));
+ return TOP_SHELVES.map(([id,title])=>{const r=rowOf(id,title,{subtitle:'Що дивляться у світі цього тижня',rank:true});return {...r,items:allowed(r.items).slice(0,10)};}).filter(r=>r.items.length||r.pending);}
+function newRows(){homeRows().ask([...NEW_ROWS.map(r=>r[0]),...MORE_SHELVES.map(r=>r[0])]);
+ return [...NEW_ROWS.map(([id,,title])=>rowOf(id,title)),...MORE_SHELVES.map(([id,title])=>rowOf(id,title))].map(r=>({...r,items:allowed(r.items).filter(i=>liked(i.link)>=0)})).filter(r=>r.items.length||r.pending);
 }
 function holidayRow(){return holidayFilms?.items.length?[{title:holidayFilms.title,items:allowed(holidayFilms.items).filter(i=>liked(i.link)>=0),subtitle:'Добірка KIK до свята'}]:[];}
 /** New Year's fireworks over the home banner: once, in the first ten minutes of 1 January, while the home is on screen. */
