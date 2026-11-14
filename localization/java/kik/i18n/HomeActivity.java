@@ -367,13 +367,12 @@ public final class HomeActivity extends Activity {
   return saved;
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste,final String shelf){
-  final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1],ua=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
+  final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
   final long started=SystemClock.elapsedRealtime();
-  // Every row, the shelves and «Українською» come from KIK's service at once: it has no bot check a first request must pass
+  // Every row and the shelves come from KIK's service at once: it has no bot check a first request must pass
   // (HDRezka's had, so row 1 used to finish all its pages before the others started), and the wait is the slowest row, not the sum.
-  {Thread t=new Thread(()->{
-   try{Row r=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";r.items.add(i);if(r.items.size()>=15)break;}ua[0]=r;}
-   catch(Exception ignored){}},"kik-home-ua");threads.add(t);t.start();}
+  // No «Українською» row (14.11, owner: «не треба такого рядка»): it kept only titles the server had matched on HDRezka,
+  // and the UASerials list it read has no years to match by, so it stayed empty and hidden since late October.
   // The holiday's film shelf comes from KIK's service alongside the rows; HDRezka is never asked for it.
   if(shelf!=null){Thread t=new Thread(()->{
    try{Row r=new Row(Holidays.shelfTitle(shelf));for(Site.Card c:Site.holidayFilms(shelf)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=20)break;}festive[0]=r;}
@@ -399,7 +398,7 @@ public final class HomeActivity extends Activity {
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty()){Log.d("KIK.Load","Home first row "+(SystemClock.elapsedRealtime()-started)+"ms");first.accept(out[0]);}
   for(Thread t:threads)try{t.join(Math.max(1,deadline-SystemClock.elapsedRealtime()));}catch(InterruptedException ignored){}
   Log.d("KIK.Load","Home rows from the service "+(SystemClock.elapsedRealtime()-started)+"ms");
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));if(ua[0]!=null&&!ua[0].items.isEmpty())rows.add(ua[0]);if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
   // Second in the list, after the row already on screen; placeShelf puts it in its place on the page. Never alone: without
   // the catalogue the page fails as before instead of caching a shelf for six hours.
   if(!rows.isEmpty()&&festive[0]!=null&&!festive[0].items.isEmpty())rows.add(1,festive[0]);
