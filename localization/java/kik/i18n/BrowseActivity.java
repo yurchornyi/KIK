@@ -28,7 +28,7 @@ public final class BrowseActivity extends Activity {
  /** 14.11, owner: «Аніме забираєш, документалки віддаєш»: the same four sections as the website. */
  static final String[][] SECTIONS={{"films","Фільми"},{"series","Серіали"},{"cartoons","Мультфільми"},{"documentary","Документальні"}};
  /** «Документальні» chooses between films and series instead of a genre. */
- private String allGenres(){return "documentary".equals(category)?"Фільми й серіали":"Усі жанри";}
+ private String allGenres(){return "documentary".equals(category)?"Усі":"Усі жанри";}
  /** The search came with a name already (OpenTitleActivity): results take focus, no keyboard over them. */
  private boolean handedOver;
  /** The search a pause in typing starts. */
