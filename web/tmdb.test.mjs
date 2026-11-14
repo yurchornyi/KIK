@@ -116,3 +116,18 @@ test('a show TMDB gives no platform asks TVmaze for its channel, by its English 
  const r=await service.lookup({link:'https://hdrezka.sh/series/drama/93864-sredi-nochnoy-tishiny-2026.html',title:'Среди ночной тишины',year:'2026'},{token:'test-only'});
  assert.deepEqual(r.artwork.studios,['hbo']);assert.deepEqual(asked,{names:['In the Silence of the Night','Wśród nocnej ciszy'],year:2026});
 });
+
+test('a new title with no network or company takes the platform it alone streams on; an old one and its kept answer do not',async()=>{
+ const year=new Date().getUTCFullYear(),netflix={results:Object.fromEntries(['US','DE','PL','GB'].map(r=>[r,{flatrate:[{provider_id:8}]}]))};
+ const film=(id,date)=>({id,title:'Allen',original_title:'Allen',release_date:date});let asked=0,puts=[];
+ const fetcher=async url=>{asked++;const old=url.includes('Old');if(url.includes('/search/movie'))return Response.json({results:[old?{...film(2,'2001-05-01'),title:'Old'}:film(1,year+'-11-01')]});
+  if(/\/movie\/(1|2)\?/.test(url)){assert.ok(url.includes('watch/providers'));return Response.json({...(url.includes('/movie/2?')?{...film(2,'2001-05-01'),title:'Old'}:film(1,year+'-11-01')),'watch/providers':netflix,images:{posters:[poster],backdrops:[]}});}return Response.json({results:[]});};
+ const cache={match:async()=>null,put:async(key,response)=>{puts.push(response.headers.get('Cache-Control'));}};
+ const service=createArtworkService({fetcher});
+ const fresh=await service.lookup({link:'https://hdrezka.sh/films/fiction/93715-allen-'+year+'-latest.html',title:'Allen',year:String(year)},{token:'test-only',cache});
+ assert.deepEqual(fresh.artwork.studios,['netflix']);
+ const old=await service.lookup({link:'https://hdrezka.sh/films/drama/1-old-2001.html',title:'Old',year:'2001'},{token:'test-only',cache});
+ assert.deepEqual(old.artwork.studios,[]);
+ // Kept a week with a studio; without one, half a day: TMDB adds a new title's network later.
+ assert.deepEqual(puts,['public, max-age=604800','public, max-age=43200']);
+});

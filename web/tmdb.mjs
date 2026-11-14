@@ -1,5 +1,5 @@
 import {titleKey} from './sync.mjs';
-import {studiosFor,studiosByChannel,STUDIO_RULES} from './public/studios.js';
+import {studiosFor,studiosByChannel,studiosByProviders,STUDIO_RULES} from './public/studios.js';
 
 const API='https://api.themoviedb.org/3',CDN='https://image.tmdb.org/t/p';
 const DAY=86400000,MAX_ENTRIES=400;
@@ -111,11 +111,14 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
   }
   if(!match)return null;
   const kind=match.kind;
-  const details=await request(`/${kind}/${match.id}?append_to_response=images&include_image_language=uk,en,null`,token,signal);
+  const details=await request(`/${kind}/${match.id}?append_to_response=images,watch/providers&include_image_language=uk,en,null`,token,signal);
   const artwork=selectImages(details.images||details,match.id,kind);let studios=studiosFor(details);
   // A show TMDB gives no platform for: the channel TVmaze has it on, by its English and original names.
   if(!studios.length&&kind==='tv'&&channelOf){const names=[details.name,details.original_name].filter(n=>n&&!/[а-яёієїґ]/i.test(n)),year=Number(String(details.first_air_date||'').slice(0,4))||identity.year;
    if(names.length)try{studios=studiosByChannel(await channelOf(names,year));}catch{}}
+  // A title from this year or last that still names none: the platform it alone streams on (studiosByProviders).
+  const released=Number(String(details.release_date||details.first_air_date||'').slice(0,4))||identity.year||0;
+  if(!studios.length&&released>=new Date(now()).getUTCFullYear()-1)studios=studiosByProviders(details['watch/providers']);
   return artwork?{...artwork,studios}:studios.length?{source:'tmdb',id:match.id,kind,page:`https://www.themoviedb.org/${kind}/${match.id}`,studios}:null;
  }
  async function lookup(input,{token,cache,origin='https://kik-artwork.invalid'}={}){
@@ -130,11 +133,12 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
   if(active.size>=12)return {configured:true,artwork:null,retryAfter:10};
   const mark=Symbol(digest);active.set(mark,now());
   const work=(async()=>{
-   if(cache)try{const cached=await cache.match(key);if(cached){const value=await cached.json();remember(value,Math.min(value.artwork?7*DAY:DAY/2,60000));return value;}}catch{}
+   if(cache)try{const cached=await cache.match(key);if(cached){const value=await cached.json();remember(value,Math.min(value.artwork?.studios?.length?7*DAY:DAY/2,60000));return value;}}catch{}
    if(now()<blockedUntil)return {configured:true,artwork:null,retryAfter:60};
    let artwork;
    try{artwork=await resolve(identity,token,input.link);}catch(e){console.warn('TMDB lookup failed',e?.message);const value={configured:true,artwork:null,retryAfter:60};remember(value,60000);return value;}
-   const value={configured:true,artwork},ttl=artwork?7*DAY:DAY/2;remember(value,ttl);
+   // An answer without a studio is asked again in half a day, as a miss is: TMDB adds a new title's network later.
+   const value={configured:true,artwork},ttl=artwork?.studios?.length?7*DAY:DAY/2;remember(value,ttl);
    if(cache)try{await cache.put(key,new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json','Cache-Control':`public, max-age=${ttl/1000}`}}));}catch{}
    return value;
   })();
