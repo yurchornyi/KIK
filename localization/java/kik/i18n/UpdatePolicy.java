@@ -26,7 +26,6 @@ public final class UpdatePolicy {
  }
  private static boolean https(URI u){return "https".equals(u.getScheme())&&u.getUserInfo()==null&&(u.getPort()==-1||u.getPort()==443);}
  public static boolean hash(String h){return h!=null&&h.matches("[a-fA-F0-9]{64}");}
- public static String normalizeHash(String h){return h.toLowerCase(Locale.ROOT);}
  public static boolean eligible(long installed,long next,int sdk,int minSdk,long size){
   return installed>0&&next>installed&&next<=Integer.MAX_VALUE&&minSdk>=24&&minSdk<=sdk&&size>0&&size<=MAX_APK;
  }

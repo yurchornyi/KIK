@@ -180,11 +180,6 @@ public final class Site {
  static String opt(JSONObject o,String key){return o==null||o.isNull(key)?null:o.optString(key,null);}
 
  // ---------- catalogue ----------
- /** category: films, series, cartoons, animation or "" for everything; filter: last, popular, watching. */
- public static String listPath(String category,String genre,String filter,int page){
-  String base=category==null||category.isEmpty()?"/":"/"+category+"/"+(genre==null||genre.isEmpty()?"":genre+"/");
-  return base+(page>1?"page/"+page+"/":"")+"?filter="+(filter==null?"last":filter);
- }
  public static List<Card> cards(String html){
   List<Card> out=new ArrayList<Card>();
   String[] chunks=html.split("<div class=\"b-content__inline_item\"");int raw=0;
@@ -238,18 +233,6 @@ public final class Site {
  }
  /** A holiday's film shelf for Home (Holidays.shelfOn): KIK's service picks the films and answers in the catalogue's shape; HDRezka is never asked. */
  public static List<Card> holidayFilms(String id)throws IOException{return serviceCards("/api/holiday-films?id="+FreeSources.enc(id));}
- private static final long LIST_TTL_MS=30*60_000L;
- /** Catalogue lists change slowly: reopening the home screen reads them from disk for half an hour instead of asking the site again. */
- private static String listPage(String path)throws IOException{
-  File f=UiRuntime.app==null?null:new File(UiRuntime.app.getCacheDir(),"site_list_"+Integer.toHexString(path.hashCode())+".html");
-  if(f!=null&&f.isFile()&&System.currentTimeMillis()-f.lastModified()<LIST_TTL_MS)try{return read(new FileInputStream(f));}catch(IOException ignored){}
-  String html;try{html=page(path);}catch(IOException e){
-   if(paused(e)&&f!=null&&f.isFile()&&System.currentTimeMillis()-f.lastModified()<24*60*60_000L)try{return read(new FileInputStream(f));}catch(IOException ignored){}
-   throw e;
-  }
-  if(f!=null&&html.contains("b-content__inline_item"))try{FileOutputStream o=new FileOutputStream(f);o.write(html.getBytes("UTF-8"));o.close();}catch(IOException ignored){}
-  return html;
- }
  public static List<Card> studioList(String category,String genre,String filter,String studio,int page)throws IOException{
   JSONObject result=FreeSources.get("/api/catalogue?category="+FreeSources.enc(category)+"&genre="+FreeSources.enc(genre==null?"":genre)+"&filter="+FreeSources.enc(filter)+"&studio="+FreeSources.enc(studio)+"&page="+page,60000);
   List<Card> out=new ArrayList<Card>();JSONArray items=result.optJSONArray("items");if(items==null)throw new IOException("Studio catalogue unavailable");
