@@ -257,11 +257,11 @@ public final class HomeActivity extends Activity {
  private void load(){
   final long started=SystemClock.elapsedRealtime();final int gen=++loadGeneration;final String profile=ProfileStore.current(this);
   new Thread(()->{
-   final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);
+   final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);final long taste=SystemClock.elapsedRealtime()-started;
    final String shelf=AppFlags.shelf(this);
-   final List<Row> local=localRows(profile);List<Row> cached=fromCache(shelf);
+   final List<Row> local=localRows(profile);final long history=SystemClock.elapsedRealtime()-started;List<Row> cached=fromCache(shelf);
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
-   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");
+   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms (taste "+taste+"ms, history "+history+"ms)");
    // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
    final List<Row> saved=savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
    if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(profile,local,cached,preferences);
@@ -709,11 +709,17 @@ public final class HomeActivity extends Activity {
   showSlide(0);
  }
  /** Small pills under the buttons. The slide on screen is a wider track that fills up in white over the 9 s it stays,
- *  like Netflix; the fill only scales (a render property), so the weak GPU never redraws the hero for it. */
- private void paintDots(){dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
+ *  like Netflix. The fill moves in steps of half a second: animated every frame, it had the TV draw the whole screen
+ *  ~50 times a second, 32 ms a frame on the TCL, for as long as Home was open (14.11: 509 frames in 10 s of idle Home,
+ *  every one late), and a press of the remote waited behind those frames. */
+ private void paintDots(){main.removeCallbacks(dotStep);dotFill=null;dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
   if(!on){View d=new View(this);d.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));dots.addView(d,lp);continue;}
-  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));long spent=slideAt==0?0:Math.min(SLIDE_MS,android.os.SystemClock.uptimeMillis()-slideAt);fill.setPivotX(0);fill.setScaleX(spent/(float)SLIDE_MS);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
-  fill.animate().scaleX(1f).setDuration(SLIDE_MS-spent).setInterpolator(new android.view.animation.LinearInterpolator()).start();}}
+  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));fill.setPivotX(0);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
+  dotFill=fill;dotStep.run();}}
+ private static final long DOT_STEP_MS=500;private View dotFill;
+ private final Runnable dotStep=new Runnable(){public void run(){
+  View fill=dotFill;if(destroyed||fill==null)return;long spent=slideAt==0?0:Math.min(SLIDE_MS,android.os.SystemClock.uptimeMillis()-slideAt);
+  fill.setScaleX(spent/(float)SLIDE_MS);if(spent<SLIDE_MS)main.postDelayed(this,DOT_STEP_MS);}};
 
  private void setHero(Item i){
   if(i==hero)return;hero=i;expanded=false;heroText.setMaxLines(i.resume?HERO_LINES-1:HERO_LINES);
