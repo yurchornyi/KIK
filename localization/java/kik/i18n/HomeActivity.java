@@ -45,7 +45,11 @@ public final class HomeActivity extends Activity {
  private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);if(Account.gate(this))return;TvChannels.start(this);holidayId=AppFlags.today(this);
+  super.onCreate(state);if(Account.gate(this))return;
+  // Android reads a preferences file from disk on its own thread from the first ask: Home's saved rows start now, while the
+  // screen is built, instead of when load() needs them.
+  getSharedPreferences("kik_home",0);getSharedPreferences("kik_home_personal",0);
+  TvChannels.start(this);holidayId=AppFlags.today(this);
   getWindow().setFlags(1024,1024);getWindow().getDecorView().setSystemUiVisibility(5894);
   getWindow().setBackgroundDrawable(null);
   root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
@@ -257,9 +261,12 @@ public final class HomeActivity extends Activity {
  private void load(){
   final long started=SystemClock.elapsedRealtime();final int gen=++loadGeneration;final String profile=ProfileStore.current(this);
   new Thread(()->{
-   final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);final long taste=SystemClock.elapsedRealtime()-started;
    final String shelf=AppFlags.shelf(this);
-   final List<Row> local=localRows(profile);final long history=SystemClock.elapsedRealtime()-started;List<Row> cached=fromCache(shelf);
+   // Last time's rows are read beside the taste and the history: the saved page is the largest file Home reads, and on the
+   // TCL it took ~0.3 s of the 0.4 s before anything could be shown (14.11).
+   final FutureTask<List<Row>> saved_rows=new FutureTask<List<Row>>(()->fromCache(shelf));new Thread(saved_rows,"kik-home-cache").start();
+   final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);final long taste=SystemClock.elapsedRealtime()-started;
+   final List<Row> local=localRows(profile);final long history=SystemClock.elapsedRealtime()-started;final List<Row> cached=rowsOf(saved_rows);
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
    Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms (taste "+taste+"ms, history "+history+"ms)");
    // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
@@ -295,6 +302,7 @@ public final class HomeActivity extends Activity {
   },"kik-home").start();
  }
  /** {@code profile} is the one these rows were built for: the viewer may have switched while the catalogue loaded. */
+ private static List<Row> rowsOf(FutureTask<List<Row>> task){try{return task.get();}catch(Exception e){Log.w("KIK","Home cache: "+e);return new ArrayList<Row>();}}
  private List<Row> homeRows(String profile,List<Row> local,List<Row> catalogue,Recommendations.Snapshot preferences){
   List<Row> out=new ArrayList<Row>(local);List<Row> personal=Recommendations.rows(this,preferences,catalogue);if(!catalogue.isEmpty())saveRecommendations(profile,personal);out.addAll(personal);out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
  }
