@@ -5,7 +5,7 @@
  * within MARGIN of the screen; inside the row the browser's lazy loading goes on as before.
  * It only watches #main: a poster already shown, an image outside a row and the catalogue's grid are never touched.
  */
-const MARGIN=500,HELD='heldSrc',HELD_SET='heldSrcset';
+const MARGIN=500,WAIT=4000,HELD='heldSrc',HELD_SET='heldSrcset';
 
 function hold(img){
  if(img.complete&&img.naturalWidth)return;
@@ -23,7 +23,12 @@ function release(row){
 
 export function holdFarRows(main=globalThis.document?.getElementById('main'),win=globalThis){
  if(!main||!('IntersectionObserver' in win)||!('MutationObserver' in win))return null;
- const near=new win.IntersectionObserver(entries=>{for(const e of entries)if(e.isIntersecting){near.unobserve(e.target);release(e.target);}},{rootMargin:MARGIN+'px 0px'});
+ let reported=false,off=false,check=0;
+ const near=new win.IntersectionObserver(entries=>{reported=true;for(const e of entries)if(e.isIntersecting){near.unobserve(e.target);release(e.target);}},{rootMargin:MARGIN+'px 0px'});
+ // Where nothing is drawn (a tab opened in the background, a hidden window, a WebView without frames) the observer never
+ // reports: without its first report within WAIT every waiting row gets its posters, as before this file.
+ // Such a page holds nothing more after that.
+ const fallback=()=>{check=0;if(reported)return;off=true;for(const row of main.querySelectorAll('[data-posters-held]')){near.unobserve(row);release(row);}};
  const watcher=new win.MutationObserver(records=>{
   const rows=new Set(),loose=new Set();
   // Home repaints often: a row gone from the page is no longer watched.
@@ -37,12 +42,14 @@ export function holdFarRows(main=globalThis.document?.getElementById('main'),win
    // A picture added into a row that is still waiting (a card repainted in place) waits with it.
    const row=node.closest('.shelf');if(row?.dataset.postersHeld)loose.add(node);
   }
+  if(off)return;
   if(rows.size){
    const below=win.innerHeight+MARGIN;
    for(const row of rows){
     if(!row.isConnected||row.dataset.postersHeld)continue;
     if(row.getBoundingClientRect().top<=below)continue;
     row.dataset.postersHeld='1';for(const img of row.querySelectorAll('img'))hold(img);near.observe(row);
+    if(!reported&&!check)check=win.setTimeout(fallback,WAIT);
    }
   }
   for(const node of loose)for(const img of node.matches('img')?[node]:node.querySelectorAll('img'))hold(img);
