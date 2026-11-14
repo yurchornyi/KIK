@@ -1,7 +1,7 @@
 package kik.i18n;
 
 /**
- * Which titles «Нове на KIK», «Нові фільми» and «Нові серіали» on Home may show (14.11, owner: only new releases, not a
+ * Which titles «Нові фільми» and «Нові серіали» on Home may show (and «Нове на KIK» did until 14.11) (14.11, owner: only new releases, not a
  * 1996 film the site has just added): one that came out this year or last year. A series counts by the year it began,
  * so a long-running show with a fresh season is not a new release. A card without a year is left out.
  */
