@@ -251,7 +251,7 @@ public final class HomeActivity extends Activity {
  /** Title, category, filter; a fourth column marks a row of new releases only (FreshPolicy: this year and last) or the
   *  Top 10. A «shelf:» filter is a shelf TMDB picks on KIK's service (Site.shelf, 14.11: the source's «popular» was
   *  mostly old titles, its new cartoons old ones it had just added). */
- static final String[][] ROWS={{"Нове на KIK","","last","new"},{"Топ-10 цього тижня","","shelf:trending","top"},{"Нові фільми","films","last","new"},{"Нові серіали","series","last","new"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
+ static final String[][] ROWS={{"Нове на KIK","","last","new"},{"Топ-10 фільмів цього тижня","","shelf:films","top"},{"Нові фільми","films","last","new"},{"Топ-10 серіалів цього тижня","","shelf:series","top"},{"Нові серіали","series","last","new"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
  private static long refreshedAt;
  private static final Map<String,String[]> DETAILS=new ConcurrentHashMap<String,String[]>();
  private void load(){
@@ -394,7 +394,7 @@ public final class HomeActivity extends Activity {
  }
  /** A row of new releases only (ROWS' fourth column): its saved cards pass FreshPolicy again, a year on as well. */
  static boolean newRow(String title){return flagged(title,"new");}
- /** The week's Top 10 (ROWS' fourth column «top»): its first ten cards stand beside big numbers. */
+ /** The week's Top 10 films or series (ROWS' fourth column «top»), as on Netflix: its first ten cards stand beside big numbers. */
  static boolean topRow(String title){return flagged(title,"top");}
  private static boolean flagged(String title,String flag){for(String[] r:ROWS)if(r.length>3&&r[0].equals(title)&&r[3].equals(flag))return true;return false;}
  /** The cached rows; a holiday's film shelf only while it is still due (shelf). */

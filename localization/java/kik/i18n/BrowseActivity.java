@@ -109,7 +109,9 @@ public final class BrowseActivity extends Activity {
  private String shownList="";
  private String listSignature(){if("later".equals(mode))return String.valueOf(Progress.later(this));StringBuilder b=new StringBuilder();for(Progress.Entry e:Progress.recent(this))b.append(e.link).append(e.season).append(e.episode).append(e.pos/1000).append(e.finished()).append('\n');return b.toString();}
 
- private static final String[][] ORDERS={{"popular","Популярні"},{"last","Нові"},{"watching","Зараз дивляться"}};
+ /** «last» is what the source added last, old films too: «Нові надходження», as on the site, never «Нові» (14.11, owner:
+  *  where it says new, it must be new). */
+ private static final String[][] ORDERS={{"popular","Популярні"},{"last","Нові надходження"},{"watching","Зараз дивляться"}};
  private static String sectionName(String slug){for(String[] x:SECTIONS)if(x[0].equals(slug))return x[1];return "Каталог";}
  private static String orderName(String slug){for(String[] x:ORDERS)if(x[0].equals(slug))return x[1];return ORDERS[0][1];}
  private TextView dropButton(String label){return Ui.dropButton(this,label);}

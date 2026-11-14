@@ -1,7 +1,8 @@
 /**
  * Home shelves that TMDB picks and the catalogue serves (14.11, owner: «Популярне» was the source's all-time list —
  * «Друзі», «Втеча із Шоушенка», Hot Wheels — and «Мультфільми» old cartoons the source had just added):
- *  - trending: what the world watches this week, TMDB's weekly trending films and series taken in turns: Home's Top 10;
+ *  - films, series: what the world watches this week, TMDB's weekly trending films and series: Home's two Top 10s, as on
+ *    Netflix (TMDB has no country's own chart, so «цього тижня», not «в Україні»);
  *  - cartoons: the most popular animated films and series of this year and last, anime aside;
  *  - anime: the most popular Japanese animation of this year and last.
  * Each title is found on the catalogue by its Russian and original names and its year (holiday-films.mjs), in TMDB's
@@ -11,7 +12,7 @@ import {resolve} from './holiday-films.mjs';
 import {titleKey} from './sync.mjs';
 
 const API='https://api.themoviedb.org/3',DAY=86400000,RETRY=600000,BUDGET=20000;
-export const SHELVES={trending:{limit:10},cartoons:{limit:15},anime:{limit:15}};
+export const SHELVES={films:{limit:10},series:{limit:10},cartoons:{limit:15},anime:{limit:15}};
 const memo=new Map();
 
 /** The TMDB lists a shelf reads, films first: [kind, path]. Discovery covers this year and last, up to today. */
@@ -19,7 +20,8 @@ export function shelfQueries(id,now=Date.now()){
  const today=new Date(now).toISOString().slice(0,10),from=(new Date(now).getUTCFullYear()-1)+'-01-01';
  const discover=(kind,extra)=>{const q=new URLSearchParams({language:'ru-RU',include_adult:'false',sort_by:'popularity.desc',with_genres:'16','vote_count.gte':'10',...extra});
   q.set(kind==='tv'?'first_air_date.gte':'primary_release_date.gte',from);q.set(kind==='tv'?'first_air_date.lte':'primary_release_date.lte',today);return [kind,'/discover/'+kind+'?'+q];};
- if(id==='trending')return [['movie','/trending/movie/week?language=ru-RU'],['tv','/trending/tv/week?language=ru-RU']];
+ if(id==='films')return [['movie','/trending/movie/week?language=ru-RU']];
+ if(id==='series')return [['tv','/trending/tv/week?language=ru-RU']];
  if(id==='cartoons')return [discover('movie',{}),discover('tv',{})];
  if(id==='anime')return [discover('tv',{with_original_language:'ja'}),discover('movie',{with_original_language:'ja'})];
  throw Object.assign(Error('Невідома полиця'),{status:400});
