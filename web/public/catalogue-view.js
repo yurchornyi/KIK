@@ -2,7 +2,10 @@ import {dropdown} from './dropdown.js';
 import {STUDIOS,studioById,studioBadge} from './studios.js';
 /** The website's Catalogue section: categories, source genres, sorting and explicit pagination. */
 export const CATEGORIES=[['films','Фільми'],['series','Серіали'],['cartoons','Мультфільми'],['animation','Аніме']];
-export const SORTS=[['popular','Популярні'],['last','Нові надходження'],['watching','Зараз дивляться']];
+export const SORTS=[['popular','Популярні'],['last','Новинки'],['watching','Зараз дивляться']];
+/** «Новинки» show only titles of this year and last (a series by the year it began), in the order the source added them:
+ *  its «last» list also holds old films it has just added (14.11, owner). The same rule as FreshPolicy on the TV. */
+export function newRelease(item,now=new Date()){const year=Number(String(item?.sourceInfo||item?.info||'').match(/\d{4}/)?.[0]),thisYear=now.getFullYear();return year>thisYear-2&&year<=thisYear+1;}
 export const MAX_PAGE=100;
 const known=(list,value,fallback)=>list.some(([key])=>key===value)?value:fallback;
 
@@ -47,8 +50,8 @@ export class CataloguePages {
 }
 
 /**
- * Catalogue page inside `main`. `visible` applies the device's country filter; a page it hides completely is followed
- * by the next one (a few at most), the way the TV keeps paging while the source still has titles.
+ * Catalogue page inside `main`. `visible` applies the device's country filter, and «Новинки» keep new releases only; a page
+ * they hide completely is followed by the next one (a few at most), the way the TV keeps paging while the source still has titles.
  */
 export function createCatalogueView({main,el,button,card,keyOf,api,visible=items=>items,isActive,onSelection=()=>{},skip=4,oops=null}){
  const models=new Map(),genreCache=new Map();
@@ -64,7 +67,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
  }
  /** Appends cards not painted yet; returns the first new card. */
  function append(){
-  let first=null,added=0;const fresh=visible(model.items.slice(painted));painted=model.items.length;
+  let first=null,added=0;const fresh=visible(model.items.slice(painted)).filter(i=>model.filter!=='last'||model.studio||newRelease(i));painted=model.items.length;
   for(const item of fresh){const key=keyOf(item.link);if(shownKeys.has(key))continue;shownKeys.add(key);const node=card(item);list.append(node);first||=node;added++;}
   if(added)lastBatch=added;
   return first;
