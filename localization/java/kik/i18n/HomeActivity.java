@@ -271,7 +271,10 @@ public final class HomeActivity extends Activity {
    SharedPreferences home=getSharedPreferences("kik_home",0);long cacheAge=System.currentTimeMillis()-home.getLong("updated",0);
    // A holiday's shelf coming or going makes the cached rows stale as well.
    boolean shelfSame=(shelf==null?"":shelf).equals(home.getString("shelf",""));
-   if(!cached.isEmpty()&&shelfSame&&(SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
+   // Rows saved by another build are stale too: its rules for the rows may differ (14.11: 1.37 kept showing the
+   // 1996 films 1.36 had saved in «Нове на KIK»). refreshedAt is 0 until this process refreshes: not a fresh refresh.
+   boolean sameBuild=AppUpdater.version(this).equals(home.getString("version",""));
+   if(!cached.isEmpty()&&shelfSame&&sameBuild&&(refreshedAt>0&&SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(profile,local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
    });}:null,preferences,shelf);
@@ -383,15 +386,18 @@ public final class HomeActivity extends Activity {
  private void saveCache(List<Row> rows,String shelf){
   JSONArray a=new JSONArray();
   try{for(Row r:rows){JSONArray items=new JSONArray();for(Item i:r.items)items.put(new JSONObject().put("link",i.link).put("title",i.title).put("poster",i.poster).put("year",i.year).put("genre",i.genre));a.put(new JSONObject().put("title",r.title).put("items",items));}}catch(JSONException ignored){}
-  getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",System.currentTimeMillis()).putString("shelf",shelf==null?"":shelf).apply();
+  getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",System.currentTimeMillis()).putString("shelf",shelf==null?"":shelf).putString("version",AppUpdater.version(this)).apply();
  }
+ /** A row of new releases only (ROWS' fourth column): its saved cards pass FreshPolicy again, a year on as well. */
+ static boolean newRow(String title){for(String[] r:ROWS)if(r.length>3&&r[0].equals(title))return true;return false;}
  /** The cached rows; a holiday's film shelf only while it is still due (shelf). */
  private List<Row> fromCache(String shelf){
   List<Row> rows=new ArrayList<Row>();String due=shelf==null?null:Holidays.shelfTitle(shelf);
   try{JSONArray a=new JSONArray(getSharedPreferences("kik_home",0).getString("rows","[]"));
-   for(int k=0;k<a.length();k++){JSONObject o=a.getJSONObject(k);String title=o.getString("title");if(shelfRow(title)&&!title.equals(due))continue;Row r=new Row(title);JSONArray items=o.getJSONArray("items");
+   final int thisYear=Calendar.getInstance().get(Calendar.YEAR);
+   for(int k=0;k<a.length();k++){JSONObject o=a.getJSONObject(k);String title=o.getString("title");if(shelfRow(title)&&!title.equals(due))continue;Row r=new Row(title);JSONArray items=o.getJSONArray("items");final boolean onlyNew=newRow(title);
     for(int n=0;n<items.length();n++){JSONObject x=items.getJSONObject(n);Item i=new Item();i.link=x.optString("link");i.title=x.optString("title");i.poster=Site.opt(x,"poster");i.year=Site.opt(x,"year");i.genre=Site.opt(x,"genre");
-     String[] d=DETAILS.get(norm(i.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.age=d[5];i.duration=d[6];}r.items.add(i);}
+     String[] d=DETAILS.get(norm(i.link));if(d!=null){i.description=d[0];i.wide=d[1];i.rating=d[2];i.age=d[5];i.duration=d[6];}if(onlyNew&&!FreshPolicy.fresh(i.year,thisYear))continue;r.items.add(i);}
     rows.add(r);}
   }catch(JSONException ignored){}
   return rows;
