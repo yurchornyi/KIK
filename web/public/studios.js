@@ -1,22 +1,26 @@
 /** Original networks and production companies, never a regional streaming availability list. */
 export const STUDIOS=[
- {id:'netflix',name:'Netflix',mark:'N',networks:[213],companies:['Netflix','Netflix Studios','Netflix Animation']},
- {id:'apple',name:'Apple TV+',mark:'tv+',networks:[2552],companies:['Apple Studios','Apple Original Films']},
- {id:'hbo',name:'HBO',mark:'HBO',networks:[49,3186],companies:['HBO','HBO Films','HBO Documentary Films','HBO Entertainment']},
- {id:'prime',name:'Prime Video',mark:'prime',networks:[1024],companies:['Amazon Studios','Amazon MGM Studios']},
- {id:'disney',name:'Disney+',mark:'Disney+',networks:[2739],companies:['Walt Disney Pictures','Walt Disney Animation Studios','Disney Television Animation','Disney Branded Television','Marvel Studios','Lucasfilm Ltd.']},
- {id:'hulu',name:'Hulu',mark:'hulu',networks:[453],companies:['Hulu'],categories:['series','cartoons']},
- {id:'paramount',name:'Paramount+',mark:'P+',networks:[4330],companies:['Paramount Pictures','Paramount Animation','Paramount Players','Paramount Television Studios']},
+ {id:'netflix',name:'Netflix',mark:'N',networks:[213],companies:['Netflix','Netflix Studios','Netflix Animation'],channels:['Netflix']},
+ {id:'apple',name:'Apple TV+',mark:'tv+',networks:[2552],companies:['Apple Studios','Apple Original Films'],channels:['Apple TV+','Apple TV']},
+ {id:'hbo',name:'HBO',mark:'HBO',networks:[49,3186,6783,8304],companies:['HBO','HBO Films','HBO Documentary Films','HBO Entertainment'],channels:['HBO','HBO Max','Max']},
+ {id:'prime',name:'Prime Video',mark:'prime',networks:[1024],companies:['Amazon Studios','Amazon MGM Studios'],channels:['Prime Video','Amazon Prime Video']},
+ {id:'disney',name:'Disney+',mark:'Disney+',networks:[2739,54,44,281],channels:['Disney+','Disney Channel','Disney XD','Disney Junior'],companies:['Walt Disney Pictures','Walt Disney Animation Studios','Disney Television Animation','Disney Branded Television','Marvel Studios','Lucasfilm Ltd.']},
+ {id:'hulu',name:'Hulu',mark:'hulu',networks:[453],companies:['Hulu'],channels:['Hulu'],categories:['series','cartoons']},
+ {id:'paramount',name:'Paramount+',mark:'P+',networks:[4330],channels:['Paramount+','Paramount+ with Showtime'],companies:['Paramount Pictures','Paramount Animation','Paramount Players','Paramount Television Studios']},
  {id:'warner',name:'Warner Bros.',mark:'WB',networks:[],companies:['Warner Bros. Pictures','Warner Bros. Animation','Warner Bros. Television']},
- {id:'peacock',name:'Peacock',mark:'peacock',networks:[3353],companies:[],categories:['series','cartoons']},
+ {id:'peacock',name:'Peacock',mark:'peacock',networks:[3353],companies:[],channels:['Peacock'],categories:['series','cartoons']},
  {id:'pixar',name:'Pixar',mark:'PIXAR',networks:[],companies:['Pixar'],categories:['cartoons'],within:'disney'},
- {id:'natgeo',name:'National Geographic',mark:'NAT GEO',networks:[43,1043],companies:['National Geographic','National Geographic Films','National Geographic Documentary Films','Nat Geo Wild'],categories:['series','films']},
- {id:'discovery',name:'Discovery',mark:'discovery',networks:[64,4353],companies:['Discovery Channel','Discovery Studios','Discovery Docs'],categories:['series','films']}
+ {id:'natgeo',name:'National Geographic',mark:'NAT GEO',networks:[43,1043],channels:['National Geographic','Nat Geo Wild'],companies:['National Geographic','National Geographic Films','National Geographic Documentary Films','Nat Geo Wild'],categories:['series','films']},
+ {id:'discovery',name:'Discovery',mark:'discovery',networks:[64,4353],companies:['Discovery Channel','Discovery Studios','Discovery Docs'],channels:['Discovery','Discovery+','Discovery Channel'],categories:['series','films']},
+ {id:'bbc',name:'BBC',mark:'BBC',networks:[4,332,3,100,1155],companies:['BBC Studios','BBC Studios Natural History Unit','BBC Earth','BBC Film'],channels:['BBC One','BBC Two','BBC Three','BBC Four','BBC iPlayer','BBC Scotland','CBBC','CBeebies'],categories:['series','films']}
 ];
 export const studioById=id=>STUDIOS.find(s=>s.id===id)||null;
+/** The studio a show's TVmaze channel names («HBO Max», «Disney XD», «BBC iPlayer»): TMDB leaves the platform out of many
+ *  shows' networks (14.11: «Wśród nocnej ciszy», an HBO Max original, had none KIK knew). */
+export function studiosByChannel(name){const n=String(name||'').toLowerCase().trim();return n?STUDIOS.filter(s=>(s.channels||[]).some(c=>c.toLowerCase()===n)).map(s=>s.id):[];}
 /** The studio rules in a few letters: an answer kept by the server under other rules is not used (14.11: Marvel's films
  *  kept Disney-less answers for a week after Marvel became Disney's). */
-export const STUDIO_RULES=(()=>{let h=2166136261;for(const c of JSON.stringify(STUDIOS.map(s=>[s.id,s.networks,s.companies,s.within||''])))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h.toString(36);})();
+export const STUDIO_RULES=(()=>{let h=2166136261;for(const c of JSON.stringify(STUDIOS.map(s=>[s.id,s.networks,s.companies,s.channels||[],s.within||''])))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h.toString(36);})();
 /** Catalogue sections a studio makes: Pixar only animated films, Hulu series and animated series; the rest, every one.
  *  Filtered by a studio, a section it does not make is empty however many pages are read (14.11, owner: «нічого немає від Pixar, Hulu»). */
 export const makes=(studio,category)=>!!studio&&(!studio.categories||studio.categories.includes(category));
@@ -48,6 +52,7 @@ function mark(id){const g='studio-mark-'+(++marks);switch(id){
  case 'hulu':return word('hulu');
  case 'paramount':return '<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21 12 8l9 13z" fill="#2f7bff"/><path d="M9.7 11.3 12 8l2.3 3.3-2.3 1.5z" fill="#fff" opacity=".9"/><g fill="#fff"><circle cx="4.2" cy="10.6" r="1.25"/><circle cx="6.6" cy="6.6" r="1.25"/><circle cx="10" cy="4" r="1.25"/><circle cx="14" cy="4" r="1.25"/><circle cx="17.4" cy="6.6" r="1.25"/><circle cx="19.8" cy="10.6" r="1.25"/></g></svg>'+word('+');
  case 'warner':return '<svg width="15.5" height="18" viewBox="0 0 20 23" aria-hidden="true"><path d="M1.5 1.5h17V12c0 4.9-3.4 8.2-8.5 9.9C4.9 20.2 1.5 16.9 1.5 12z" fill="#1f6fe8" stroke="#ffffff55" stroke-width=".8"/><text x="10" y="13.6" text-anchor="middle" font-weight="900" font-size="8.2" fill="#fff" letter-spacing="-.2">WB</text></svg>';
+ case 'bbc':return '<svg width="34" height="11" viewBox="0 0 34 11" aria-hidden="true"><g fill="#fff"><rect x="0" width="10.5" height="11" rx="1"/><rect x="11.75" width="10.5" height="11" rx="1"/><rect x="23.5" width="10.5" height="11" rx="1"/></g><g fill="#0b0b0d" font-family="Arial,Helvetica,sans-serif" font-weight="800" font-size="8.6" text-anchor="middle"><text x="5.25" y="8.6">B</text><text x="17" y="8.6">B</text><text x="28.75" y="8.6">C</text></g></svg>';
  case 'natgeo':return '<svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true"><rect x="1.1" y="1.1" width="7.8" height="11.8" fill="none" stroke="#ffce00" stroke-width="2.2"/></svg>'+word('NAT GEO');
  case 'discovery':return '<svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true"><circle cx="6.5" cy="6.5" r="6" fill="#2d8cff"/><ellipse cx="6.5" cy="6.5" rx="2.5" ry="6" fill="none" stroke="#fff" stroke-width="1"/><path d="M.5 6.5h12M1.6 3.6h9.8M1.6 9.4h9.8" fill="none" stroke="#fff" stroke-width=".8"/></svg>'+word('discovery');
  case 'peacock':return word('peacock','<svg width="5" height="14" viewBox="0 0 5 14" aria-hidden="true"><circle cx="2.5" cy="4" r="1.8" fill="#ffb400"/><circle cx="2.5" cy="10" r="1.8" fill="#a53ad9"/></svg>');

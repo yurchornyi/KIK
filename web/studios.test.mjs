@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {studiosFor,studioCategory,makes,studioById,studioBadge} from './public/studios.js';
+import {studiosFor,studioCategory,makes,studioById,studioBadge,studiosByChannel} from './public/studios.js';
 import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {CataloguePages,catalogueSelection,selectionQuery} from './public/catalogue-view.js';
 
@@ -116,4 +116,14 @@ test('the studio rules have a short fingerprint that changes with them',async()=
  const {STUDIO_RULES,STUDIOS}=await import('./public/studios.js');
  assert.match(STUDIO_RULES,/^[0-9a-z]{4,8}$/);
  const disney=STUDIOS.find(s=>s.id==='disney');assert.ok(disney.companies.includes('Marvel Studios'));
+});
+
+test('HBO Max and Max, the Disney channels and BBC are known by their TMDB networks and their TVmaze channels',()=>{
+ for(const id of [8304,6783,3186,49])assert.deepEqual(studiosFor({networks:[{id}]}),['hbo']);
+ for(const id of [54,44,281])assert.deepEqual(studiosFor({networks:[{id}]}),['disney']);
+ for(const id of [4,332,3,100,1155])assert.deepEqual(studiosFor({networks:[{id}]}),['bbc']);
+ assert.deepEqual(studiosFor({production_companies:[{name:'BBC Studios Natural History Unit'}]}),['bbc']);
+ assert.deepEqual(studiosByChannel('HBO Max'),['hbo']);assert.deepEqual(studiosByChannel('Disney XD'),['disney']);assert.deepEqual(studiosByChannel('BBC iPlayer'),['bbc']);
+ assert.deepEqual(studiosByChannel('Peacock'),['peacock']);assert.deepEqual(studiosByChannel('netflix'),['netflix']);
+ assert.deepEqual(studiosByChannel('Go3'),[]);assert.deepEqual(studiosByChannel(null),[]);
 });
