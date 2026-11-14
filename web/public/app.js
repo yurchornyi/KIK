@@ -17,6 +17,7 @@ import {beaconPayload,SYNC_BATCH} from './sync-queue.js';
 import {createCatalogueView,catalogueSelection,selectionQuery,infoLine,newRelease} from './catalogue-view.js';
 import {oops} from './oops.js';
 import {createDownloads,formatBytes,defaultDownloadQuality,DOWNLOAD_QUALITIES,watchedCopies,nextToSave} from './downloads.js';
+import {installRefresh} from './refresh.js';
 import {loadFlags,currentFlags} from './flags.js';
 import {holidayPlan,dressUp,holidayIntro,HOLIDAY_INTRO_MS,fireworksDue,fireworksOver} from './holiday-mark.js';
 const $=s=>document.querySelector(s),main=$('#main'),modal=$('#modal'),modalContent=$('#modal-content'),playerModal=$('#player-modal');
@@ -876,6 +877,9 @@ async function init(){
  loadFlags().then(holidayDress).catch(()=>{});
  const identity=(async()=>{try{const me=await api('/api/me');state.clockOffset=me.server_time-Date.now();state.user=me.user;state.profiles=me.profiles;rememberIdentity(me);if(state.user){state.profile=state.profiles.find(p=>p.id===storage.getItem('kik-profile:'+state.user.id))||state.profiles[0];restore();}state.ready=true;return true;}catch(e){failure=e;return offlineIdentity(e);}})();
  identityReady=Promise.race([identity,new Promise(r=>setTimeout(r,1500))]);loadCatalogue();
+ // A phone's home-screen KIK: pull down to reload, and a new deploy is picked up when KIK comes back (refresh.js). A film
+ // being saved is not cut off by a reload of its own accord.
+ installRefresh({blocked:()=>downloads.items().some(x=>x.status==='active')});
  const known=await identity;
  // Offline with films on this device: they open at once; the rest of KIK waits for the internet.
  if(state.offline){await downloads.ready;if(!location.hash&&downloads.items().some(x=>x.status==='done'))state.tab='downloads';render();refreshAccount();management.load().catch(()=>{});return;}
