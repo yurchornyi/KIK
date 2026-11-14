@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {studiosFor,studioCategory,makes,studioById,studioBadge,studiosByChannel} from './public/studios.js';
+import {studiosFor,studioCategory,makes,studioById,studioBadge,studiosByChannel,studiosByProviders} from './public/studios.js';
 import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {CataloguePages,catalogueSelection,selectionQuery} from './public/catalogue-view.js';
 
@@ -127,4 +127,15 @@ test('HBO Max and Max, the Disney channels and BBC are known by their TMDB netwo
  assert.deepEqual(studiosByChannel('HBO Max'),['hbo']);assert.deepEqual(studiosByChannel('Disney XD'),['disney']);assert.deepEqual(studiosByChannel('BBC iPlayer'),['bbc']);
  assert.deepEqual(studiosByChannel('Peacock'),['peacock']);assert.deepEqual(studiosByChannel('netflix'),['netflix']);
  assert.deepEqual(studiosByChannel('Go3'),[]);assert.deepEqual(studiosByChannel(null),[]);
+});
+
+test('a platform that alone streams a title in three or more countries is its studio; shared or rare, it is not',()=>{
+ const where=(...regions)=>({results:Object.fromEntries(regions.map((ids,i)=>['R'+i,{flatrate:ids.map(provider_id=>({provider_id}))}]))});
+ // «Аллен» (2026): Netflix and nothing else in the US, Germany, Poland and Britain.
+ assert.deepEqual(studiosByProviders(where([8,1796],[8],[8],[8,1796])),['netflix']);
+ assert.deepEqual(studiosByProviders(where([8],[8])),[],'two countries prove nothing');
+ assert.deepEqual(studiosByProviders(where([8],[8],[8],[337])),[],'another studio platform somewhere: a licence');
+ assert.deepEqual(studiosByProviders(where([8,9],[8,9],[8,9])),[],'two platforms at once');
+ assert.deepEqual(studiosByProviders(where([2],[2],[2])),[],'a platform that is no studio');
+ assert.deepEqual(studiosByProviders(undefined),[]);
 });

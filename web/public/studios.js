@@ -1,14 +1,14 @@
 /** Original networks and production companies, never a regional streaming availability list. */
 export const STUDIOS=[
- {id:'netflix',name:'Netflix',mark:'N',networks:[213],companies:['Netflix','Netflix Studios','Netflix Animation'],channels:['Netflix']},
- {id:'apple',name:'Apple TV+',mark:'tv+',networks:[2552],companies:['Apple Studios','Apple Original Films'],channels:['Apple TV+','Apple TV']},
- {id:'hbo',name:'HBO',mark:'HBO',networks:[49,3186,6783,8304],companies:['HBO','HBO Films','HBO Documentary Films','HBO Entertainment'],channels:['HBO','HBO Max','Max']},
- {id:'prime',name:'Prime Video',mark:'prime',networks:[1024],companies:['Amazon Studios','Amazon MGM Studios'],channels:['Prime Video','Amazon Prime Video']},
- {id:'disney',name:'Disney+',mark:'Disney+',networks:[2739,54,44,281],channels:['Disney+','Disney Channel','Disney XD','Disney Junior'],companies:['Walt Disney Pictures','Walt Disney Animation Studios','Disney Television Animation','Disney Branded Television','Marvel Studios','Lucasfilm Ltd.']},
- {id:'hulu',name:'Hulu',mark:'hulu',networks:[453],companies:['Hulu'],channels:['Hulu'],categories:['series','cartoons']},
- {id:'paramount',name:'Paramount+',mark:'P+',networks:[4330],channels:['Paramount+','Paramount+ with Showtime'],companies:['Paramount Pictures','Paramount Animation','Paramount Players','Paramount Television Studios']},
+ {id:'netflix',name:'Netflix',mark:'N',networks:[213],companies:['Netflix','Netflix Studios','Netflix Animation'],channels:['Netflix'],providers:[8,1796]},
+ {id:'apple',name:'Apple TV+',mark:'tv+',networks:[2552],companies:['Apple Studios','Apple Original Films'],channels:['Apple TV+','Apple TV'],providers:[350]},
+ {id:'hbo',name:'HBO',mark:'HBO',networks:[49,3186,6783,8304],companies:['HBO','HBO Films','HBO Documentary Films','HBO Entertainment'],channels:['HBO','HBO Max','Max'],providers:[384,1899]},
+ {id:'prime',name:'Prime Video',mark:'prime',networks:[1024],companies:['Amazon Studios','Amazon MGM Studios'],channels:['Prime Video','Amazon Prime Video'],providers:[9,119]},
+ {id:'disney',name:'Disney+',mark:'Disney+',networks:[2739,54,44,281],channels:['Disney+','Disney Channel','Disney XD','Disney Junior'],providers:[337],companies:['Walt Disney Pictures','Walt Disney Animation Studios','Disney Television Animation','Disney Branded Television','Marvel Studios','Lucasfilm Ltd.']},
+ {id:'hulu',name:'Hulu',mark:'hulu',networks:[453],companies:['Hulu'],channels:['Hulu'],providers:[15],categories:['series','cartoons']},
+ {id:'paramount',name:'Paramount+',mark:'P+',networks:[4330],channels:['Paramount+','Paramount+ with Showtime'],providers:[531],companies:['Paramount Pictures','Paramount Animation','Paramount Players','Paramount Television Studios']},
  {id:'warner',name:'Warner Bros.',mark:'WB',networks:[],companies:['Warner Bros. Pictures','Warner Bros. Animation','Warner Bros. Television']},
- {id:'peacock',name:'Peacock',mark:'peacock',networks:[3353],companies:[],channels:['Peacock'],categories:['series','cartoons']},
+ {id:'peacock',name:'Peacock',mark:'peacock',networks:[3353],companies:[],channels:['Peacock'],providers:[386,387],categories:['series','cartoons']},
  {id:'pixar',name:'Pixar',mark:'PIXAR',networks:[],companies:['Pixar'],categories:['cartoons'],within:'disney'},
  {id:'natgeo',name:'National Geographic',mark:'NAT GEO',networks:[43,1043],channels:['National Geographic','Nat Geo Wild'],companies:['National Geographic','National Geographic Films','National Geographic Documentary Films','Nat Geo Wild'],categories:['series','films']},
  {id:'discovery',name:'Discovery',mark:'discovery',networks:[64,4353],companies:['Discovery Channel','Discovery Studios','Discovery Docs'],channels:['Discovery','Discovery+','Discovery Channel'],categories:['series','films']},
@@ -18,9 +18,18 @@ export const studioById=id=>STUDIOS.find(s=>s.id===id)||null;
 /** The studio a show's TVmaze channel names («HBO Max», «Disney XD», «BBC iPlayer»): TMDB leaves the platform out of many
  *  shows' networks (14.11: «Wśród nocnej ciszy», an HBO Max original, had none KIK knew). */
 export function studiosByChannel(name){const n=String(name||'').toLowerCase().trim();return n?STUDIOS.filter(s=>(s.channels||[]).some(c=>c.toLowerCase()===n)).map(s=>s.id):[];}
+/** A new title nothing else names a studio for, by where it streams: one platform the only subscription home in at least
+ *  three countries is the one that made it (14.11, owner: «Аллен», a Netflix film TMDB lists with no company, only «Now
+ *  streaming on Netflix»). Regional availability is not a studio for an older title: a licence, not an original. */
+export function studiosByProviders(providers){
+ const regions=Object.values(providers?.results||{}).map(r=>new Set((r?.flatrate||[]).map(p=>STUDIOS.find(s=>(s.providers||[]).includes(p.provider_id))?.id).filter(Boolean))).filter(s=>s.size);
+ const sole=regions.filter(s=>s.size===1).map(s=>[...s][0]),count=id=>sole.filter(x=>x===id).length;
+ const best=[...new Set(sole)].sort((a,b)=>count(b)-count(a))[0];
+ return best&&count(best)>=3&&regions.every(s=>s.has(best))?[best]:[];
+}
 /** The studio rules in a few letters: an answer kept by the server under other rules is not used (14.11: Marvel's films
  *  kept Disney-less answers for a week after Marvel became Disney's). */
-export const STUDIO_RULES=(()=>{let h=2166136261;for(const c of JSON.stringify(STUDIOS.map(s=>[s.id,s.networks,s.companies,s.channels||[],s.within||''])))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h.toString(36);})();
+export const STUDIO_RULES=(()=>{let h=2166136261;for(const c of JSON.stringify(STUDIOS.map(s=>[s.id,s.networks,s.companies,s.channels||[],s.providers||[],s.within||''])))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h.toString(36);})();
 /** Catalogue sections a studio makes: Pixar only animated films, Hulu series and animated series; the rest, every one.
  *  Filtered by a studio, a section it does not make is empty however many pages are read (14.11, owner: «нічого немає від Pixar, Hulu»). */
 export const makes=(studio,category)=>!!studio&&(!studio.categories||(category==='documentary'?['films','series']:[category]).some(c=>studio.categories.includes(c)));

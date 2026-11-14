@@ -70,9 +70,10 @@ async function api(request,env,ctx){
  // One request per batch of visible cards keeps the page inside the per-IP API limit.
  if(path==="/api/artwork/batch"&&request.method==="POST"){
   const b=await body(request,32768);if(!Array.isArray(b.items)||b.items.length>24)fail("Некоректний запит обкладинок");
-  const options={token:env.TMDB_READ_TOKEN,cache:caches.default,origin:url.origin},results={},queue=[...b.items];let configured=true;
-  await Promise.all(Array.from({length:4},async()=>{for(let item;(item=queue.shift());)try{const key=titleKey(item.link),r=await artworkService.lookup(item,options);configured&&=r.configured;results[key]=r.artwork;}catch{}}));
-  return json({configured,results});
+  const options={token:env.TMDB_READ_TOKEN,cache:caches.default,origin:url.origin},results={},retry=[],queue=[...b.items];let configured=true;
+  await Promise.all(Array.from({length:4},async()=>{for(let item;(item=queue.shift());)try{const key=titleKey(item.link),r=await artworkService.lookup(item,options);configured&&=r.configured;results[key]=r.artwork;if(!r.artwork&&r.retryAfter)retry.push(key);}catch{}}));
+  // `retry`: titles not looked up this time (TMDB busy or failing), not titles TMDB lacks: ask again later.
+  return json({configured,results,retry});
  }
  if(path==="/api/metadata"){const m=await metadata(url.searchParams.get("imdb"),env,url.searchParams.get("kind")||''),t=await localizedFilm(db,{title:m.title,description:m.overview});return json({...m,title:t.title,overview:t.description});}
  // Three-line synopsis for the TV title page, generated once per title from the catalogue page itself.
