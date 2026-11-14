@@ -95,7 +95,9 @@ function heroActions(item){
  function paintLater(){const saved=inList(item.link);later.setAttribute('aria-pressed',String(saved));later.title=saved?'Прибрати з мого списку':'Додати до мого списку';later.replaceChildren(heroIcon(saved?'check':'add'),el('span',{},saved?'У списку':'Мій список'));}
  paintLater();
  const details=button([heroIcon('info')],()=>openDetails(item),'pill hero-details');details.setAttribute('aria-label','Докладніше');details.title='Докладніше';
- return el('div',{class:'actions hero-actions'},button([heroIcon('play'),el('span',{},item.resume?'Продовжити':'Дивитися')],()=>play(item),'pill primary'),later,details);
+ const label=!item.resume?'Дивитися':item.next?'Наступна серія':item.season?`Продовжити S${item.season}E${item.episode}`:'Продовжити';
+ // A title already being watched needs no «Мій список»: «Продовжити» and «Докладніше» only, as on the TV.
+ return el('div',{class:'actions hero-actions'},button([heroIcon('play'),el('span',{},label)],()=>play(item),'pill primary'),item.resume?null:later,details);
 }
 function setRating(item,value){change('rating',keyOf(item.link),value?{link:item.link,title:item.title,poster:item.poster,genre:item.genres?.join(', ')||item.info||'',value}:null);}
 /** One tap sets, a second tap on the same thumb clears it: the same as the TV title page. */
@@ -278,14 +280,18 @@ function becauseRows(taken){const {signals,ranked}=tasteRanking(),rows=[],used=n
 const SLIDE_MS=9000,slideshow={keys:'',slides:[],index:0,shownAt:0,timer:0,hero:null};
 /** Once three or more picks have a wide picture only those stay, so the hero is always filled; the pictures of every
  *  pick are looked up, and the slides are arranged again on screen when they arrive. */
+const SLIDES=10;
 function heroSlides(){
  const recent=continueItems(),picks=[],seen=new Set();
- const add=(item,resume)=>{const key=keyOf(item.link);if(!key||seen.has(key)||picks.length>=16||liked(item.link)<0||!allowed([item]).length)return;seen.add(key);picks.push({...item,resume});};
+ const add=(item,resume)=>{const key=keyOf(item.link);if(!key||seen.has(key)||picks.length>=24||liked(item.link)<0||!allowed([item]).length)return;seen.add(key);picks.push({...item,resume});};
  for(const x of recent.slice(0,3))add(x,true);for(const x of recommendations())add(x,false);
  if(!picks.length){const x=state.pool.find(i=>liked(i.link)>=0);if(x)add(x,false);}
  // The slides are arranged again only when a picture arrived: with artwork off or failing nothing changed, and asking again would never end.
  const waiting=picks.filter(p=>!artwork.has(keyOf(p.link))).map(p=>artworkFor(p));if(waiting.length)Promise.all(waiting).then(found=>{if(found.some(Boolean))refreshSlides();});
- const wide=picks.filter(p=>artwork.get(keyOf(p.link))?.backdrop);return (wide.length>=3?wide:picks).slice(0,10);
+ // The same show on the website and the TV (14.11, owner): up to three titles still to finish, the last one watched first,
+  // then the recommendations, those with a wide picture first and the rest with their poster blurred, ten slides in all.
+ const mine=picks.filter(p=>p.resume).slice(0,3),recs=picks.filter(p=>!p.resume),wide=recs.filter(p=>artwork.get(keyOf(p.link))?.backdrop);
+ return [...mine,...wide,...recs.filter(p=>!wide.includes(p))].slice(0,SLIDES);
 }
 /** The same picks keep the slide on screen and its timer while the page re-renders; a changed set keeps the current title when it is still among them. */
 function arrangeSlides(){
@@ -302,18 +308,49 @@ function arrangeSlides(){
 function refreshSlides(){const hero=slideshow.hero;if(!hero?.isConnected||state.tab!=='home')return;const before=slideshow.slides[slideshow.index];arrangeSlides();const now=slideshow.slides[slideshow.index];if(!now)return;measureSlides(hero);if(keyOf(now.link)!==keyOf(before?.link||''))showSlide(slideshow.index);else{steady(hero.querySelector('.hero-copy'),now);paintDots(hero);scheduleSlide();}}
 /** Today's holiday (holiday-mark.js holidayPlan) once the owner's switches allow it, and the film shelf before it (holidayDress). */
 let festive=null,holidayFilms=null,fireworksYear=0;
+/** A slide of the banner, the same two kinds as on the TV (14.11, owner's mock-up): a title still to finish says so in red,
+ *  where it stopped and how much is left, with «Продовжити S2E2»; a recommendation says so in grey, with its year, length,
+ *  genre and rating, two lines of its story, and «Дивитися», «Мій список». Both are as tall, so the buttons never move. */
 function heroCopy(item){
- const resume=item.resume&&item.dur>0,where=item.season?`С${item.season} · Е${item.episode}`:`${Math.floor((item.pos||0)/60000)} хв`;
- return el('div',{class:'hero-copy'},festive?el('div',{class:'eyebrow holiday-greeting'},festive.greeting):el('div',{class:'eyebrow'},'KIK · ЗНАЙДІТЬ СВОЮ НАСТУПНУ ІСТОРІЮ'),el('h1',{},item.title),
-  el('div',{class:'meta'},el('span',{class:'match'},item.resume?'Продовжити перегляд':state.user?'Підібрано для вас':'Варто подивитися'),el('span',{},infoLine(item.info).split(',').slice(0,2).join(' · ')||item.genre||item.year||'Фільми та серіали'),el('span',{class:'tag'},'HD')),
-  resume?el('div',{class:'hero-resume'},el('span',{class:'hero-bar'},el('i',{style:`width:${Math.max(3,Math.min(100,item.pos/item.dur*100))}%`})),el('span',{},item.next?'Далі: наступна серія':`Ви зупинилися на ${where}`)):null,
-  item.resume?null:el('p',{},state.user?`Нові історії, які захочеться прожити. Рекомендації для профілю «${state.profile?.name||''}» враховують ваш вибір і перегляди.`:'Кіно для кожного настрою. Увійдіть, щоб зберігати своє та продовжувати перегляд на телефоні, комп’ютері або TV.'),
+ const resume=!!item.resume;
+ return el('div',{class:'hero-copy'},festive?el('div',{class:'eyebrow holiday-greeting'},festive.greeting):null,
+  el('div',{class:'eyebrow hero-kind'+(resume?' mine':'')},resume?'ПРОДОВЖИТИ ПЕРЕГЛЯД':'РЕКОМЕНДУЄМО ДЛЯ ВАС'),el('h1',{},item.title),
+  el('div',{class:'meta hero-meta'},...heroMeta(item,filmCache.get(keyOf(item.link))?.film)),
+  resume?resumeLines(item):el('p',{class:'hero-text'},slideText(item)),
   heroActions(item),el('div',{class:'hero-dots',role:'group','aria-label':'Слайди'}));
+}
+/** Year, length, genre and ★ rating: from the title's page once known, from its card until then. */
+function heroMeta(item,f){
+ const parts=infoLine(item.info).split(',').map(x=>x.trim()).filter(Boolean),year=f?.year||item.year||parts[0]||'',genre=f?.genres?.[0]||(parts.length>1?parts[parts.length-1]:item.genre)||'';
+ const out=[year,f?.duration||'',genre].filter(Boolean).map(t=>el('span',{},t));const rating=f?.rating||item.rating;if(rating)out.push(el('span',{class:'hero-rating'},'★ '+rating));
+ return out.length?out:[el('span',{},'Фільми та серіали')];
+}
+const clock=ms=>{const s=Math.max(0,Math.floor((ms||0)/1000)),h=Math.floor(s/3600),m=Math.floor(s/60)%60,x=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${x}`:`${m}:${x}`;};
+/** Where a title still to finish stopped: the red bar with the episode, then how much is left and the moment it stopped. */
+function resumeLines(item){
+ const fill=item.next?100:Math.max(3,Math.min(100,item.dur>0?item.pos/item.dur*100:0)),episode=item.season?`Сезон ${item.season} · Серія ${item.episode}`+(item.episodeTitle?` «${item.episodeTitle}»`:''):'';
+ const first=item.next?`Далі наступна серія · після S${item.season}E${item.episode}`:episode||'Фільм',left=item.dur>item.pos?Math.ceil((item.dur-item.pos)/60000):0;
+ const second=item.next?'Попередню серію переглянуто':[left?`Залишилось ${left} хв`:null,item.pos?`зупинилися на ${clock(item.pos)}`:null].filter(Boolean).join(' · ');
+ return el('div',{class:'hero-resume-block'},el('div',{class:'hero-resume'},el('span',{class:'hero-bar'},el('i',{style:`width:${fill}%`})),el('span',{},first)),el('div',{class:'hero-left'},second||'\u00a0'));
+}
+const slideWords=new Map();
+/** A slide's own words, asked for the slide on screen and the next one: the title's page (its year, length, rating, story) and,
+ *  for a recommendation, the TV's three-line synopsis when there is one. */
+function slideDetails(item){
+ const key=keyOf(item.link);if(slideWords.has(key))return slideWords.get(key);
+ const job=(async()=>{let f=null,summary=null;try{f=await getFilm(item);}catch{}if(!item.resume)try{summary=(await api('/api/synopsis?link='+encodeURIComponent(item.link)))?.summary||null;}catch{}return {f,summary};})();
+ if(slideWords.size>=40)slideWords.delete(slideWords.keys().next().value);slideWords.set(key,job);return job;
+}
+function slideText(item){return slideWords.get(keyOf(item.link))?.done||'';}
+async function fillSlide(copy,item){
+ if(!copy||!item?.link)return;const job=slideDetails(item);const {f,summary}=await job;job.done=summary||f?.description||'';if(!copy.isConnected)return;
+ if(f)copy.querySelector('.hero-meta')?.replaceChildren(...heroMeta(item,f));
+ const p=copy.querySelector('.hero-text');if(p&&job.done&&p.textContent!==job.done){p.textContent=job.done;p.classList.add('filled');}
 }
 /** Small pills under the buttons: the slide on screen is a wider track that fills in white over the 9 s it stays, like Netflix. */
 function paintDots(hero){const dots=hero.querySelector('.hero-dots');if(!dots)return;const n=slideshow.slides.length;dots.replaceChildren();dots.hidden=n<2;if(n<2)return;
  slideshow.slides.forEach((s,k)=>{const on=k===slideshow.index,fill=el('i');if(on){fill.style.animationDuration=SLIDE_MS+'ms';fill.style.animationDelay=-(Date.now()-slideshow.shownAt)+'ms';}
-  const d=button(el('span',{class:'hero-dot-track'},fill),()=>{if(k===slideshow.index)return;showSlide(k);hero.querySelector('.hero-dot.on')?.focus({preventScroll:true});},'hero-dot'+(on?' on':''));d.setAttribute('aria-label',`${k+1} з ${n}: ${s.title}`);if(on)d.setAttribute('aria-current','true');dots.append(d);});}
+  const d=button(el('span',{class:'hero-dot-track'},fill),()=>{if(k===slideshow.index)return;showSlide(k);hero.querySelector('.hero-dot.on')?.focus({preventScroll:true});},'hero-dot'+(on?' on':'')+(s.resume?' mine':''));d.setAttribute('aria-label',`${k+1} з ${n}: ${s.title}`);if(on)d.setAttribute('aria-current','true');dots.append(d);});}
 /** Each slide's text height, measured once for the slides in the show, and the tallest: a slide's block takes the tallest
  *  one's place (the spare room above its first line), so its buttons, the pills and the rows under the banner never move
  *  while the slides turn (14.11, owner: on a phone a longer title grew the banner and the button dropped). */
@@ -331,9 +368,10 @@ function showSlide(n){const hero=slideshow.hero,item=slideshow.slides[n];if(!her
  // A turn only fades the words in place: the old rise moved the whole block, buttons too, down 12 px and back up at every
  // slide (14.11, owner). The block keeps the tallest slide's height (steady), so nothing under it moves either.
  const copy=heroCopy(item),old=hero.querySelector('.hero-copy');copy.classList.add('turn');steady(copy,item);if(old)old.replaceWith(copy);else hero.append(copy);
+ fillSlide(copy,item).catch(()=>{});
  upgradeHero(hero,item);paintDots(hero);scheduleSlide();prefetchSlide((n+1)%slideshow.slides.length);}
 /** The next slide's picture is fetched while the current one is on screen, so the crossfade never waits. */
-function prefetchSlide(n){const s=slideshow.slides[n];if(!s||n===slideshow.index)return;artworkFor(s).then(a=>{if(a?.backdrop&&![...document.querySelectorAll('.hero-art')].some(i=>i.dataset.src===a.backdrop)){const img=backdropImage(a);img.src=a.backdrop;}});}
+function prefetchSlide(n){const s=slideshow.slides[n];if(!s||n===slideshow.index)return;slideDetails(s).catch?.(()=>{});artworkFor(s).then(a=>{if(a?.backdrop&&![...document.querySelectorAll('.hero-art')].some(i=>i.dataset.src===a.backdrop)){const img=backdropImage(a);img.src=a.backdrop;}});}
 function scheduleSlide(){clearTimeout(slideshow.timer);if(slideshow.slides.length<2||!slideshow.hero?.isConnected)return;slideshow.timer=setTimeout(nextSlide,Math.max(300,SLIDE_MS-(Date.now()-slideshow.shownAt)));}
 function nextSlide(){const hero=slideshow.hero;if(!hero?.isConnected||slideshow.slides.length<2)return;
  // A finger leaves a sticky :hover behind on phones, so only a real pointer holds the slide.
@@ -365,7 +403,7 @@ function profileGate(){if(main.querySelector('.profile-gate'))return;main.replac
 function gate(){if(main.querySelector('.gate:not(.profile-gate)'))return;main.replaceChildren(el('section',{class:'gate'},el('div',{class:'gate-copy'},el('div',{class:'eyebrow'},'ОДИН ПРОФІЛЬ. УСІ ВАШІ ПРИСТРОЇ.'),el('h1',{},'Увійдіть, щоб дивитися'),el('div',{class:'actions'},button('Увійти',()=>auth(),'pill red'),button('Створити обліковий запис',()=>auth(true),'pill')))));}
 function render(){pageDirty=false;if(['home','catalogue','later','history','search'].includes(state.tab))downloads.quiet(8000);document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='downloads'){renderDownloads();return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmTaste();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
  // A tap or click on the hero holds its slide for another turn, so a title just saved or opened never slips away under the finger.
- hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);measureSlides(hero);steady(hero.querySelector('.hero-copy'),featured);const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},...holidayRow(),{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),...newRows(),{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);shelves.splice(2+holidayRow().length,0,...topTenRows());for(const r of shelves){const row=r.pending&&!r.items.length?placeholderShelf(r.title,r.rank):shelf(r.title,r.items,r.subtitle||'',r.progress,r.rank);if(row)rows.append(row);}
+ hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);measureSlides(hero);steady(hero.querySelector('.hero-copy'),featured);fillSlide(hero.querySelector('.hero-copy'),featured).catch(()=>{});const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},...holidayRow(),{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),...newRows(),{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);shelves.splice(2+holidayRow().length,0,...topTenRows());for(const r of shelves){const row=r.pending&&!r.items.length?placeholderShelf(r.title,r.rank):shelf(r.title,r.items,r.subtitle||'',r.progress,r.rank);if(row)rows.append(row);}
  // The viewer's own rows stay when the source is down; the catalogue under them retries by itself.
  if(state.catalogueError)rows.append(oops({error:state.catalogueFailure,retry:loadCatalogue,key:'home',size:'compact'}));
  // A shelf the viewer has scrolled along keeps its place through a repaint (a sync, a closed window).
@@ -446,7 +484,7 @@ async function openDetails(item){showModal(el('h2',{},item.title),el('p',{},'З�
  // The three round actions repaint in place: the window, its scroll and the keyboard focus stay where they are.
  function paintActions(){const saved=inList(f.link),v=liked(f.link);laterButton.textContent=saved?'✓':'＋';laterButton.classList.toggle('rated',saved);laterButton.setAttribute('aria-pressed',String(saved));laterButton.setAttribute('aria-label',saved?'У списку':'Мій список');laterButton.title=saved?'Прибрати з «Мого списку»':'Додати в «Мій список»';for(const [b,value,name] of [[like,1,'Подобається'],[dislike,-1,'Не подобається']]){const on=v===value;b.classList.toggle('rated',on);b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-label',name);b.title=name;}}
  paintActions();// The round actions stay together: on a narrow window they move to the next line as one row, ⤓ never on its own.
- const actions=el('div',{class:'detail-actions'},playButton,el('div',{class:'detail-round'},laterButton,like,dislike,downloadButton(f,item)));const forget=latestFor(f.link)?button('Прибрати з історії',()=>{for(const r of data('progress').filter(r=>keyOf(r.data.link)===keyOf(f.link)))change('progress',r.key,null);toast('Прибрано з історії');forget.remove();if(playButton.tagName==='BUTTON')playButton.textContent='▶ Дивитися';},'text-button'):null;const overview=el('p',{class:'detail-overview'},f.description||'Опис наразі недоступний.'),more=button('Детальніше',()=>{const open=overview.classList.toggle('open');more.textContent=open?'Згорнути':'Детальніше';},'text-button detail-more');more.hidden=true;modal.classList.remove('detail-loading');modal.classList.add('detail-modal');const backdrop=el('div',{class:'detail-backdrop'});if(f.poster)backdrop.style.backgroundImage='url('+JSON.stringify(f.poster)+')';modalContent.replaceChildren(backdrop,el('div',{class:'detail-body'},image,el('div',{class:'detail-info'},el('h2',{class:'detail-title'},f.title),el('div',{class:'detail-meta'},[f.year,f.rating?'★ '+f.rating:null,f.duration].filter(Boolean).map(t=>el('span',{},t)),f.genres.slice(0,3).map(g=>el('span',{class:'detail-genre'},g))),actions,overview,more,f.external?el('p',{class:'subtle'},'Зараз для цього фільму немає доступного відтворення у KIK.'):null,forget)),el('div',{id:'extra-metadata',class:'source-metadata'}),similarShelf(f,generation));requestAnimationFrame(()=>{more.hidden=overview.scrollHeight<=overview.clientHeight+2;});if(document.activeElement===modal||document.activeElement===document.body)actions.querySelector('button')?.focus({preventScroll:true});paintDetailStudios(item.studios);artworkFor(f).then(a=>{if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target)paintDetailStudios(a?.studios?.length?a.studios:item.studios);});enrichDetails(f,target,generation);}catch(e){if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target){modal.classList.remove('detail-loading');modalContent.replaceChildren(oops({error:e,retry:()=>openDetails(item),title:item.title,key:'film:'+keyOf(item.link)}));}}}
+ const actions=el('div',{class:'detail-actions'},playButton,el('div',{class:'detail-round'},laterButton,like,dislike,downloadButton(f,item)));const forget=latestFor(f.link)?button('Прибрати з історії',()=>{for(const r of data('progress').filter(r=>keyOf(r.data.link)===keyOf(f.link)))change('progress',r.key,null);toast('Прибрано з історії');forget.remove();if(playButton.tagName==='BUTTON')playButton.textContent='▶ Дивитися';},'text-button'):null;const overview=el('p',{class:'detail-overview'},f.description||'Опис наразі недоступний.'),more=button('Детальніше',()=>{const open=overview.classList.toggle('open');more.textContent=open?'Згорнути':'Детальніше';},'text-button detail-more');more.hidden=true;modal.classList.remove('detail-loading');modal.classList.add('detail-modal');const backdrop=el('div',{class:'detail-backdrop'});if(f.poster)backdrop.style.backgroundImage='url('+JSON.stringify(f.poster)+')';modalContent.replaceChildren(backdrop,el('div',{class:'detail-body'},image,el('div',{class:'detail-info'},el('h2',{class:'detail-title'},f.title),el('div',{class:'detail-meta'},[f.year,f.rating?'★ '+f.rating:null,f.duration].filter(Boolean).map(t=>el('span',{},t)),f.genres.slice(0,3).map(g=>el('span',{class:'detail-genre'},g))),actions,overview,el('div',{class:'detail-links'},more,forget),f.external?el('p',{class:'subtle'},'Зараз для цього фільму немає доступного відтворення у KIK.'):null)),el('div',{id:'extra-metadata',class:'source-metadata'}),similarShelf(f,generation));requestAnimationFrame(()=>{more.hidden=overview.scrollHeight<=overview.clientHeight+2;});if(document.activeElement===modal||document.activeElement===document.body)actions.querySelector('button')?.focus({preventScroll:true});paintDetailStudios(item.studios);artworkFor(f).then(a=>{if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target)paintDetailStudios(a?.studios?.length?a.studios:item.studios);});enrichDetails(f,target,generation);}catch(e){if(modal.open&&generation===modalGeneration&&modalContent.dataset.link===target){modal.classList.remove('detail-loading');modalContent.replaceChildren(oops({error:e,retry:()=>openDetails(item),title:item.title,key:'film:'+keyOf(item.link)}));}}}
 function refreshAccount(){headerSearch.refresh();$('[data-tab=admin]').hidden=state.user?.role!=='admin';const name=state.profile?.name||'Увійти';$('#account-name').textContent=name;$('#account').setAttribute('aria-label',state.user?'Профіль: '+name:'Увійти до KIK');$('#account .avatar').replaceChildren(el('img',{src:avatarUrl(state.profile?.avatar),alt:state.profile?'Аватарка профілю':'Увійти'}));paintDownloadNav();paintOffline();downloads.kick();}
 async function selectProfile(profile){resetEnhanced();management.reset();if(playerModal.open)playerModal.close();await sync();state.profile=profile;storage.setItem('kik-profile:'+state.user.id,profile.id);restore();await management.load();refreshAccount();render();await sync();}
 function account(){

@@ -528,3 +528,23 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 .hero-measure{position:absolute;inset:0 auto auto 0;width:100%;display:flex;align-items:flex-start;visibility:hidden;pointer-events:none;z-index:-1}.hero-measure .hero-copy{animation:none;flex:none}
 /* A row still on its way (app.js placeholderShelf): dark cards of the real cards' size, softly pulsing; no clicks. */
 .poster.placeholder{pointer-events:none}.poster.placeholder .poster-image{animation:pulse 1.5s infinite}.shelf[aria-busy=true] .rank{opacity:.35}
+/* The banner's two kinds of slide (app.js heroCopy, as on the TV, owner's mock-up 14.11): a red «ПРОДОВЖИТИ ПЕРЕГЛЯД» with
+   where it stopped, a grey «РЕКОМЕНДУЄМО ДЛЯ ВАС» with two or three lines of story; titles still to finish have red pills. */
+.hero .eyebrow.hero-kind{display:flex;align-items:center;gap:8px;color:#cfcfd6}.hero .eyebrow.hero-kind:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.hero .eyebrow.hero-kind.mine{color:#ff6b70}.hero .eyebrow.holiday-greeting{margin-bottom:10px}
+.hero-meta{gap:10px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}.hero-meta span+span:before{content:"•";margin-right:10px;opacity:.5;color:#c3c3cc}.hero-rating{color:#f5c518}
+.hero .hero-text{min-height:calc(3 * 1.65em)}.hero .hero-text.filled{animation:hero-fade .4s ease both}
+.hero-resume-block .hero-resume{margin-bottom:7px;font-size:14px;color:#e8e8ec}.hero-left{font-size:12.5px;color:#a9a9b2;margin-bottom:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-dot.mine .hero-dot-track{background:#e5091488}.hero-dot.mine i{background:#ff3b44}
+@media(max-width:650px){.hero .hero-text{min-height:calc(2 * 1.65em)}}
+@media(max-height:500px) and (orientation:landscape){.hero .hero-text{min-height:calc(2 * 1.65em)}}
+/* How much of a card is watched: a thin rounded bar inside the poster, clear of its rounded corners, as on the TV (14.11). */
+.poster-image .progress{left:10px;right:10px;bottom:10px;height:4px;border-radius:2px;overflow:hidden;background:#ffffff5c}.poster-image .progress i{border-radius:2px}
+.poster-image .continue-label{bottom:22px}
+/* «Детальніше» and «Прибрати з історії» share one line under the story (14.11, owner: two 44 px rows and a gap between them
+   left an empty band on a phone); the line goes when neither is shown. */
+.detail-links{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:2px 0 0}
+.detail-links>.text-button{margin:0;min-height:40px}.detail-links:not(:has(>:not([hidden]))){display:none}
+/* #main takes the focus for the skip link and after a page change (tabindex=-1). A tap on an empty spot gave it the
+   phone's blue focus ring, seen as a blue line across the bottom of Home (14.11, owner): the page itself shows no ring. */
+#main:focus,#main:focus-visible{outline:none}

@@ -259,3 +259,11 @@ dialog.player-modal[open]{display:flex;flex-direction:column}
  .player-modal .player-tools .dropdown-label{display:none}
  .player-modal .player-tools .dropdown-trigger{padding:0 9px;gap:5px}
 }
+/* Phone and tablet header (14.11, owner: the tabs «Головна · Каталог · Мій список» stood far under the logo, straight on
+   the picture): the tabs sit right under the logo row, and one dark fade behind both, from under the clock bar, keeps them
+   readable over any picture. */
+@media(max-width:1100px){
+ .header{height:60px;background:none}
+ .header:before{content:"";position:absolute;z-index:-1;left:0;right:0;top:calc(-1 * env(safe-area-inset-top,0px));height:calc(env(safe-area-inset-top,0px) + 128px);background:linear-gradient(180deg,#0d0d0fee 0%,#0d0d0fc7 48%,#0d0d0f5c 76%,transparent);pointer-events:none}
+ .header nav{top:48px}
+}
