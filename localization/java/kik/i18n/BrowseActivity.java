@@ -299,7 +299,7 @@ public final class BrowseActivity extends Activity {
    View card=Ui.card(this,g.title,g.sub,g.poster,null,g.progress,null,()->{if(query!=null)remember(query.getText().toString());FilmActivity.open(this,g.link,g.title,g.poster,g.year);});
    Studios.watch((FrameLayout)((ViewGroup)card).getChildAt(0),g.link,g.sourceTitle==null?g.title:g.sourceTitle,g.year,g.studio);
    // History: hold OK on a poster to remove the title from history.
-   if("history".equals(mode)){View target=((ViewGroup)card).getChildAt(0);target.setOnLongClickListener(v->{Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+g.title+"»").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,g.link);Ui.toast(this,"Прибрано з історії");reload();}).show();return true;});}
+   if("history".equals(mode)){View target=((ViewGroup)card).getChildAt(0);target.setOnLongClickListener(v->{Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+g.title+"»\nЗбережене місце перегляду зникне на всіх пристроях.").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,g.link);Ui.toast(this,"Прибрано з історії");reload();}).show();return true;});}
    cards.put(g,card);openRow.addView(card);inRow++;if(first==null)first=((ViewGroup)card).getChildAt(0);
   }
   return first;

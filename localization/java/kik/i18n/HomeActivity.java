@@ -655,7 +655,9 @@ public final class HomeActivity extends Activity {
    c.setOnClickListener(v->{int next=value==want?0:want;boolean saved=RatingStore.set(this,profile,i.link,tr(i.title),i.poster,i.genre,next);popup.dismiss();if(saved){Ui.toast(this,RatingStore.said(next));load();}else Ui.toast(this,"Не вдалося зберегти оцінку");});
    if(first==null||value==want)first=c;
   }
-  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.trash()),false);c.setOnClickListener(v->{Progress.remove(this,i.link);popup.dismiss();Ui.toast(this,"Прибрано з історії");load();});}
+  if(Progress.get(this,i.link)!=null){TextView c=action(box,"Прибрати з історії",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.trash()),false);c.setOnClickListener(v->{popup.dismiss();
+   // Asks first, as «Історія» does: the saved place of every episode goes on every device.
+   Ui.dialog(this).setTitle("Прибрати з історії?").setMessage("«"+tr(i.title)+"»\nЗбережене місце перегляду зникне на всіх пристроях.").setNegativeButton("Скасувати",null).setPositiveButton("Прибрати",(d,w)->{Progress.remove(this,i.link);Ui.toast(this,"Прибрано з історії");load();}).show();});}
   // A title in «Переглянути пізніше» leaves the list from here; the row is redrawn in place, the hero button follows.
   if(Progress.isLater(this,i.link)){TextView c=action(box,"Прибрати зі списку",new FilmActivity.ThumbIcon(dp(20),FilmActivity.ThumbIcon.minus()),false);c.setOnClickListener(v->{popup.dismiss();if(Progress.isLater(this,i.link))Progress.toggleLater(this,i.link,tr(i.title),i.poster,i.year,tr(i.genre));laterLinks.remove(norm(i.link));paintLater();Ui.toast(this,"Прибрано з мого списку");refreshLaterRow();});}
   if(value!=0){TextView hint=text("Натисніть оцінку ще раз, щоб її зняти",12,GREY);hint.setPadding(dp(14),dp(6),dp(14),dp(4));box.addView(hint);}
