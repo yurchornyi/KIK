@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {studiosFor} from './public/studios.js';
+import {studiosFor,studioCategory,makes,studioById,studioBadge} from './public/studios.js';
 import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {CataloguePages,catalogueSelection,selectionQuery} from './public/catalogue-view.js';
 
@@ -15,7 +15,28 @@ test('studio marks use original networks and exact production companies, never w
  assert.deepEqual(studiosFor({networks:[{id:49,name:'HBO'}]}),['hbo']);
  assert.deepEqual(studiosFor({production_companies:[{name:'Apple Studios'}]}),['apple']);
  assert.deepEqual(studiosFor({production_companies:[{name:'Not Netflix Studios'}],networks:[], 'watch/providers':{Netflix:true}}),[]);
- assert.deepEqual(studiosFor({production_companies:[{name:'Pixar'},{name:'Walt Disney Pictures'}]}),['disney','pixar']);
+ // A studio before the one it belongs to: a Pixar film co-made by Walt Disney Pictures wears Pixar's badge.
+ assert.deepEqual(studiosFor({production_companies:[{name:'Pixar'},{name:'Walt Disney Pictures'}]}),['pixar','disney']);
+ // The original network first: a Netflix series a Warner studio made is Netflix's, whatever the list order.
+ assert.deepEqual(studiosFor({networks:[{id:1024}],production_companies:[{name:'Warner Bros. Television'},{name:'Netflix'}]}),['prime','netflix','warner']);
+ assert.deepEqual(studiosFor({networks:[{id:43}]}),['natgeo']);assert.deepEqual(studiosFor({networks:[{id:1043}]}),['natgeo']);
+ assert.deepEqual(studiosFor({networks:[{id:64}]}),['discovery']);assert.deepEqual(studiosFor({networks:[{id:4353}]}),['discovery']);
+ assert.deepEqual(studiosFor({production_companies:[{name:'National Geographic Documentary Films'}]}),['natgeo']);
+ // Some other company called just «Discovery» is not Discovery's.
+ assert.deepEqual(studiosFor({production_companies:[{name:'Discovery'}]}),[]);
+});
+test('a studio opens a section it makes: Pixar its cartoons, Hulu its series',()=>{
+ assert.equal(makes(studioById('pixar'),'films'),false);assert.equal(makes(studioById('pixar'),'cartoons'),true);assert.equal(makes(studioById('netflix'),'animation'),true);
+ assert.equal(studioCategory('pixar','films'),'cartoons');assert.equal(studioCategory('hulu','films'),'series');assert.equal(studioCategory('hulu','cartoons'),'cartoons');
+ assert.equal(studioCategory('natgeo','cartoons'),'series');assert.equal(studioCategory('netflix','films'),'films');assert.equal(studioCategory('','films'),'films');
+ // Several studios keep the section when any of them makes it.
+ assert.equal(studioCategory(['pixar','netflix'],'films'),'films');
+ // An old link without a section opens the studio's own.
+ assert.equal(catalogueSelection({studio:'pixar'}).category,'cartoons');
+});
+test('a badge from an old cache still prefers Pixar to Disney',()=>{
+ const made=[];const document={createElement:()=>{const e={className:'',innerHTML:'',dataset:{},setAttribute(){}};made.push(e);return e;}};
+ assert.equal(studioBadge(['disney','pixar'],document).className,'studio-badge studio-pixar');assert.equal(studioBadge(['natgeo'],document).className,'studio-badge studio-natgeo');
 });
 test('the studio selection is validated, round-trips in the URL and travels with every page',async()=>{
  const selection=catalogueSelection(new URLSearchParams('c=series&g=comedy&s=last&studio=hbo'));
@@ -81,4 +102,9 @@ test('several studios search any of their networks at once and leave the badge t
  const films=service({results:[]});await films.api.lookup({studio:'netflix,hbo',category:'films'},{token});
  assert.equal(films.calls.find(u=>u.pathname.includes('/discover/')).searchParams.get('with_companies'),'22');
  await assert.rejects(api.lookup({studio:'hbo,evil',category:'series'},{token}));
+});
+test('a section the studios never make ends at once, without a TMDB request',async()=>{
+ const {api,calls}=service();const result=await api.lookup({studio:'pixar',category:'films'},{token});
+ assert.deepEqual(result,{items:[],hasMore:false,page:1});assert.equal(calls.length,0);
+ await assert.doesNotReject(api.lookup({studio:'netflix,apple,hbo,prime,disney,hulu,paramount,warner,pixar,natgeo,discovery',category:'series'},{token}));
 });

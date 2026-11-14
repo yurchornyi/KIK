@@ -1,11 +1,14 @@
 import {dropdown} from './dropdown.js';
-import {STUDIOS,studioById,studioBadge} from './studios.js';
+import {STUDIOS,studioById,studioBadge,studioCategory,makes} from './studios.js';
 /** The website's Catalogue section: categories, source genres, sorting and explicit pagination. */
 export const CATEGORIES=[['films','Фільми'],['series','Серіали'],['cartoons','Мультфільми'],['animation','Аніме']];
 export const SORTS=[['popular','Популярні'],['last','Новинки'],['watching','Зараз дивляться']];
 /** «Новинки» show only titles of this year and last (a series by the year it began), in the order the source added them:
  *  its «last» list also holds old films it has just added (14.11, owner). The same rule as FreshPolicy on the TV. */
 export function newRelease(item,now=new Date()){const year=Number(String(item?.sourceInfo||item?.info||'').match(/\d{4}/)?.[0]),thisYear=now.getFullYear();return year>thisYear-2&&year<=thisYear+1;}
+/** The source writes a running series as «2022 - ...» and a finished one as «2010 - 2022»: a card shows «2022» and
+ *  «2010–2022», as the TV does (Ui.year; 14.11, owner: not the three dots). The rest of the line stays as it is. */
+export function infoLine(info){return String(info||'').replace(/^(\d{4})\s*-\s*(\d{4}|\.{3}|…)?(?=\s*(?:,|$))/,(m,start,end)=>end&&/\d/.test(end)&&end!==start?start+'–'+end:start);}
 export const MAX_PAGE=100;
 const known=(list,value,fallback)=>list.some(([key])=>key===value)?value:fallback;
 
@@ -14,7 +17,7 @@ export function catalogueSelection(params={}){
  const get=k=>params instanceof URLSearchParams?params.get(k):params[k];
  const genre=String(get('g')||'');
  const studio=studioById(get('studio'))?.id;
- return {category:known(CATEGORIES,get('c'),'films'),filter:studio&&get('s')==='watching'?'popular':known(SORTS,get('s'),'popular'),genre:/^[a-z0-9-]{1,60}$/.test(genre)?genre:'',...(studio?{studio}:{})};
+ return {category:studioCategory(studio,known(CATEGORIES,get('c'),'films')),filter:studio&&get('s')==='watching'?'popular':known(SORTS,get('s'),'popular'),genre:/^[a-z0-9-]{1,60}$/.test(genre)?genre:'',...(studio?{studio}:{})};
 }
 /** Route query for a selection; defaults are left out so `#catalogue` stays short. */
 export function selectionQuery({category='films',filter='popular',genre='',studio=''}){
@@ -84,7 +87,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   list.setAttribute('aria-busy',String(model.loading));count.textContent=shown?'Показано: '+shown:'';
   note.textContent=model.error?(shown?'Не вдалося завантажити наступну сторінку. Список збережено.':'Не вдалося завантажити каталог. Спробуйте ще раз.')
    :model.loading?(shown?'Завантажуємо ще…':'Завантажуємо каталог…')
-   :!shown&&model.page?(model.end?'Тут поки нічого немає. Спробуйте інший жанр або порядок.':model.studio?'Шукаємо відповідні назви. Натисніть «Показати ще».':'На цих сторінках усе приховано фільтром країн.')
+   :!shown&&model.page?(model.end?(model.studio&&!makes(studioById(model.studio),model.category)?studioById(model.studio).name+' знімає '+label(studioCategory(model.studio,model.category)).toLowerCase()+': відкрийте розділ «'+label(studioCategory(model.studio,model.category))+'».':'Тут поки нічого немає. Спробуйте інший жанр або порядок.'):model.studio?'Шукаємо відповідні назви. Натисніть «Показати ще».':'На цих сторінках усе приховано фільтром країн.')
    :model.end&&shown?'Усі доступні результати завантажено.':'';
   note.classList.toggle('error',!!model.error);
   more.hidden=(model.end&&!model.error)||!model.page&&model.loading;more.disabled=model.loading;
@@ -151,7 +154,8 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   sort.onchange=()=>select({...selection(),filter:sort.value});
   genreSelect=el('select',{'aria-label':'Жанр каталогу'});genreSelect.onchange=()=>select({...selection(),genre:genreSelect.value});
   studioSelect=el('select',{'aria-label':'Студія / платформа'},el('option',{value:''},'Усі студії'),STUDIOS.map(s=>el('option',{value:s.id},s.name)));studioSelect.value=model.studio;
-  studioSelect.onchange=()=>select({...selection(),studio:studioSelect.value,filter:studioSelect.value&&model.filter==='watching'?'popular':model.filter});
+  // A studio that does not make the section on screen opens its own: Pixar its cartoons, Hulu its series.
+  studioSelect.onchange=()=>{const studio=studioSelect.value,category=studioCategory(studio,model.category);select({...selection(),studio,category,genre:category===model.category?model.genre:'',filter:studio&&model.filter==='watching'?'popular':model.filter});};
   studioControl=dropdown(studioSelect,'Студія / платформа',{icon:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><path d="M8 3v6m8 0v6M9 15v6"/></svg>',option:o=>[studioBadge([o.value])||el('span',{class:'studio-all'},'○'),el('span',{},o.textContent)]});
   studioButton=studioControl.querySelector('button')||studioSelect;
   studioChip=button('',()=>{select({...selection(),studio:''});studioButton.focus();},'studio-chip');

@@ -565,15 +565,17 @@ public final class HomeActivity extends Activity {
  }
  /** The Top 10's number, as on Netflix: a dark figure with a grey outline standing on the poster's bottom line. */
  static final class Rank extends View{
-  private final String n;private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG),edge=new Paint(Paint.ANTI_ALIAS_FLAG);private final float pad;
+  private final String n;private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG),edge=new Paint(Paint.ANTI_ALIAS_FLAG);private final float pad;private final android.graphics.Rect ink=new android.graphics.Rect();
   Rank(Context c,int n){
    super(c);this.n=String.valueOf(n);pad=Ui.dp(c,4);Typeface face=Typeface.create("sans-serif-condensed",Typeface.BOLD);
    for(Paint p:new Paint[]{fill,edge}){p.setTypeface(face);p.setTextSize(Ui.dp(c,190));p.setLetterSpacing(-.08f);}
    fill.setColor(0xff0d0d0f);edge.setStyle(Paint.Style.STROKE);edge.setStrokeWidth(Ui.dp(c,3));edge.setStrokeJoin(Paint.Join.ROUND);edge.setColor(0xff8c8c92);
-   setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+   setFocusable(false);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);edge.getTextBounds(this.n,0,this.n.length(),ink);
   }
-  @Override protected void onMeasure(int w,int h){setMeasuredDimension((int)Math.ceil(edge.measureText(n)+2*pad),MeasureSpec.getSize(h));}
-  @Override protected void onDraw(Canvas c){float y=getHeight()-edge.getStrokeWidth();c.drawText(n,pad,y,fill);c.drawText(n,pad,y,edge);}
+  // Sized by the figure's own outline, not by the font's advance: «10» stood further from its poster than 1–9 (14.11,
+  // owner), and every poster now covers the same part of its number.
+  @Override protected void onMeasure(int w,int h){setMeasuredDimension((int)Math.ceil(ink.width()+2*pad+edge.getStrokeWidth()),MeasureSpec.getSize(h));}
+  @Override protected void onDraw(Canvas c){float y=getHeight()-edge.getStrokeWidth(),x=pad+edge.getStrokeWidth()/2-ink.left;c.drawText(n,x,y,fill);c.drawText(n,x,y,edge);}
  }
  /** A shelf card; the focused one stays at the row's left edge and the row slides under it, as on Netflix. */
  private View card(final Item i){
@@ -638,14 +640,18 @@ public final class HomeActivity extends Activity {
  /** The focused card takes the hero once the rows stand still: a new backdrop crossfading under a gliding row drops
   *  frames on the projector. Half a second at most, so a held key still updates it. */
  private Runnable heroFor(final Item i){
-  return new Runnable(){int waited;public void run(){if(destroyed)return;if(Glide.moving()&&waited++<10){main.postDelayed(this,50);return;}feature(i);}};
+  return new Runnable(){int waited;public void run(){if(destroyed||heroFocused())return;if(Glide.moving()&&waited++<10){main.postDelayed(this,50);return;}feature(i);}};
  }
 
  // ---------- featured slideshow ----------
  /** As on the website, the hero features recommendations, never a title already in «Продовжити перегляд»; it turns to the
   *  next one (up to 10) every 9 s, wherever the focus is. A focused card takes a turn of the show: see feature(). */
  private final List<Item> slides=new ArrayList<Item>();private int slide;private LinearLayout dots;
- private final Runnable nextSlide=()->{if(destroyed||slides.isEmpty())return;if(foreground&&!expanded)showSlide((slide+1)%slides.size());else{scheduleSlide();paintDots();}};
+ private final Runnable nextSlide=()->{if(destroyed||slides.isEmpty())return;if(foreground&&!expanded&&!heroFocused())showSlide((slide+1)%slides.size());else{scheduleSlide();paintDots();}};
+ /** The hero's buttons have the focus: the title on them stays — no next slide, no card passed on the way up taking it
+  *  over — so «Продовжити» starts what it says (14.11, owner: the poster changed under the button, as on the website,
+  *  which holds its slide under the pointer). */
+ private boolean heroFocused(){return watch!=null&&(watch.hasFocus()||later.hasFocus()||more.hasFocus());}
  private List<Item> candidates=new ArrayList<Item>();private String slideKeys="";
  private void startSlides(List<Row> rows){
   Set<String> started=new HashSet<String>();for(Row r:rows)for(Item i:r.items)if(i.resume)started.add(norm(i.link));
@@ -730,7 +736,9 @@ public final class HomeActivity extends Activity {
   fill.setScaleX(spent/(float)SLIDE_MS);if(spent<SLIDE_MS)main.postDelayed(this,DOT_STEP_MS);}};
 
  private void setHero(Item i){
-  if(i==hero)return;hero=i;expanded=false;heroText.setMaxLines(i.resume?HERO_LINES-1:HERO_LINES);
+  // setLines, not setMaxLines: the description kept its four-line height under the resume line, so the buttons dropped a
+  // line whenever a title with progress came on (14.11, owner: «там воно падає»).
+  if(i==hero)return;hero=i;expanded=false;heroText.setLines(i.resume?HERO_LINES-1:HERO_LINES);
   heroTitle.setText(tr(i.title));
   heroMeta.setText(facts(i));
   heroSub.setText(i.resume?i.heroLine:"");heroResume.setVisibility(i.resume?View.VISIBLE:View.GONE);heroBar.getLayoutParams().width=Math.max(dp(4),Math.round(dp(120)*i.progress));heroBar.requestLayout();

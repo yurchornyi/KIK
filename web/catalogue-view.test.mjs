@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CataloguePages,catalogueSelection,selectionQuery,MAX_PAGE,SORTS,newRelease} from './public/catalogue-view.js';
+import {CataloguePages,catalogueSelection,selectionQuery,MAX_PAGE,SORTS,newRelease,infoLine} from './public/catalogue-view.js';
 import {cataloguePath,parseGenres} from './catalogue.mjs';
 import {localizedGenres} from './localization.mjs';
 const card=id=>({link:'https://hdrezka.sh/films/drama/'+id+'-film.html',title:'Film '+id});
@@ -74,4 +74,9 @@ test('«Новинки» keep this year\'s and last year\'s titles only, a serie
  assert.equal(at('1995, США, Приключения'),false,'an old film the source has just added');assert.equal(at('2024, США, Стендап'),false);
  assert.equal(at('2016 - ..., США, Фантастика'),false,'a long-running series with a new season');assert.equal(at('2025 - ..., Испания, Драмы'),true);
  assert.equal(at('',''),false,'no year, no place');assert.equal(at('2012, Япония','2026, Япония, Аниме'),true,'the source\'s own line first');
+});
+test('a card shows a running series by its first year and a finished one as a range, as the TV does',()=>{
+ assert.equal(infoLine('2022 - ..., США, Фентезі'),'2022, США, Фентезі');assert.equal(infoLine('2017-2025, США, Драми'),'2017–2025, США, Драми');
+ assert.equal(infoLine('2026 - …'),'2026');assert.equal(infoLine('2024-2024, Японія'),'2024, Японія');assert.equal(infoLine('2026, США, Концерт'),'2026, США, Концерт');
+ assert.equal(infoLine(''),'');assert.equal(infoLine(undefined),'');assert.equal(infoLine('США'),'США');
 });

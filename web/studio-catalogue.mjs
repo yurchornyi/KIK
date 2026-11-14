@@ -1,4 +1,4 @@
-import {studioById} from './public/studios.js';
+import {STUDIOS,studioById,makes} from './public/studios.js';
 import {matchTitle} from './tmdb.mjs';
 
 const API='https://api.themoviedb.org/3',SIZE=5,MAX_PAGE=4000;
@@ -10,7 +10,7 @@ const normalizeCompany=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const GENRES={action:['28','10759'],adventures:['12','10759'],comedy:['35','35'],crime:['80','80'],detective:['9648|80','9648|80'],documentary:['99','99'],cognitive:['99','99'],
  drama:['18','18'],family:['10751','10751'],kids:['10751','10762'],fantasy:['14','10765'],fiction:['878','10765'],historical:['36',''],horror:['27',''],military:['10752','10768'],
  melodrama:['10749',''],musical:['10402',''],concert:['10402',''],thriller:['53',''],western:['37','37'],realtv:['','10764'],telecasts:['','10767|10763']};
-const MAX_STUDIOS=9;
+const MAX_STUDIOS=STUDIOS.length;
 /** Discover the entire brand catalogue, then return only titles matched in KIK by title, year and type.
  * Five candidates per page bound source traffic. Empty intermediate pages carry explicit continuation.
  */
@@ -50,6 +50,8 @@ export function createStudioCatalogue({fetcher=globalThis.fetch,search,genres,fi
   const ids=[...new Set(String(params.studio||'').split(',').map(x=>x.trim()).filter(Boolean))],studios=ids.map(studioById),category=params.category||'films',order=params.filter||'popular',genre=params.genre||'';
   if(!ids.length||ids.length>MAX_STUDIOS||studios.some(x=>!x)||!['films','series','cartoons','animation'].includes(category)||!['popular','last'].includes(order)||genre&&!/^[a-z0-9-]{1,60}$/.test(genre))throw Error('Некоректний фільтр студії');
   if(params.query||params.source&&params.source!=='rezka')throw Error('Несумісні фільтри каталогу');
+  // Pixar in «Фільми», Hulu in «Фільми»: no page could ever match, so the catalogue ends at once instead of reading 500 pages.
+  if(!studios.some(s=>makes(s,category)))return {items:[],hasMore:false,page:1};
   let page=Math.max(1,Math.min(MAX_PAGE,Math.floor(Number(params.page)||1)));
   const kinds=['cartoons','animation'].includes(category)?['movie','tv']:[category==='series'?'tv':'movie'];
   page=Math.min(page,2000*kinds.length);
