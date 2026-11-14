@@ -17,6 +17,7 @@ import {beaconPayload,SYNC_BATCH} from './sync-queue.js';
 import {createCatalogueView,catalogueSelection,selectionQuery,infoLine,newRelease} from './catalogue-view.js';
 import {oops} from './oops.js';
 import {createDownloads,formatBytes,defaultDownloadQuality,DOWNLOAD_QUALITIES,watchedCopies,nextToSave} from './downloads.js';
+import {installRefresh} from './refresh.js';
 import {loadFlags,currentFlags} from './flags.js';
 import {holidayPlan,dressUp,holidayIntro,HOLIDAY_INTRO_MS,fireworksDue,fireworksOver} from './holiday-mark.js';
 const $=s=>document.querySelector(s),main=$('#main'),modal=$('#modal'),modalContent=$('#modal-content'),playerModal=$('#player-modal');
@@ -119,7 +120,21 @@ const sourcePosters=new Map();
 function posterImage(a,url,lazy=false){const img=new Image();img.referrerPolicy='no-referrer';img.alt='';img.dataset.poster=url;if(lazy)img.loading='lazy';if(a?.poster){img.srcset=`${a.poster} 500w, ${a.posterLarge} 780w`+(a.posterOriginal&&a.posterWidth>780?`, ${a.posterOriginal} ${a.posterWidth}w`:'');img.sizes='(max-width:700px) 40vw, 220px';}img.src=url;return img;}
 function paintStudioBadge(image,ids){image.querySelector('.studio-badge')?.remove();const badge=studioBadge(ids);if(badge)image.append(badge);}
 /** The better poster fades in over the current one once decoded, so the card never flashes empty. */
-function upgradePoster(image,item){if(!artObserver||!item.link)return;image._art=async()=>{image._art=null;const a=await artworkFor(item);if(!image.isConnected)return;paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);const url=a?.poster||await fullPoster(item);if(!url||!image.isConnected||!a&&url===item.poster)return;const img=posterImage(a,url);img.className='art-in';img.onload=async()=>{try{await img.decode();}catch{}if(!image.isConnected)return;const old=[...image.querySelectorAll('img')],drop=()=>{for(const o of old)o.remove();};image.prepend(img);img.addEventListener('animationend',drop,{once:true});setTimeout(drop,700);};};artObserver.observe(image);}
+/** A card shows one poster, never one and a second later another (14.11, owner: «постер стає один і через секунду
+ *  міняється інший»). Known artwork paints at once (card()); otherwise the tile stays dark until KIK knows which poster it is —
+ *  TMDB's, else the source's sharper copy, else its thumbnail — for at most FIRST_POSTER_MS, then the thumbnail, and an
+ *  answer after that changes nothing. A poster already on the card (kept from the page before) stays; only its badge follows. */
+const FIRST_POSTER_MS=1500;
+function thumbPoster(item){return el('img',{src:item.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer','data-poster':item.poster});}
+function upgradePoster(image,item){
+ if(!artObserver||!item.link){if(item.poster&&!image.querySelector('img'))image.append(thumbPoster(item));return;}
+ image._art=async()=>{image._art=null;const shown=!!image.querySelector('img');let late=false;
+  const timer=shown?0:setTimeout(()=>{late=true;if(image.isConnected&&!image.querySelector('img')&&item.poster)image.append(thumbPoster(item));},FIRST_POSTER_MS);
+  const a=await artworkFor(item);if(!image.isConnected)return;paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);
+  if(shown||late)return;const url=a?.poster||await fullPoster(item)||item.poster;if(late||!url||!image.isConnected||image.querySelector('img'))return;clearTimeout(timer);
+  const img=posterImage(a,url);img.className='art-in';image.prepend(img);};
+ artObserver.observe(image);
+}
 const heroRefined=new Map();
 /** The wide picture of a slide. w1280 is plenty behind the hero gradients and arrives fast; the original joins only when it is small. */
 function backdropImage(a){const img=new Image();img.alt='';img.referrerPolicy='no-referrer';img.className='hero-art wide';img.dataset.src=a.backdrop;img.srcset=`${a.backdrop} 1280w`+(a.backdropOriginal&&a.backdropWidth>1280&&a.backdropWidth<=2200?`, ${a.backdropOriginal} ${a.backdropWidth}w`:'');img.sizes='100vw';return img;}
@@ -150,7 +165,7 @@ function upgradeHero(hero,item){
 /** Poster pictures already on screen, by title, while a page repaints: the new cards take them over, so nothing blinks. */
 const livePosters=new Map();
 function keepPosters(){livePosters.clear();for(const n of main.querySelectorAll('.poster[data-key] .poster-image img:not(.art-in)'))if(n.complete&&n.naturalWidth)livePosters.set(n.closest('.poster').dataset.key,n);}
-function card(item,progress=false,onClick){const image=el('div',{class:'poster-image'}),key=keyOf(item.link),a=artwork.get(key),known=a?.poster||sourcePosters.get(key),live=livePosters.get(key);paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);if(downloads.supported&&downloads.forTitle(item.link).some(x=>x.status==='done'))image.append(el('span',{class:'dl-badge',title:'Завантажено на цей пристрій'},'⤓'));if(live&&live.dataset.poster===(known||item.poster)){livePosters.delete(key);image.append(live);if(!known)upgradePoster(image,item);}else if(known)image.append(posterImage(a,known,true));else{upgradePoster(image,item);if(item.poster)image.append(el('img',{src:item.poster,alt:'',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer','data-poster':item.poster}));}if(progress&&item.dur>0){const i=el('i');i.style.width=Math.max(0,Math.min(100,item.pos/item.dur*100))+'%';image.append(el('div',{class:'progress'},i),el('span',{class:'continue-label'},'▶ ',item.next?'Наступна серія':item.season?`С${item.season} · Е${item.episode}`:`${Math.floor(item.pos/60000)} хв`));}let dwell=0;const warm=()=>{if(item.link&&!item.external)getFilm(item).catch(()=>{});};
+function card(item,progress=false,onClick){const image=el('div',{class:'poster-image'}),key=keyOf(item.link),a=artwork.get(key),known=a?.poster||sourcePosters.get(key),live=livePosters.get(key);paintStudioBadge(image,item.studios?.length?item.studios:a?.studios);if(downloads.supported&&downloads.forTitle(item.link).some(x=>x.status==='done'))image.append(el('span',{class:'dl-badge',title:'Завантажено на цей пристрій'},'⤓'));if(live&&live.dataset.poster===(known||item.poster)){livePosters.delete(key);image.append(live);if(!known)upgradePoster(image,item);}else if(known)image.append(posterImage(a,known,true));else upgradePoster(image,item);if(progress&&item.dur>0){const i=el('i');i.style.width=Math.max(0,Math.min(100,item.pos/item.dur*100))+'%';image.append(el('div',{class:'progress'},i),el('span',{class:'continue-label'},'▶ ',item.next?'Наступна серія':item.season?`С${item.season} · Е${item.episode}`:`${Math.floor(item.pos/60000)} хв`));}let dwell=0;const warm=()=>{if(item.link&&!item.external)getFilm(item).catch(()=>{});};
  // Details start loading on hover, focus or touch, so the window opens complete instead of growing from «Завантаження…».
  return el('button',{class:'poster',type:'button','aria-label':item.title,'data-key':key,onClick:onClick||(()=>openDetails(item)),onPointerenter:e=>{if(e.pointerType==='mouse'){clearTimeout(dwell);dwell=setTimeout(warm,150);}},onPointerleave:()=>clearTimeout(dwell),onPointerdown:warm,onFocus:()=>{clearTimeout(dwell);dwell=setTimeout(warm,250);},onBlur:()=>clearTimeout(dwell)},image,el('span',{class:'poster-title'},item.title),el('span',{class:'poster-info'},infoLine(item.info)||item.year||(progress?'Продовжити перегляд':'Фільми та серіали')));}
 /** A row of cards; `rank` puts a big number before each card (the week's Top 10, as on the TV and on Netflix). */
@@ -277,7 +292,7 @@ function arrangeSlides(){
  slideshow.keys=keys;slideshow.slides=picks;slideshow.index=Math.max(0,at);if(at<0)slideshow.shownAt=Date.now();
 }
 /** The picks changed (wide pictures arrived, a title was saved or finished): the hero on screen follows without a page render. */
-function refreshSlides(){const hero=slideshow.hero;if(!hero?.isConnected||state.tab!=='home')return;const before=slideshow.slides[slideshow.index];arrangeSlides();const now=slideshow.slides[slideshow.index];if(!now)return;if(keyOf(now.link)!==keyOf(before?.link||''))showSlide(slideshow.index);else{paintDots(hero);scheduleSlide();}}
+function refreshSlides(){const hero=slideshow.hero;if(!hero?.isConnected||state.tab!=='home')return;const before=slideshow.slides[slideshow.index];arrangeSlides();const now=slideshow.slides[slideshow.index];if(!now)return;measureSlides(hero);if(keyOf(now.link)!==keyOf(before?.link||''))showSlide(slideshow.index);else{steady(hero.querySelector('.hero-copy'),now);paintDots(hero);scheduleSlide();}}
 /** Today's holiday (holiday-mark.js holidayPlan) once the owner's switches allow it, and the film shelf before it (holidayDress). */
 let festive=null,holidayFilms=null,fireworksYear=0;
 function heroCopy(item){
@@ -292,8 +307,23 @@ function heroCopy(item){
 function paintDots(hero){const dots=hero.querySelector('.hero-dots');if(!dots)return;const n=slideshow.slides.length;dots.replaceChildren();dots.hidden=n<2;if(n<2)return;
  slideshow.slides.forEach((s,k)=>{const on=k===slideshow.index,fill=el('i');if(on){fill.style.animationDuration=SLIDE_MS+'ms';fill.style.animationDelay=-(Date.now()-slideshow.shownAt)+'ms';}
   const d=button(el('span',{class:'hero-dot-track'},fill),()=>{if(k===slideshow.index)return;showSlide(k);hero.querySelector('.hero-dot.on')?.focus({preventScroll:true});},'hero-dot'+(on?' on':''));d.setAttribute('aria-label',`${k+1} з ${n}: ${s.title}`);if(on)d.setAttribute('aria-current','true');dots.append(d);});}
+/** Each slide's text height, measured once for the slides in the show, and the tallest: a slide's block takes the tallest
+ *  one's place (the spare room above its first line), so its buttons, the pills and the rows under the banner never move
+ *  while the slides turn (14.11, owner: on a phone a longer title grew the banner and the button dropped). */
+let slideHeights=new Map(),slideTallest=0,slideMeasureTimer=0;
+function measureSlides(hero){
+ slideHeights=new Map();slideTallest=0;if(!hero?.isConnected||slideshow.slides.length<2)return;
+ const box=el('div',{class:'hero-measure','aria-hidden':'true'});hero.append(box);
+ try{for(const s of slideshow.slides){const c=heroCopy(s);box.append(c);const h=c.getBoundingClientRect().height;slideHeights.set(keyOf(s.link),h);slideTallest=Math.max(slideTallest,h);}}
+ catch{slideHeights=new Map();slideTallest=0;}finally{box.remove?.();}
+}
+function steady(copy,item){if(!copy||!item)return;const h=slideHeights.get(keyOf(item.link));copy.style?.setProperty?.('--slack',h!==undefined&&slideTallest>h?Math.round(slideTallest-h)+'px':'0px');}
+function remeasureSlides(){clearTimeout(slideMeasureTimer);slideMeasureTimer=setTimeout(()=>{const hero=slideshow.hero;if(!hero?.isConnected)return;measureSlides(hero);steady(hero.querySelector('.hero-copy'),slideshow.slides[slideshow.index]);},200);}
+window.addEventListener('resize',remeasureSlides);document.fonts?.ready?.then(remeasureSlides);
 function showSlide(n){const hero=slideshow.hero,item=slideshow.slides[n];if(!hero?.isConnected||!item)return;slideshow.index=n;slideshow.shownAt=Date.now();
- const copy=heroCopy(item),old=hero.querySelector('.hero-copy');if(old)old.replaceWith(copy);else hero.append(copy);hero.classList.remove('settled');
+ // A turn only fades the words in place: the old rise moved the whole block, buttons too, down 12 px and back up at every
+ // slide (14.11, owner). The block keeps the tallest slide's height (steady), so nothing under it moves either.
+ const copy=heroCopy(item),old=hero.querySelector('.hero-copy');copy.classList.add('turn');steady(copy,item);if(old)old.replaceWith(copy);else hero.append(copy);
  upgradeHero(hero,item);paintDots(hero);scheduleSlide();prefetchSlide((n+1)%slideshow.slides.length);}
 /** The next slide's picture is fetched while the current one is on screen, so the crossfade never waits. */
 function prefetchSlide(n){const s=slideshow.slides[n];if(!s||n===slideshow.index)return;artworkFor(s).then(a=>{if(a?.backdrop&&![...document.querySelectorAll('.hero-art')].some(i=>i.dataset.src===a.backdrop)){const img=backdropImage(a);img.src=a.backdrop;}});}
@@ -305,8 +335,11 @@ function nextSlide(){const hero=slideshow.hero;if(!hero?.isConnected||slideshow.
 function pauseSlides(){clearTimeout(slideshow.timer);}
 /** By hand, without extra buttons: a swipe across the hero on a phone or tablet, ← → on a computer (as Disney+ and Prime Video). */
 function turnSlide(by){const n=slideshow.slides.length;if(n<2||!slideshow.hero?.isConnected)return false;showSlide(((slideshow.index+by)%n+n)%n);return true;}
-function swipeSlides(hero){let x=0,y=0,on=false;
- hero.addEventListener('touchstart',e=>{const t=e.touches[0];on=e.touches.length===1&&!e.target.closest('.hero-dots');x=t.clientX;y=t.clientY;},{passive:true});
+function swipeSlides(hero){let x=0,y=0,on=false,sideways=null;
+ hero.addEventListener('touchstart',e=>{const t=e.touches[0];on=e.touches.length===1&&!e.target.closest('.hero-dots');x=t.clientX;y=t.clientY;sideways=null;},{passive:true});
+ // A swipe across the slides is never quite level: at the top of the page the phone took its downward part and pulled the
+ // whole page down and back up (14.11, owner). Once a move is mostly sideways, the page stays where it is.
+ hero.addEventListener('touchmove',e=>{if(!on)return;const t=e.touches[0],dx=t.clientX-x,dy=t.clientY-y;if(sideways===null&&Math.abs(dx)+Math.abs(dy)>10)sideways=Math.abs(dx)>Math.abs(dy);if(sideways&&e.cancelable)e.preventDefault();},{passive:false});
  hero.addEventListener('touchend',e=>{if(!on)return;on=false;const t=e.changedTouches[0],dx=t.clientX-x,dy=t.clientY-y;if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5)turnSlide(dx<0?1:-1);},{passive:true});}
 document.addEventListener('keydown',e=>{
  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'||e.metaKey||e.ctrlKey||e.altKey||e.shiftKey||state.tab!=='home'||modal.open||playerModal.open)return;
@@ -325,7 +358,7 @@ function profileGate(){if(main.querySelector('.profile-gate'))return;main.replac
 function gate(){if(main.querySelector('.gate:not(.profile-gate)'))return;main.replaceChildren(el('section',{class:'gate'},el('div',{class:'gate-copy'},el('div',{class:'eyebrow'},'ОДИН ПРОФІЛЬ. УСІ ВАШІ ПРИСТРОЇ.'),el('h1',{},'Увійдіть, щоб дивитися'),el('div',{class:'actions'},button('Увійти',()=>auth(),'pill red'),button('Створити обліковий запис',()=>auth(true),'pill')))));}
 function render(){pageDirty=false;if(['home','catalogue','later','history','search'].includes(state.tab))downloads.quiet(8000);document.body.classList.toggle('signed-out',state.ready&&!state.user);if(!state.user){if(state.ready)gate();return;}if(!state.profile){profileGate();return;}artObserver?.disconnect();keepPosters();for(const n of document.querySelectorAll('[data-tab]')){const active=n.dataset.tab===state.tab;n.classList.toggle('active',active);if(active){n.setAttribute('aria-current','page');const nav=n.parentElement;if(nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,n.offsetLeft-(nav.clientWidth-n.offsetWidth)/2);}else n.removeAttribute('aria-current');}paintNavEdges();if(state.tab==='search'){runSearch(state.query,false);return;}if(state.tab==='downloads'){renderDownloads();return;}if(state.tab==='settings'){management.renderSettings();return;}if(state.tab==='admin'){management.renderAdmin();return;}if(state.tab!=='home'){renderGrid();return;}warmTaste();arrangeSlides();const featured=slideshow.slides[slideshow.index];if(!featured){if(state.catalogueError)renderError();else main.replaceChildren(el('section',{class:'grid-page'},el('h1',{},'Що подивимось?'),el('p',{role:'status'},'Завантажуємо фільми й серіали для вас.')));return;}const hero=el('section',{class:'hero'},heroCopy(featured));slideshow.hero=hero;hero.addEventListener('mouseenter',()=>{if(hoverable.matches)pauseSlides();});hero.addEventListener('focusin',pauseSlides);hero.addEventListener('mouseleave',()=>{if(hoverable.matches)resumeSlides();});hero.addEventListener('focusout',e=>{if(!hero.contains(e.relatedTarget))resumeSlides();});
  // A tap or click on the hero holds its slide for another turn, so a title just saved or opened never slips away under the finger.
- hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},...holidayRow(),{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),...newRows(),{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);shelves.splice(2+holidayRow().length,0,...topTenRows());for(const r of shelves){const row=shelf(r.title,r.items,r.subtitle||'',r.progress,r.rank);if(row)rows.append(row);}
+ hero.addEventListener('click',()=>{if(slideshow.slides.length>1&&slideshow.hero===hero){slideshow.shownAt=Date.now();paintDots(hero);scheduleSlide();}});swipeSlides(hero);upgradeHero(hero,featured);paintDots(hero);measureSlides(hero);steady(hero.querySelector('.hero-copy'),featured);const rows=el('div',{class:'rows'}),recent=continueItems(),picks=recommendations(),ai=state.profile?.enhanced_recs&&enhanced.mode==='ai';const shelves=uniqueShelves([{title:'Продовжити перегляд',items:recent,subtitle:'Ваш прогрес на всіх пристроях',progress:true},...holidayRow(),{title:state.user?'Для вас, '+state.profile?.name:'Популярне зараз',items:picks,subtitle:ai?'Покращена добірка з урахуванням вашого смаку':state.user?'На основі вашого смаку':'Час для хорошої історії'},...becauseRows(picks),...newRows(),{title:'Мій список',items:data('later').sort((a,b)=>b.updated_at-a.updated_at).map(r=>({...r.data,title:r.data.displayTitle||r.data.title}))}]);shelves.splice(2+holidayRow().length,0,...topTenRows());for(const r of shelves){const row=shelf(r.title,r.items,r.subtitle||'',r.progress,r.rank);if(row)rows.append(row);}
  // The viewer's own rows stay when the source is down; the catalogue under them retries by itself.
  if(state.catalogueError)rows.append(oops({error:state.catalogueFailure,retry:loadCatalogue,key:'home',size:'compact'}));
  // A shelf the viewer has scrolled along keeps its place through a repaint (a sync, a closed window).
@@ -876,6 +909,9 @@ async function init(){
  loadFlags().then(holidayDress).catch(()=>{});
  const identity=(async()=>{try{const me=await api('/api/me');state.clockOffset=me.server_time-Date.now();state.user=me.user;state.profiles=me.profiles;rememberIdentity(me);if(state.user){state.profile=state.profiles.find(p=>p.id===storage.getItem('kik-profile:'+state.user.id))||state.profiles[0];restore();}state.ready=true;return true;}catch(e){failure=e;return offlineIdentity(e);}})();
  identityReady=Promise.race([identity,new Promise(r=>setTimeout(r,1500))]);loadCatalogue();
+ // A phone's home-screen KIK: pull down to reload, and a new deploy is picked up when KIK comes back (refresh.js). A film
+ // being saved is not cut off by a reload of its own accord.
+ installRefresh({blocked:()=>downloads.items().some(x=>x.status==='active')});
  const known=await identity;
  // Offline with films on this device: they open at once; the rest of KIK waits for the internet.
  if(state.offline){await downloads.ready;if(!location.hash&&downloads.items().some(x=>x.status==='done'))state.tab='downloads';render();refreshAccount();management.load().catch(()=>{});return;}
