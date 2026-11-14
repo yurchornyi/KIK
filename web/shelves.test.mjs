@@ -9,14 +9,18 @@ const series=(id,name,original,date,extra={})=>({id,name,original_name:original,
 const NOW=Date.UTC(2026,10,14);
 function tmdb(lists){const asked=[];return {asked,fetcher:async url=>{asked.push(url);const path=new URL(url).pathname;const results=lists[path];return {ok:!!results,status:results?200:404,json:async()=>({results})};}};}
 
-test('the week\'s Top 10s are TMDB\'s trending films and trending series; cartoons and anime are this year\'s and last year\'s',()=>{
- assert.deepEqual(Object.keys(SHELVES).sort(),['anime','cartoons','films','series']);assert.equal(SHELVES.films.limit,10);assert.equal(SHELVES.series.limit,10);
+test('the week\'s Top 10s are TMDB\'s trending films and trending series; cartoons, anime and documentaries are this year\'s and last year\'s',()=>{
+ assert.deepEqual(Object.keys(SHELVES).sort(),['anime','cartoons','documentary','films','series']);assert.equal(SHELVES.films.limit,10);assert.equal(SHELVES.series.limit,10);
  assert.deepEqual(shelfQueries('films',NOW).map(([k,p])=>[k,p.split('?')[0]]),[['movie','/trending/movie/week']]);
  assert.deepEqual(shelfQueries('series',NOW).map(([k,p])=>[k,p.split('?')[0]]),[['tv','/trending/tv/week']]);
  const [m,t]=shelfQueries('cartoons',NOW).map(([,p])=>new URLSearchParams(p.split('?')[1]));
  assert.equal(m.get('with_genres'),'16');assert.equal(m.get('primary_release_date.gte'),'2025-01-01');assert.equal(m.get('primary_release_date.lte'),'2026-11-14');
  assert.equal(t.get('first_air_date.gte'),'2025-01-01');assert.equal(m.get('sort_by'),'popularity.desc');assert.equal(m.get('language'),'ru-RU');
  assert.ok(shelfQueries('anime',NOW).every(([,p])=>new URLSearchParams(p.split('?')[1]).get('with_original_language')==='ja'));
+ const [dm,dt]=shelfQueries('documentary',NOW).map(([k,p])=>[k,new URLSearchParams(p.split('?')[1])]);
+ assert.deepEqual([dm[0],dt[0]],['movie','tv'],'documentary films and documentary series');
+ assert.equal(dm[1].get('with_genres'),'99');assert.equal(dt[1].get('with_genres'),'99');assert.equal(dm[1].get('primary_release_date.gte'),'2025-01-01');
+ assert.equal(dt[1].get('without_genres'),'10764,10767,10763','reality, talk and news shows stay out');assert.equal(SHELVES.documentary.limit,15);
  assert.throws(()=>shelfQueries('popular',NOW),/Невідома полиця/);
 });
 test('candidates alternate a film and a series, keep both names, and know a cartoon from a series',()=>{

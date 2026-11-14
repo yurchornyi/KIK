@@ -931,13 +931,14 @@ function holidayDress(flags){const plan=holidayPlan(flags);if(!plan)return;
 const TOP_SHELVES=[['films','Топ-10 фільмів цього тижня'],['series','Топ-10 серіалів цього тижня']];
 /** «Нові фільми», «Нові серіали» (14.11, owner: the old «Фільми на вечір» and «Ще одна серія?» were the source's all-time
  *  popular lists, «Втеча з Шоушенка» and the like): the source's newest additions of this year and last only (newRelease,
- *  FreshPolicy on the TV), up to three pages until a row has 12. Then TMDB's «Мультфільми» and «Аніме», as on the TV. */
-const NEW_ROWS=[['new-films','films','Нові фільми'],['new-series','series','Нові серіали']],MORE_SHELVES=[['cartoons','Мультфільми'],['anime','Аніме']];
+ *  FreshPolicy on the TV), up to three pages until a row has 12. Then TMDB's «Документальне» (14.11, owner: «просто добав
+ *  розділ докумен»), «Мультфільми» and «Аніме», as on the TV. */
+const NEW_ROWS=[['new-films','films','Нові фільми'],['new-series','series','Нові серіали']],MORE_SHELVES=[['documentary','Документальне'],['cartoons','Мультфільми'],['anime','Аніме']];
 async function freshList(category){const out=[],seen=new Set();
  for(let page=1;page<=3&&out.length<12;page++){let r;try{r=await api('/api/catalogue?category='+category+'&filter=last&page='+page);}catch(e){if(page===1)throw e;break;}
   for(const i of r.items||[]){const k=keyOf(i.link);if(newRelease(i)&&!seen.has(k)){seen.add(k);out.push(i);}}if(!r.items?.length||r.hasMore===false)break;}
  return out;}
-/** These six rows come from KIK's service on their own (home-rows.js): kept in this browser and shown at once, a row on
+/** These seven rows come from KIK's service on their own (home-rows.js): kept in this browser and shown at once, a row on
  *  its way holds its place, a failed request is asked again. */
 let rowStore=null;
 function homeRows(){return rowStore||=createRowStore({storage,load:id=>{const fresh=NEW_ROWS.find(r=>r[0]===id);return fresh?freshList(fresh[1]):api('/api/shelf?id='+id).then(r=>r.items);},onChange:()=>{if(state.tab==='home')backgroundRender();}});}
