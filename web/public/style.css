@@ -541,3 +541,7 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 /* How much of a card is watched: a thin rounded bar inside the poster, clear of its rounded corners, as on the TV (14.11). */
 .poster-image .progress{left:10px;right:10px;bottom:10px;height:4px;border-radius:2px;overflow:hidden;background:#ffffff5c}.poster-image .progress i{border-radius:2px}
 .poster-image .continue-label{bottom:22px}
+/* «Детальніше» and «Прибрати з історії» share one line under the story (14.11, owner: two 44 px rows and a gap between them
+   left an empty band on a phone); the line goes when neither is shown. */
+.detail-links{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:2px 0 0}
+.detail-links>.text-button{margin:0;min-height:40px}.detail-links:not(:has(>:not([hidden]))){display:none}
