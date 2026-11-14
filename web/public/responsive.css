@@ -138,13 +138,23 @@ dialog p,.auth-kicker{overflow-wrap:anywhere}
 .sources-page a:not(.brand):not(.pill){text-decoration:underline;text-underline-offset:3px}
 @media(max-width:640px){
  dialog.detail-modal{padding:0}
- .detail-body{grid-template-columns:96px minmax(0,1fr);gap:16px 18px;padding:54px 18px 20px}
- .detail-modal h2.detail-title{font-size:24px;padding-right:0;margin-top:0}
- .detail-modal .detail-actions,.detail-studios,.detail-overview,.detail-more,.detail-info>.text-button:not(.detail-more){grid-column:1/-1}
+ /* Beside the poster, top to bottom: the title, the year line, the genres and the studio level with the poster's foot;
+    nothing above the poster but the window's edge (owner, 14.11: «щоб не було пустого місця і все нормально розставлено»).
+    The third row takes what the poster leaves over, so a short block does not open gaps between its lines. */
+ .detail-body{grid-template-columns:104px minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:8px 16px;padding:20px 18px 20px}
+ .detail-modal h2.detail-title{font-size:21px;line-height:1.2;letter-spacing:-.4px;padding-right:0;margin:0}
+ /* The close button sits in the window's corner: the title's first lines go round it. */
+ .detail-modal h2.detail-title::before{content:"";float:right;width:46px;height:40px}
+ .detail-modal .detail-actions,.detail-overview,.detail-more,.detail-info>.text-button:not(.detail-more){grid-column:1/-1}
  .detail-info{display:contents}
- .detail-info>h2,.detail-info>.detail-meta{grid-column:2}
- .detail-modal .detail-poster{grid-row:1/span 2}
- .detail-modal .detail-actions{margin:4px 0 0;flex-wrap:wrap;row-gap:14px}
+ .detail-info>h2{grid-column:2;grid-row:1}
+ .detail-info>.detail-meta{grid-column:2;grid-row:2;row-gap:8px}
+ .detail-genres{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
+ .detail-studios{grid-column:2;grid-row:3;align-self:end;margin:0;gap:8px 14px}
+ .detail-modal .detail-poster{grid-row:1/span 3;align-self:start}
+ .detail-modal .detail-overview{margin-top:8px}
+ .detail-modal .detail-links{margin-top:8px}
+ .detail-modal .detail-actions{margin:12px 0 0;flex-wrap:wrap;row-gap:14px}
  /* «Дивитися» takes the whole row, the round actions share the next one evenly: none is ever left alone on a line. */
  .detail-modal .detail-actions>.pill{flex:1 1 100%}
  .detail-modal .detail-round{flex:1 1 100%;justify-content:space-around}
