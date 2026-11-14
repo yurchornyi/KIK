@@ -4,7 +4,7 @@ import {STUDIOS,studioById,studioBadge,studioCategory,makes} from './studios.js'
 /** 14.11, owner: «Аніме забираєш, документалки віддаєш». An old link to «Аніме» opens «Фільми». */
 export const CATEGORIES=[['films','Фільми'],['series','Серіали'],['cartoons','Мультфільми'],['documentary','Документальні']];
 /** The first entry of the genre list: «Документальні» chooses between films and series instead of a genre. */
-export const allGenres=category=>category==='documentary'?'Фільми й серіали':'Усі жанри';
+export const allGenres=category=>category==='documentary'?'Усі':'Усі жанри';
 export const SORTS=[['popular','Популярні'],['last','Новинки'],['watching','Зараз дивляться']];
 /** «Новинки» show only titles of this year and last (a series by the year it began), in the order the source added them:
  *  its «last» list also holds old films it has just added (14.11, owner). The same rule as FreshPolicy on the TV. */
