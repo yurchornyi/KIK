@@ -21,13 +21,35 @@ final class Studios {
  static String name(String id){for(String[] s:ALL)if(s[0].equals(id))return s[1];return "";}
  static String id(JSONArray ids){if(ids!=null)for(int i=0;i<ids.length();i++)for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(ids.optString(i)))return s[0];return "";}
  private static final LinkedHashMap<String,String> cache=new LinkedHashMap<String,String>();
+ /** When each answer in {@link #cache} arrived, for {@link #save}. */
+ private static final HashMap<String,Long> found=new HashMap<String,Long>();
  private static final LinkedHashMap<String,JSONObject> waiting=new LinkedHashMap<String,JSONObject>();
  private static final WeakHashMap<FrameLayout,String> views=new WeakHashMap<FrameLayout,String>();
- private static boolean busy;private static long retryAt;
- private static final String TAG="kik-studio-badge";
+ /** The studio each frame's badge shows now ("" none): a repeated answer changes no view. */
+ private static final WeakHashMap<FrameLayout,String> shown=new WeakHashMap<FrameLayout,String>();
+ private static boolean busy,loaded;private static long retryAt;
+ private static final String TAG="kik-studio-badge",STORE="kik_studios";
+ private static final int LIMIT=800;private static final long KEEP_MS=14L*86_400_000L;
  static void paint(FrameLayout frame,String id){
+  String now=id==null?"":id;if(now.equals(shown.get(frame))&&(now.isEmpty()||frame.findViewWithTag(TAG)!=null))return;shown.put(frame,now);
   View old=frame.findViewWithTag(TAG);if(old!=null)frame.removeView(old);String[] studio=null;for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(id))studio=s;if(studio==null)return;
   Context c=frame.getContext();frame.addView(badge(c,studio),new FrameLayout.LayoutParams(-2,Ui.dp(c,22),Gravity.TOP|Gravity.START){{setMargins(Ui.dp(c,7),Ui.dp(c,7),0,0);}});
+ }
+ /** Answers are kept a fortnight on the TV, those without a studio too: a start used to ask the service again about every
+  *  card on Home, up to 25 batches of 12 behind the rows and posters (14.11, TCL), and each answer repainted every badge. */
+ private static void load(Context context){
+  if(loaded)return;loaded=true;
+  // Kept for this list of studios only: a version that knows more of them asks again about titles it had none for.
+  android.content.SharedPreferences prefs=context.getApplicationContext().getSharedPreferences(STORE,0);if(!known().equals(prefs.getString("studios","")))return;
+  try{JSONObject o=new JSONObject(prefs.getString("cards","{}"));long now=System.currentTimeMillis();
+   for(Iterator<String> it=o.keys();it.hasNext();){String key=it.next();JSONArray v=o.optJSONArray(key);long at=v==null?0:v.optLong(1);if(v!=null&&at<=now&&now-at<KEEP_MS){cache.put(key,v.optString(0));found.put(key,at);}}}
+  catch(Exception ignored){}
+ }
+ private static String known(){StringBuilder b=new StringBuilder();for(String[] x:ALL)b.append(x[0]).append(',');return b.toString();}
+ private static void save(Context context){
+  try{JSONObject o=new JSONObject();for(Map.Entry<String,String> e:cache.entrySet()){Long at=found.get(e.getKey());if(at!=null)o.put(e.getKey(),new JSONArray().put(e.getValue()).put(at.longValue()));}
+   context.getApplicationContext().getSharedPreferences(STORE,0).edit().putString("cards",o.toString()).putString("studios",known()).apply();}
+  catch(JSONException ignored){}
  }
  /** The emblem pill (14.11, owner's pick «А»): the studio's own mark in its colours (Netflix's red ribbon N, Prime's
   *  blue smile, Hulu green…) on a dark pill with a thin light edge, 22 dp tall everywhere; the same as the website's studios.js. */
@@ -38,13 +60,14 @@ final class Studios {
  }
  /** Called on the main thread. Weak view references and a bounded shared cache survive rebuilt rows safely. */
  static void watch(FrameLayout frame,String link,String title,String year,String known){
-  if(link==null||title==null||title.isEmpty())return;String key=Progress.norm(link);views.put(frame,key);
+  if(link==null||title==null||title.isEmpty())return;load(frame.getContext());String key=Progress.norm(link);views.put(frame,key);
   if(known!=null&&!known.isEmpty())remember(key,known);
   if(cache.containsKey(key)){paint(frame,cache.get(key));return;}if(System.currentTimeMillis()<retryAt)return;
   try{waiting.put(key,new JSONObject().put("link",link).put("title",title).put("year",year==null?"":year));}catch(JSONException ignored){}
-  Ui.MAIN.removeCallbacks(FLUSH);Ui.MAIN.postDelayed(FLUSH,120);
+  app=frame.getContext().getApplicationContext();Ui.MAIN.removeCallbacks(FLUSH);Ui.MAIN.postDelayed(FLUSH,120);
  }
- private static void remember(String key,String id){if(cache.size()>=400)cache.remove(cache.keySet().iterator().next());cache.put(key,id);}
+ private static Context app;
+ private static void remember(String key,String id){if(!cache.containsKey(key)&&cache.size()>=LIMIT){String eldest=cache.keySet().iterator().next();cache.remove(eldest);found.remove(eldest);}cache.put(key,id);found.put(key,System.currentTimeMillis());}
  private static final Runnable FLUSH=()->flush();
  private static void flush(){
   if(busy||waiting.isEmpty()||System.currentTimeMillis()<retryAt)return;busy=true;
@@ -53,8 +76,9 @@ final class Studios {
    final JSONObject got=response;Ui.MAIN.post(()->{busy=false;
     if(got==null||!got.optBoolean("configured")){retryAt=System.currentTimeMillis()+60000;waiting.clear();return;}
     JSONObject results=got.optJSONObject("results");for(String key:batch.keySet()){JSONObject art=results==null?null:results.optJSONObject(key);if(art!=null)remember(key,id(art.optJSONArray("studios")));}
-    for(Map.Entry<FrameLayout,String> entry:new ArrayList<Map.Entry<FrameLayout,String>>(views.entrySet())){FrameLayout frame=entry.getKey();if(frame!=null&&cache.containsKey(entry.getValue()))paint(frame,cache.get(entry.getValue()));}
-    if(!waiting.isEmpty())Ui.MAIN.post(FLUSH);
+    // Only the cards this answer is about: the others' badges are already right.
+    for(Map.Entry<FrameLayout,String> entry:new ArrayList<Map.Entry<FrameLayout,String>>(views.entrySet())){FrameLayout frame=entry.getKey();String key=entry.getValue();if(frame!=null&&batch.containsKey(key)&&cache.containsKey(key))paint(frame,cache.get(key));}
+    if(!waiting.isEmpty())Ui.MAIN.post(FLUSH);else if(app!=null)save(app);
    });
   });
  }

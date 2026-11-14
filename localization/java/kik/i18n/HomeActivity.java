@@ -45,7 +45,11 @@ public final class HomeActivity extends Activity {
  private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
 
  @Override public void onCreate(Bundle state){
-  super.onCreate(state);if(Account.gate(this))return;TvChannels.start(this);holidayId=AppFlags.today(this);
+  super.onCreate(state);if(Account.gate(this))return;
+  // Android reads a preferences file from disk on its own thread from the first ask: Home's saved rows start now, while the
+  // screen is built, instead of when load() needs them.
+  getSharedPreferences("kik_home",0);getSharedPreferences("kik_home_personal",0);
+  TvChannels.start(this);holidayId=AppFlags.today(this);
   getWindow().setFlags(1024,1024);getWindow().getDecorView().setSystemUiVisibility(5894);
   getWindow().setBackgroundDrawable(null);
   root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
@@ -257,11 +261,14 @@ public final class HomeActivity extends Activity {
  private void load(){
   final long started=SystemClock.elapsedRealtime();final int gen=++loadGeneration;final String profile=ProfileStore.current(this);
   new Thread(()->{
-   final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);
    final String shelf=AppFlags.shelf(this);
-   final List<Row> local=localRows(profile);List<Row> cached=fromCache(shelf);
+   // Last time's rows are read beside the taste and the history: the saved page is the largest file Home reads, and on the
+   // TCL it took ~0.3 s of the 0.4 s before anything could be shown (14.11).
+   final FutureTask<List<Row>> saved_rows=new FutureTask<List<Row>>(()->fromCache(shelf));new Thread(saved_rows,"kik-home-cache").start();
+   final Recommendations.Snapshot preferences=Recommendations.snapshot(this,profile);final long taste=SystemClock.elapsedRealtime()-started;
+   final List<Row> local=localRows(profile);final long history=SystemClock.elapsedRealtime()-started;final List<Row> cached=rowsOf(saved_rows);
    final Set<String> links=new HashSet<String>();JSONArray la=Progress.later(this,profile);for(int k=0;k<la.length();k++){JSONObject o=la.optJSONObject(k);if(o!=null)links.add(norm(o.optString("link")));}
-   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms");
+   Log.d("KIK.Load","Home data "+(SystemClock.elapsedRealtime()-started)+"ms (taste "+taste+"ms, history "+history+"ms)");
    // Personal rows take over a second to rank on the projector: show last time's rows at once and re-rank behind the screen.
    final List<Row> saved=savedRecommendations(profile);List<Row> all=new ArrayList<Row>(local);
    if(saved!=null){all.addAll(saved);all.addAll(Recommendations.withoutDisliked(preferences,cached));}else all=homeRows(profile,local,cached,preferences);
@@ -295,6 +302,7 @@ public final class HomeActivity extends Activity {
   },"kik-home").start();
  }
  /** {@code profile} is the one these rows were built for: the viewer may have switched while the catalogue loaded. */
+ private static List<Row> rowsOf(FutureTask<List<Row>> task){try{return task.get();}catch(Exception e){Log.w("KIK","Home cache: "+e);return new ArrayList<Row>();}}
  private List<Row> homeRows(String profile,List<Row> local,List<Row> catalogue,Recommendations.Snapshot preferences){
   List<Row> out=new ArrayList<Row>(local);List<Row> personal=Recommendations.rows(this,preferences,catalogue);if(!catalogue.isEmpty())saveRecommendations(profile,personal);out.addAll(personal);out.addAll(Recommendations.withoutDisliked(preferences,catalogue));return out;
  }
@@ -359,11 +367,18 @@ public final class HomeActivity extends Activity {
   return saved;
  }
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste,final String shelf){
-  final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
+  final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1],ua=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
+  final long started=SystemClock.elapsedRealtime();
+  // Every row, the shelves and «Українською» come from KIK's service at once: it has no bot check a first request must pass
+  // (HDRezka's had, so row 1 used to finish all its pages before the others started), and the wait is the slowest row, not the sum.
+  {Thread t=new Thread(()->{
+   try{Row r=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";r.items.add(i);if(r.items.size()>=15)break;}ua[0]=r;}
+   catch(Exception ignored){}},"kik-home-ua");threads.add(t);t.start();}
   // The holiday's film shelf comes from KIK's service alongside the rows; HDRezka is never asked for it.
   if(shelf!=null){Thread t=new Thread(()->{
    try{Row r=new Row(Holidays.shelfTitle(shelf));for(Site.Card c:Site.holidayFilms(shelf)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=20)break;}festive[0]=r;}
    catch(Exception e){Log.w("KIK","Home holiday shelf "+shelf+": "+e);}},"kik-home-shelf");threads.add(t);t.start();}
+  Thread lead=null;
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
    try{Row r=new Row(ROWS[idx][0]);final boolean onlyNew=newRow(ROWS[idx][0]);final int thisYear=Calendar.getInstance().get(Calendar.YEAR);Set<String> seen=new HashSet<String>();
     // A TMDB shelf comes whole from KIK's service. «Нове» rows: the site's «last» list also holds old films it has just
@@ -376,12 +391,15 @@ public final class HomeActivity extends Activity {
     }
     out[idx]=r;}
    catch(Exception e){Log.w("KIK","Home row "+ROWS[idx][0]+": "+e);if(rowError==null)rowError=e;}});
-   threads.add(t);t.start();
-   if(k==0)try{t.join();}catch(InterruptedException ignored){} // the first request passes the bot check for the rest
+   threads.add(t);t.start();if(k==0)lead=t;
   }
-  if(first!=null&&out[0]!=null&&!out[0].items.isEmpty())first.accept(out[0]);
-  for(Thread t:threads)try{t.join(25000);}catch(InterruptedException ignored){}
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));try{Row ua=new Row("Українською");for(Site.Card c:FreeSources.cards(null)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.genre="Українською";i.sub="Українська озвучка";ua.items.add(i);if(ua.items.size()>=15)break;}if(!ua.items.isEmpty())rows.add(ua);}catch(Exception ignored){}if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
+  // One deadline for all of them: a row that hangs no longer adds its own 25 s after another's.
+  final long deadline=started+25000;
+  try{lead.join(Math.max(1,deadline-SystemClock.elapsedRealtime()));}catch(InterruptedException ignored){}
+  if(first!=null&&out[0]!=null&&!out[0].items.isEmpty()){Log.d("KIK.Load","Home first row "+(SystemClock.elapsedRealtime()-started)+"ms");first.accept(out[0]);}
+  for(Thread t:threads)try{t.join(Math.max(1,deadline-SystemClock.elapsedRealtime()));}catch(InterruptedException ignored){}
+  Log.d("KIK.Load","Home rows from the service "+(SystemClock.elapsedRealtime()-started)+"ms");
+  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));if(ua[0]!=null&&!ua[0].items.isEmpty())rows.add(ua[0]);if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
   // Second in the list, after the row already on screen; placeShelf puts it in its place on the page. Never alone: without
   // the catalogue the page fails as before instead of caching a shelf for six hours.
   if(!rows.isEmpty()&&festive[0]!=null&&!festive[0].items.isEmpty())rows.add(1,festive[0]);
@@ -447,6 +465,7 @@ public final class HomeActivity extends Activity {
   recommendedLine=null;recommendedHeading=null;recommendationKeys="";
   recommendationLines.clear();recommendationSignatures.clear();rowViews.clear();shownRows=new ArrayList<Row>(rows);tasteChoices=new ArrayList<Item>();Set<String> choices=new HashSet<String>();for(int pos=0;pos<15&&tasteChoices.size()<40;pos++)for(Row r:rows)if(pos<r.items.size()){Item i=r.items.get(pos);if(choices.add(norm(i.link)))tasteChoices.add(i);if(tasteChoices.size()>=40)break;}
   while(content.getChildCount()>2)content.removeViewAt(2);
+  rowsGeneration++;eagerRows=EAGER_ROWS;
   View first=null;
   View again=null;
   View[] focus=appendRowViews(rows);first=focus[0];again=focus[1];
@@ -459,24 +478,49 @@ public final class HomeActivity extends Activity {
   if(initial){watch.requestFocus();scroll.scrollTo(0,0);}else if(actionFocused)watch.requestFocus();
  }
 
- private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];
+ /** Rows whose cards are built before the first frame: they fill the screen under the hero. The others get theirs right after,
+  *  a row per message between frames and key presses. All of Home's ~300 cards at once held the main thread for 1.2 s on the
+  *  TCL (14.11, 1.39: «Skipped 71 frames», rows 1.9 s after start). */
+ private static final int EAGER_ROWS=3;
+ private int rowsGeneration,eagerRows=EAGER_ROWS;
+ private View[] appendRowViews(List<Row> rows){View[] focus=new View[2];final List<Object[]> later=new ArrayList<Object[]>();
   for(Row r:rows){
    TextView h=rowHeading(r.title);View head=h;
    if(r.personalized){LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setClipChildren(false);header.setClipToPadding(false);header.setPadding(0,dp(4),dp(40),dp(4));header.addView(h,new LinearLayout.LayoutParams(0,-2,1));head=header;}
-   content.addView(head);HorizontalScrollView hs=rowLine(r);LinearLayout line=(LinearLayout)hs.getChildAt(0);content.addView(hs);rowViews.put(r.title,new View[]{head,hs});
+   // The card the viewer was on comes back at once, wherever its row is.
+   boolean now=eagerRows>0;if(!now&&focusedLink!=null)for(Item i:r.items)if(focusedLink.equals(i.link)){now=true;break;}
+   if(now&&eagerRows>0)eagerRows--;
+   content.addView(head);HorizontalScrollView hs=rowLine(r,now);LinearLayout line=(LinearLayout)hs.getChildAt(0);content.addView(hs);rowViews.put(r.title,new View[]{head,hs});
+   if(!now){line.setTag(r);later.add(new Object[]{r,line});}
    if(r.personalized){recommendedLine=line;recommendedHeading=h;recommendationKeys=recommendationKeys(r);}
    if(r.recommendationId!=null){recommendationLines.put(r.recommendationId,line);recommendationSignatures.put(r.recommendationId,recommendationKeys(r));}
    for(int n=0;n<line.getChildCount();n++){View c=line.getChildAt(n);Item i=r.items.get(n);if(focus[0]==null)focus[0]=c;if(focus[1]==null&&focusedLink!=null&&focusedLink.equals(i.link))focus[1]=c;}
   }
+  fillLater(later);
   return focus;
  }
+ /** The deferred rows' cards, a row per message. A row already filled meanwhile (its recommendations arrived) or a page
+  *  rebuilt since is left alone. */
+ private void fillLater(final List<Object[]> later){
+  if(later.isEmpty())return;final int gen=rowsGeneration;final long started=SystemClock.elapsedRealtime();
+  main.post(new Runnable(){public void run(){
+   if(destroyed||gen!=rowsGeneration)return;
+   while(!later.isEmpty()){Object[] p=later.remove(0);Row r=(Row)p[0];LinearLayout line=(LinearLayout)p[1];if(line.getTag()!=r||line.getChildCount()>0)continue;line.setTag(null);fillLine(line,r);break;}
+   if(!later.isEmpty())main.post(this);else Log.d("KIK.Load","Home rows filled in "+(SystemClock.elapsedRealtime()-started)+"ms");
+  }});
+ }
  private TextView rowHeading(String title){TextView h=text(title,18,Color.WHITE);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(dp(40),dp(8),0,dp(2));h.setSingleLine(true);h.setEllipsize(TextUtils.TruncateAt.END);return h;}
- private HorizontalScrollView rowLine(Row r){
+ private HorizontalScrollView rowLine(Row r){return rowLine(r,true);}
+ private HorizontalScrollView rowLine(Row r,boolean cards){
   // The focused card stands where the first one does, its poster under the heading's first letter, and the row glides under it.
   HorizontalScrollView hs=new Glide.Row(this).shelf(dp(32));hs.setClipToPadding(false);hs.setPadding(dp(32),dp(6),dp(32),dp(6));
   LinearLayout line=new LinearLayout(this);line.setOrientation(0);line.setClipChildren(false);line.setClipToPadding(false);hs.addView(line);
-  final boolean top=topRow(r.title);int n=0;for(Item i:r.items){View c=card(i);if(top&&n<10)c=ranked(c,n+1);line.addView(c);n++;}return hs;
+  // A row still waiting for its cards (fillLater) is as tall as a filled one, so nothing below it moves when they come.
+  if(cards)fillLine(line,r);else line.setMinimumHeight(cardHeight());return hs;
  }
+ private void fillLine(LinearLayout line,Row r){final boolean top=topRow(r.title);int n=0;for(Item i:r.items){View c=card(i);if(top&&n<10)c=ranked(c,n+1);line.addView(c);n++;}}
+ private int cardHeight=0;
+ private int cardHeight(){if(cardHeight==0){Item sample=new Item();sample.title="Ж";sample.year="2026";sample.genre="Драма";View c=card(sample);c.measure(View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));cardHeight=c.getMeasuredHeight();}return cardHeight;}
  /** «Мій список» on the hero changes one row: it is redrawn in place (added after «Продовжити перегляд» or taken away), so the
   *  other rows keep their scroll, the hero and its focus stay, and the next load sees nothing to rebuild. */
  private void refreshLaterRow(){
@@ -679,11 +723,17 @@ public final class HomeActivity extends Activity {
   showSlide(0);
  }
  /** Small pills under the buttons. The slide on screen is a wider track that fills up in white over the 9 s it stays,
- *  like Netflix; the fill only scales (a render property), so the weak GPU never redraws the hero for it. */
- private void paintDots(){dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
+ *  like Netflix. The fill moves in steps of half a second: animated every frame, it had the TV draw the whole screen
+ *  ~50 times a second, 32 ms a frame on the TCL, for as long as Home was open (14.11: 509 frames in 10 s of idle Home,
+ *  every one late), and a press of the remote waited behind those frames. */
+ private void paintDots(){main.removeCallbacks(dotStep);dotFill=null;dots.removeAllViews();if(slides.size()<2)return;for(int k=0;k<slides.size();k++){boolean on=k==slide;LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(on?28:8),dp(6));lp.setMargins(0,0,dp(6),0);
   if(!on){View d=new View(this);d.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));dots.addView(d,lp);continue;}
-  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));long spent=slideAt==0?0:Math.min(SLIDE_MS,android.os.SystemClock.uptimeMillis()-slideAt);fill.setPivotX(0);fill.setScaleX(spent/(float)SLIDE_MS);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
-  fill.animate().scaleX(1f).setDuration(SLIDE_MS-spent).setInterpolator(new android.view.animation.LinearInterpolator()).start();}}
+  FrameLayout track=new FrameLayout(this);track.setBackground(Ui.shape(0x55ffffff,dp(3),0,0));View fill=new View(this);fill.setBackground(Ui.shape(Color.WHITE,dp(3),0,0));fill.setPivotX(0);track.addView(fill,new FrameLayout.LayoutParams(-1,-1));dots.addView(track,lp);
+  dotFill=fill;dotStep.run();}}
+ private static final long DOT_STEP_MS=500;private View dotFill;
+ private final Runnable dotStep=new Runnable(){public void run(){
+  View fill=dotFill;if(destroyed||fill==null)return;long spent=slideAt==0?0:Math.min(SLIDE_MS,android.os.SystemClock.uptimeMillis()-slideAt);
+  fill.setScaleX(spent/(float)SLIDE_MS);if(spent<SLIDE_MS)main.postDelayed(this,DOT_STEP_MS);}};
 
  private void setHero(Item i){
   // setLines, not setMaxLines: the description kept its four-line height under the resume line, so the buttons dropped a
