@@ -17,6 +17,7 @@ final class Studios {
   *  and Discovery series and films; null = every one. A studio picked in a section it never makes opens its own. */
  static String[] sections(String id){switch(id){case "pixar":return new String[]{"cartoons"};case "hulu":return new String[]{"series","cartoons"};case "natgeo":case "discovery":return new String[]{"series","films"};default:return null;}}
  static boolean makes(String id,String section){String[] own=sections(id);if(own==null)return true;for(String x:own)if(x.equals(section))return true;return false;}
+ static String[] of(String id){if(id!=null&&!id.isEmpty())for(String[] s:ALL)if(s[0].equals(id))return s;return null;}
  static String name(String id){for(String[] s:ALL)if(s[0].equals(id))return s[1];return "";}
  static String id(JSONArray ids){if(ids!=null)for(int i=0;i<ids.length();i++)for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(ids.optString(i)))return s[0];return "";}
  private static final LinkedHashMap<String,String> cache=new LinkedHashMap<String,String>();
