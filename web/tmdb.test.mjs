@@ -97,3 +97,12 @@ test('an anime series filed under /animation/ is found as a series when the film
  const r=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/animation/adventures/71000-sousou-no-frieren-2023.html',title:'Провожающая в последний путь Фрирен',year:'2023'},{token:'test-only'});
  assert.equal(r.artwork?.id,209867);assert.ok(calls.some(u=>u.includes('/search/movie')));assert.ok(calls.some(u=>u.includes('/tv/209867')));
 });
+
+test('season marks are not part of a name, and a later season is not held to its own year',()=>{
+ const later=artworkIdentity({link:'https://hdrezka.sh/animation/adventures/24315-ataka-titanov-tv-2-2017.html',title:'Атака титанов [ТВ-2] / Вторжение гигантов [ТВ-2]',year:'2017'});
+ assert.equal(later.title,'Атака титанов / Вторжение гигантов');assert.deepEqual(later.aliases,['Атака титанов','Вторжение гигантов']);assert.equal(later.year,null);
+ const first=artworkIdentity({link:'https://hdrezka.sh/animation/adventures/1973-ataka-titanov-tv-1-2013.html',title:'Атака титанов [ТВ-1]',year:'2013'});
+ assert.deepEqual(first.aliases,['Атака титанов']);assert.equal(first.year,2013);
+ assert.deepEqual(artworkIdentity({link:'https://hdrezka.sh/cartoons/adventures/69136-zabytoe-chudo-2023-2023.html',title:'Забытое чудо (2023)',year:'2023'}).aliases,['Забытое чудо']);
+ assert.deepEqual(artworkIdentity({link:'https://hdrezka.sh/animation/fiction/28578-legenda-ova-1-1988.html',title:'Легенда о героях Галактики [OVA-1]',year:'1988'}).aliases,['Легенда о героях Галактики']);
+});

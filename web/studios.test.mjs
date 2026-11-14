@@ -22,6 +22,9 @@ test('studio marks use original networks and exact production companies, never w
  assert.deepEqual(studiosFor({networks:[{id:43}]}),['natgeo']);assert.deepEqual(studiosFor({networks:[{id:1043}]}),['natgeo']);
  assert.deepEqual(studiosFor({networks:[{id:64}]}),['discovery']);assert.deepEqual(studiosFor({networks:[{id:4353}]}),['discovery']);
  assert.deepEqual(studiosFor({production_companies:[{name:'National Geographic Documentary Films'}]}),['natgeo']);
+ assert.deepEqual(studiosFor({networks:[{id:3353}]}),['peacock']);
+ // Marvel and Star Wars films are Disney's.
+ assert.deepEqual(studiosFor({production_companies:[{name:'Marvel Studios'}]}),['disney']);assert.deepEqual(studiosFor({production_companies:[{name:'Lucasfilm Ltd.'}]}),['disney']);
  // Some other company called just «Discovery» is not Discovery's.
  assert.deepEqual(studiosFor({production_companies:[{name:'Discovery'}]}),[]);
 });

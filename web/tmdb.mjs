@@ -6,15 +6,22 @@ const DAY=86400000,MAX_ENTRIES=400;
 const normalize=value=>String(value||'').normalize('NFKD').toLowerCase().replace(/\p{M}/gu,'').replace(/[^\p{L}\p{N}]/gu,'');
 const imagePath=value=>typeof value==='string'&&/^\/[a-zA-Z0-9_-]+\.(jpg|png|webp)$/.test(value);
 
+/** A season's or an edition's mark the source adds to a name and TMDB never has: «Атака титанов [ТВ-2]», «[OVA-1]», «(2023)». */
+const SEASON_MARK=/\s*\[(?:ТВ|TV|OVA|ONA|ТВ-спешл|ТВ-спэшл|спешл|спэшл|фильм)[^\]]*\]/gi,EDITION_YEAR=/\s*\((?:18|19|20)\d{2}\)\s*$/;
+const bare=name=>name.replace(SEASON_MARK,' ').replace(EDITION_YEAR,'').replace(/\s+/g,' ').trim();
 export function artworkIdentity(input){
  const path=titleKey(input.link);
- const title=typeof input.title==='string'?input.title.trim():'';
- if(!title||title.length>200)throw Error('Некоректна назва для обкладинки');
- const original=typeof input.original==='string'?input.original.trim().slice(0,200):'';
- const year=Number(String(input.year||'').match(/(?:18|19|20)\d{2}/)?.[0]||path.match(/-((?:18|19|20)\d{2})\.html$/)?.[1])||null;
+ const raw=typeof input.title==='string'?input.title.trim():'';
+ if(!raw||raw.length>200)throw Error('Некоректна назва для обкладинки');
+ const original=typeof input.original==='string'?bare(input.original.trim().slice(0,200)):'';
+ // A second or later season starts years after the show did, and TMDB knows a show by the year it began: its own year
+ // proves nothing (14.11: «Атака титанов [ТВ-2]» 2017 is TMDB's 2013 show).
+ const later=[...raw.matchAll(/\[(?:ТВ|TV)-(\d+)\]/gi)].some(m=>Number(m[1])>1);
+ const year=later?null:Number(String(input.year||'').match(/(?:18|19|20)\d{2}/)?.[0]||path.match(/-((?:18|19|20)\d{2})\.html$/)?.[1])||null;
  const kind=input.kind==='tv'||path.startsWith('series/')?'tv':'movie';
- // The source joins alternative names with " / " ("Клан Сопрано / Сопрано"); each one is a separate candidate.
- const aliases=[...new Set(title.split(/\s+\/\s+/).map(x=>x.trim()).filter(Boolean))].slice(0,3);
+ // The source joins alternative names with " / " ("Клан Сопрано / Сопрано"); each one is a separate candidate, without
+ // the season marks.
+ const title=bare(raw)||raw,aliases=[...new Set(raw.split(/\s+\/\s+/).map(x=>bare(x)).filter(Boolean))].slice(0,3);
  return {title,original,year,kind,aliases};
 }
 
