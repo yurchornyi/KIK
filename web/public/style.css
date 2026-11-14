@@ -545,3 +545,6 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
    left an empty band on a phone); the line goes when neither is shown. */
 .detail-links{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:2px 0 0}
 .detail-links>.text-button{margin:0;min-height:40px}.detail-links:not(:has(>:not([hidden]))){display:none}
+/* #main takes the focus for the skip link and after a page change (tabindex=-1). A tap on an empty spot gave it the
+   phone's blue focus ring, seen as a blue line across the bottom of Home (14.11, owner): the page itself shows no ring. */
+#main:focus,#main:focus-visible{outline:none}
