@@ -1,5 +1,5 @@
 import {titleKey} from './sync.mjs';
-import {studiosFor} from './public/studios.js';
+import {studiosFor,STUDIO_RULES} from './public/studios.js';
 
 const API='https://api.themoviedb.org/3',CDN='https://image.tmdb.org/t/p';
 const DAY=86400000,MAX_ENTRIES=400;
@@ -118,7 +118,7 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
   const identity=artworkIdentity(input);
   if(typeof token!=='string'||!token.trim())return {configured:false,artwork:null,retryAfter:30};
   token=token.trim();
-  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity)+'\n'+token));
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(identity)+'\n'+token+'\n'+STUDIO_RULES));
   const digest=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
   const key=new Request(new URL('/__artwork-cache/v5/'+digest,origin));
   const hit=memory.get(digest);if(hit&&hit.until>now())return hit.value;
