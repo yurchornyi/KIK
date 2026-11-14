@@ -18,7 +18,8 @@ import {createArtworkService} from "./tmdb.mjs";
 import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {synopsis,synopsisNight} from "./synopsis.mjs";
 import {adBreaks,adScanner} from "./ad-breaks.mjs";import {episodeMarks,marksScanner} from "./episode-marks.mjs";
-const artworkService=createArtworkService();
+// A title TMDB does not know by its card's name is searched again by the original name on its page (tmdb.mjs).
+const artworkService=createArtworkService({originalOf:async link=>{try{return new URL(link).hostname==='uaserials.com'?null:(await film(link,{bounded:true}))?.original||null;}catch{return null;}}});
 const studioCatalogue=createStudioCatalogue({search:params=>catalogue(params,{bounded:true}),genres:category=>catalogueGenres(category,{bounded:true}),film:link=>film(link,{bounded:true})});
 const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};

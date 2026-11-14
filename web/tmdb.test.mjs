@@ -77,3 +77,23 @@ test('an English international title requests English translations even when the
  const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('append_to_response=images'))return Response.json({backdrops:[backdrop],posters:[poster]});const lang=new URL(url).searchParams.get('language');return Response.json({results:lang==='en-US'?[{id:81,title:'International Title',original_title:'한국 영화',release_date:'2026-01-01'}]:[]});};
  const result=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/films/concert/81-test-2026.html',title:'Название фильма',original:'International Title'},{token:'secret'});assert.equal(result.artwork.id,81);assert.equal(new URL(calls[0]).searchParams.get('language'),'en-US');assert.ok(result.artwork.backdrop);
 });
+
+test('a title TMDB does not know by its card name is found by the original name from its page, once',async()=>{
+ const show={id:338684,name:'Taken: Natalee Holloway',original_name:'Taken: Natalee Holloway',first_air_date:'2026-02-11'};
+ const calls=[];let asked=0;
+ const fetcher=async url=>{calls.push(url);if(url.includes('/search/tv'))return Response.json({results:url.includes('Taken')?[show]:[]});if(url.includes('/tv/338684'))return Response.json({networks:[{id:213}],images:{posters:[],backdrops:[]}});return Response.json({results:[]});};
+ const service=createArtworkService({fetcher,originalOf:async l=>{asked++;assert.match(l,/93635/);return 'Taken: Natalee Holloway';}});
+ const result=await service.lookup({link:'https://hdrezka.sh/series/documentary/93635-propavshaya-bez-vesti-natali-hollouey-2026.html',title:'Пропавшая без вести: Натали Холлоуэй',year:'2026'},{token:'test-only'});
+ assert.deepEqual(result.artwork.studios,['netflix']);assert.equal(asked,1);
+ // A card that already carries its original name, or a title found by its card name, never asks for the page.
+ const known=createArtworkService({fetcher,originalOf:async()=>{asked++;return null;}});
+ await known.lookup({link:'https://hdrezka.sh/series/documentary/93636-taken-2026.html',title:'Пропавшая',original:'Taken: Natalee Holloway',year:'2026'},{token:'test-only'});
+ assert.equal(asked,1);
+});
+
+test('an anime series filed under /animation/ is found as a series when the film search finds nothing',async()=>{
+ const show={id:209867,name:'Провожающая в последний путь Фрирен',original_name:'葬送のフリーレン',first_air_date:'2023-09-29'};
+ const calls=[];const fetcher=async url=>{calls.push(url);if(url.includes('/search/tv'))return Response.json({results:[show]});if(url.includes('/tv/209867'))return Response.json({networks:[],images:{posters:[poster],backdrops:[backdrop]}});return Response.json({results:[]});};
+ const r=await createArtworkService({fetcher}).lookup({link:'https://hdrezka.sh/animation/adventures/71000-sousou-no-frieren-2023.html',title:'Провожающая в последний путь Фрирен',year:'2023'},{token:'test-only'});
+ assert.equal(r.artwork?.id,209867);assert.ok(calls.some(u=>u.includes('/search/movie')));assert.ok(calls.some(u=>u.includes('/tv/209867')));
+});
