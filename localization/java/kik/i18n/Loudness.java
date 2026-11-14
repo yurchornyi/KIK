@@ -12,7 +12,6 @@ import java.nio.ByteBuffer;
  */
 public final class Loudness extends BaseAudioProcessor {
  /** The former per-TV settings switch. The owner's admin panel decides for everyone now (AppFlags.loudness); the device audit still sets this one. */
- public static final String PREF="kik_even_loudness";
  /** Where every film ends up: −20 dBFS of filtered RMS, about the level of a well-mixed streaming film. */
  static final double TARGET_DB=-20,MIN_GAIN_DB=-9,MAX_GAIN_DB=12,GATE_DB=-50,CEILING=0.89;
  /** Seconds for the measured level to follow a louder or a quieter passage; the first audible seconds follow faster. */

@@ -850,7 +850,6 @@ public final class HomeActivity extends Activity {
  private void space(LinearLayout l,int h){l.addView(new View(this),new LinearLayout.LayoutParams(1,dp(h)));}
  private static StateListDrawable states(Drawable normal,Drawable focused){StateListDrawable s=new StateListDrawable();s.addState(new int[]{android.R.attr.state_focused},focused);s.addState(new int[]{},normal);return s;}
  private static GradientDrawable shape(int fill,int radius,int stroke,int strokeColor){GradientDrawable d=new GradientDrawable();d.setColor(fill);d.setCornerRadius(radius);if(stroke>0)d.setStroke(stroke,strokeColor);return d;}
- static int avatarColor(String name){int[] c={0xffe50914,0xff2b7de9,0xff1fa45b,0xfff5a623,0xff8e44ad,0xff16a2b8};return c[Math.abs((name==null?0:name.hashCode())%c.length)];}
 
  /** Poster with rounded corners drawn through a BitmapShader (centre-cropped), with a placeholder while loading. */
  static final class PosterView extends ImageView{

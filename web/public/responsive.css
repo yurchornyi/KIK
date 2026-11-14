@@ -12,8 +12,6 @@ main{min-width:0}
 .icon,.close{min-width:44px}
 .avatar{flex-shrink:0}
 .avatar img{display:block}
-.profile-option{min-width:0}
-.profile-option>span:not(.avatar){min-width:0;overflow-wrap:anywhere;text-align:left}
 .hero{height:auto;min-height:clamp(480px,72svh,760px);max-height:none}
 .hero-copy{width:62%;max-width:740px;padding:132px 0 64px var(--page-gutter);margin-left:max(0px,calc((100vw - 1920px)/2))}
 .hero h1{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;font-size:clamp(32px,4.3vw,66px)}
@@ -212,7 +210,6 @@ dialog.player-modal[open]{display:flex;flex-direction:column}
    start below it instead of sitting blurred under the status bar. env() is 0 in a normal browser tab. */
 .header{top:env(safe-area-inset-top)}
 #main{padding-top:env(safe-area-inset-top)}
-
 /* «Докладніше» is an icon only, as on the TV: a round button beside the two text pills. */
 .hero .actions .hero-details{width:46px;height:46px;padding:0;border-radius:50%;flex:0 0 46px}
 @media (max-width:650px){.hero .actions .hero-details{width:43px;height:43px;flex-basis:43px}}

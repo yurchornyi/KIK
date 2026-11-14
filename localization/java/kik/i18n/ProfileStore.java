@@ -11,7 +11,6 @@ import org.json.*;
 public final class ProfileStore {
  public static final String FIRST="default";
  private static String loaded;
- private static boolean launchChecked;
  public static final class Profile{public String id,name,salt,hash,avatar;public boolean tasteSetup=true;}
 
  private static SharedPreferences prefs(Context c){return c.getApplicationContext().getSharedPreferences("kik_profiles",0);}
