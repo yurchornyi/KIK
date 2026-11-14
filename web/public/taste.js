@@ -43,6 +43,10 @@ export const genreName=slug=>LABEL.get(slug)||'';
  *  «Полнометражные». They are not genres (14.11, owner: «Зарубіжне кіно — такої категорії в нас нема»), so a title shows
  *  only its real ones, each once; with none left, the genre in its address (`/series/documentary/…` → «Документальні»). */
 const ORIGIN=new Set(['foreign','russian','ukrainian','full-length']);
+/** The catalogue's genres: the same few in every section and in this order, as the big services keep them (14.11, owner:
+ *  «Залиши основні жанри… всюди уніфікуй ті жанри»). The source's sections, origins and niche ones (Арт-хаус, Еротика,
+ *  Концерт, Стендап…) are not offered; documentaries are a section of their own. 17 + «Усі жанри» fill 3 or 2 columns. */
+export const MAIN_GENRES=['action','adventures','comedy','drama','melodrama','thriller','horror','detective','crime','fiction','fantasy','family','historical','military','biographical','musical','sport'];
 export function shownGenres(genres=[],link=''){
  const out=[],seen=new Set();
  for(const g of genres||[]){const slug=NAMES.get(fold(g)),key=slug||fold(g);if(!key||ORIGIN.has(slug)||seen.has(key))continue;seen.add(key);out.push(g);}

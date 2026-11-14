@@ -20,7 +20,10 @@ export async function translatePublic(db,values,{fetcher=fetch}={}){const texts=
 const knownWords=new Set(Object.values(WORDS));
 const infoParts=s=>String(s||'').split(',').map(p=>p.trim());
 const unknownInfo=s=>infoParts(s).filter(p=>p&&!WORDS[p]&&!knownWords.has(p)&&!/^\d/.test(p));
-const localizedInfo=(s,tr)=>infoParts(s).map(p=>WORDS[p]||tr.get(p)||p).join(', ');
+// A card's line («2021, США, Зарубежные») never shows where the source files a title instead of its genre (14.11, owner:
+// «їх всюда немає бути»). Country filters read the untouched `sourceInfo`.
+const NOT_GENRES=new Set(['Русские','Украинские','Зарубежные','Полнометражные','Російське кіно','Українське кіно','Зарубіжне кіно','Повнометражні']);
+const localizedInfo=(s,tr)=>infoParts(s).filter(p=>!NOT_GENRES.has(p)).map(p=>WORDS[p]||tr.get(p)||p).join(', ');
 // The chunks are translated at once, not one after another: a cold page waits for one translation round, not three.
 export async function localizedCards(db,items){const parts=[];for(let at=0;at<items.length;at+=16)parts.push(items.slice(at,at+16));const out=[];
  for(const [part,tr] of await Promise.all(parts.map(async part=>[part,await translatePublic(db,part.flatMap(i=>[i.title,...unknownInfo(i.info)]))])))for(const i of part)out.push({...i,sourceTitle:i.sourceTitle||i.title,sourceInfo:i.sourceInfo||i.info,title:tr.get(i.title)||i.title,info:localizedInfo(i.info,tr)});return out;}

@@ -25,7 +25,10 @@ public final class BrowseActivity extends Activity {
  private TextView heading,categoryButton,genreButton,orderButton,summary,studioButton,studioChip;private Button loadMore;
  /** Genre list being fetched for this category, and a counter that makes a late list for another category inert. */
  private int genreGeneration;
- static final String[][] SECTIONS={{"films","Фільми"},{"series","Серіали"},{"cartoons","Мультфільми"},{"animation","Аніме"}};
+ /** 14.11, owner: «Аніме забираєш, документалки віддаєш»: the same four sections as the website. */
+ static final String[][] SECTIONS={{"films","Фільми"},{"series","Серіали"},{"cartoons","Мультфільми"},{"documentary","Документальні"}};
+ /** «Документальні» chooses between films and series instead of a genre. */
+ private String allGenres(){return "documentary".equals(category)?"Фільми й серіали":"Усі жанри";}
  /** The search came with a name already (OpenTitleActivity): results take focus, no keyboard over them. */
  private boolean handedOver;
  /** The search a pause in typing starts. */
@@ -81,7 +84,7 @@ public final class BrowseActivity extends Activity {
    heading.setVisibility(View.GONE);
    categoryButton=dropButton(sectionName(category));categoryButton.setOnClickListener(v->categoryMenu(v));head.addView(categoryButton,new LinearLayout.LayoutParams(-2,dp(44)));
    String given=getIntent().getStringExtra(TITLE);
-   genreButton=dropButton(genre!=null&&given!=null?given:"Усі жанри");genreButton.setOnClickListener(v->genreMenu(v));
+   genreButton=dropButton(genre!=null&&given!=null?given:allGenres());genreButton.setOnClickListener(v->genreMenu(v));
    orderButton=dropButton(orderName(filter));orderButton.setOnClickListener(v->orderMenu(v));
    LinearLayout.LayoutParams gl=new LinearLayout.LayoutParams(-2,dp(44));gl.leftMargin=dp(4);head.addView(genreButton,gl);
    LinearLayout.LayoutParams ol=new LinearLayout.LayoutParams(-2,dp(44));ol.leftMargin=dp(4);head.addView(orderButton,ol);
@@ -167,13 +170,13 @@ public final class BrowseActivity extends Activity {
  /** Another category in place: its own genres, the same order, the list from page one. */
  private void selectCategory(String slug,String name){
   if(slug.equals(category))return;category=slug;genre=null;genreGeneration++;genreList=null;genreFor=null;
-  genreButton.setText("Усі жанри  ▾");categoryButton.setText(name+"  ▾");reload();
+  genreButton.setText(allGenres()+"  ▾");categoryButton.setText(name+"  ▾");reload();
  }
  private List<Site.Genre> genreList;private String genreFor;private Map<String,String> genreUk=new HashMap<String,String>();
  /** Genres of the shown category as a grid: everyday ones first, «Усі жанри» at the top. Fetched once per category. */
  private void genreMenu(View anchor){
   final LinearLayout box=column();final PopupWindow popup=dropdown(anchor,box,dp(3*170+16));
-  final TextView all=option("Усі жанри",genre==null);box.addView(all,new LinearLayout.LayoutParams(dp(170),-2));all.setOnClickListener(v->{popup.dismiss();if(genre==null)return;genre=null;genreButton.setText("Усі жанри  ▾");reload();});all.requestFocus();
+  final TextView all=option(allGenres(),genre==null);box.addView(all,new LinearLayout.LayoutParams(dp(170),-2));all.setOnClickListener(v->{popup.dismiss();if(genre==null)return;genre=null;genreButton.setText(allGenres()+"  ▾");reload();});all.requestFocus();
   if(genreList!=null&&category.equals(genreFor)){fillGenreGrid(box,popup,genreList);return;}
   final TextView wait=Ui.text(this,"Завантаження…",14,Ui.GREY);wait.setPadding(dp(16),dp(10),dp(16),dp(10));box.addView(wait);
   final int request=++genreGeneration;final String requested=category;
@@ -184,7 +187,7 @@ public final class BrowseActivity extends Activity {
      if(list.isEmpty()){wait.setText("Для цієї категорії жанрів немає");box.addView(wait);return;}fillGenreGrid(box,popup,list);});
    }catch(Exception e){Ui.MAIN.post(()->{if(request==genreGeneration&&popup.isShowing())wait.setText("Не вдалося завантажити жанри");});}});
  }
- private String genreLabel(Site.Genre g){return HomeActivity.genreKnown(g.name)?HomeActivity.genreName(g.name):genreUk.containsKey(g.name)?genreUk.get(g.name):TitleTranslate.shown(g.name);}
+ private String genreLabel(Site.Genre g){if(g.label!=null&&!g.label.isEmpty())return g.label;return HomeActivity.genreKnown(g.name)?HomeActivity.genreName(g.name):genreUk.containsKey(g.name)?genreUk.get(g.name):TitleTranslate.shown(g.name);}
  private List<Site.Genre> ordered(List<Site.Genre> got,Map<String,String> uk){return HomeActivity.mainGenres(got);}
  private void fillGenreGrid(LinearLayout box,final PopupWindow popup,List<Site.Genre> list){
   LinearLayout row=null;View chosen=null;

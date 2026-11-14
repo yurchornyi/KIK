@@ -49,6 +49,9 @@ test('route selections are validated and short',()=>{
  assert.deepEqual(catalogueSelection(new URLSearchParams('c=../admin&g=<b>&s=random')),{category:'films',filter:'popular',genre:''});
  assert.equal(selectionQuery({category:'films',filter:'popular',genre:''}),'');
  assert.equal(selectionQuery({category:'animation',filter:'watching',genre:'fantasy'}),'c=animation&g=fantasy&s=watching');
+ // «Документальні» took «Аніме»'s place (14.11): an old «Аніме» link opens «Фільми».
+ assert.deepEqual(catalogueSelection(new URLSearchParams('c=animation')),{category:'films',filter:'popular',genre:''});
+ assert.deepEqual(catalogueSelection(new URLSearchParams('c=documentary&g=series')),{category:'documentary',filter:'popular',genre:'series'});
 });
 test('catalogue paths keep category, genre and whole page numbers and reject injected paths',()=>{
  assert.equal(cataloguePath({category:'films',genre:'drama',filter:'last',page:2}),'/films/drama/page/2/?filter=last');

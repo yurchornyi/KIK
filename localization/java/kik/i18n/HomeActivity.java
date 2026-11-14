@@ -182,7 +182,7 @@ public final class HomeActivity extends Activity {
 
  /** The catalogue's four sections drop down right under «Каталог ▾»: no separate window, no scrolling; Back closes it. */
  private void catalogueMenu(View anchor){
-  final String[] names={"Фільми","Серіали","Мультфільми","Аніме"},ids={"films","series","cartoons","animation"};
+  final String[] names={"Фільми","Серіали","Мультфільми","Документальні"},ids={"films","series","cartoons","documentary"};
   LinearLayout panel=new LinearLayout(this);panel.setOrientation(0);panel.setPadding(dp(8),dp(8),dp(8),dp(8));panel.setBackground(Ui.menuPanel(this));
   LinearLayout list=new LinearLayout(this);list.setOrientation(1);panel.addView(list);
   final PopupWindow popup=new PopupWindow(panel,ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.WRAP_CONTENT,true);
@@ -198,10 +198,13 @@ public final class HomeActivity extends Activity {
  private static volatile List<Site.Genre> filmGenres;
  private static List<Site.Genre> filmGenres(){List<Site.Genre> g=filmGenres;if(g!=null&&!g.isEmpty())return g;try{g=Site.genres("films");}catch(Exception e){Log.w("KIK","Genres: "+e);return new ArrayList<Site.Genre>();}if(!g.isEmpty())filmGenres=g;return g;}
  /** Ukrainian names for the genres the source spells in Russian. */
- static final String[][] GENRE_NAMES={{"Комедии","Комедії"},{"Боевики","Бойовики"},{"Ужасы","Жахи"},{"Фантастика","Фантастика"},{"Драмы","Драми"},{"Триллеры","Трилери"},{"Детективы","Детективи"},{"Приключения","Пригоди"},{"Мелодрамы","Мелодрами"},{"Документальные","Документальні"},{"Семейные","Сімейні"},{"Криминал","Кримінал"},{"Фэнтези","Фентезі"},{"Военные","Воєнні"},{"Исторические","Історичні"},{"Биографические","Біографічні"},{"Спортивные","Спортивні"},{"Музыкальные","Музичні"},{"Вестерны","Вестерни"},{"Мюзиклы","Мюзикли"},{"Артхаус","Артхаус"},{"Короткометражные","Короткометражні"},{"Эротика","Еротика"},{"Концерт","Концерти"},{"Стендап","Стендап"},{"Детские","Дитячі"},{"Зарубежные","Зарубіжні"},{"Театр","Театр"},{"Аниме","Аніме"}};
- /** The everyday genres the menus show: the first twelve of GENRE_NAMES. */
- static final int MAIN_GENRES=12;
- static List<Site.Genre> mainGenres(List<Site.Genre> got){List<Site.Genre> out=new ArrayList<Site.Genre>();for(int n=0;n<MAIN_GENRES;n++)for(Site.Genre g:got)if(GENRE_NAMES[n][0].equalsIgnoreCase(g.name.trim())&&!out.contains(g))out.add(g);return out;}
+ /** Russian source names and their Ukrainian ones. The first seventeen are the catalogue's main genres in the order every
+  *  menu shows them (web/public/taste.js MAIN_GENRES; 14.11, owner: «Залиши основні жанри… всюди уніфікуй»); where the
+  *  source files a title («Зарубежные», «Русские») is never a genre. */
+ static final String[][] GENRE_NAMES={{"Боевики","Бойовики"},{"Приключения","Пригоди"},{"Комедии","Комедії"},{"Драмы","Драми"},{"Мелодрамы","Мелодрами"},{"Триллеры","Трилери"},{"Ужасы","Жахи"},{"Детективы","Детективи"},{"Криминал","Кримінал"},{"Фантастика","Фантастика"},{"Фэнтези","Фентезі"},{"Семейные","Сімейні"},{"Исторические","Історичні"},{"Военные","Воєнні"},{"Биографические","Біографічні"},{"Музыкальные","Музичні"},{"Спортивные","Спортивні"},{"Документальные","Документальні"},{"Вестерны","Вестерни"},{"Мюзиклы","Мюзикли"},{"Артхаус","Артхаус"},{"Короткометражные","Короткометражні"},{"Концерт","Концерти"},{"Стендап","Стендап"},{"Детские","Дитячі"},{"Театр","Театр"},{"Аниме","Аніме"}};
+ /** The genres the menus show: the service sends the main ones only, in their order and with one name each (/api/genres). */
+ static List<Site.Genre> mainGenres(List<Site.Genre> got){return got;}
+ static String label(Site.Genre g){return g.label!=null&&!g.label.isEmpty()?g.label:genreName(g.name);}
  static boolean genreKnown(String ru){if(ru!=null)for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return true;return false;}
  static String genreName(String ru){if(ru==null)return null;for(String[] g:GENRE_NAMES)if(g[0].equalsIgnoreCase(ru.trim()))return g[1];return TitleTranslate.shown(ru);}
  /** Genre rows reuse the already loaded home cards, without six more catalogue requests on startup. */
@@ -224,9 +227,11 @@ public final class HomeActivity extends Activity {
   new Thread(()->{final List<Site.Genre> all=mainGenres(filmGenres());main.post(()->{if(destroyed||!popup.isShowing())return;
    if(all.isEmpty()){wait.setText("Не вдалося завантажити жанри");return;}
    box.removeView(wait);LinearLayout row=null;
-   for(int n=0;n<all.size();n++){final Site.Genre g=all.get(n);if(n%3==0){row=new LinearLayout(this);row.setOrientation(0);box.addView(row);}
-    final String name=genreName(g.name);TextView item=Ui.menuItem(this,name,false);row.addView(item,new LinearLayout.LayoutParams(dp(170),-2));
-    item.setOnClickListener(v->{popup.dismiss();BrowseActivity.openGenre(this,"films",g.slug,name);});}
+   // «Усі жанри» first, as in the catalogue's own menu: with the seventeen main genres the grid is six full rows of three.
+   final List<Site.Genre> shown=new ArrayList<Site.Genre>();shown.add(null);shown.addAll(all);
+   for(int n=0;n<shown.size();n++){final Site.Genre g=shown.get(n);if(n%3==0){row=new LinearLayout(this);row.setOrientation(0);box.addView(row);}
+    final String name=g==null?"Усі жанри":label(g);TextView item=Ui.menuItem(this,name,false);row.addView(item,new LinearLayout.LayoutParams(dp(170),-2));
+    item.setOnClickListener(v->{popup.dismiss();if(g==null)BrowseActivity.open(this,"catalog","films","Фільми");else BrowseActivity.openGenre(this,"films",g.slug,name);});}
    popup.update(ViewGroup.LayoutParams.WRAP_CONTENT,ViewGroup.LayoutParams.WRAP_CONTENT);});},"kik-genres").start();
  }
  private TextView settingsItem;

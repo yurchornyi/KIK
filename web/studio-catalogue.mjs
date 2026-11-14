@@ -48,12 +48,14 @@ export function createStudioCatalogue({fetcher=globalThis.fetch,search,genres,fi
  async function lookup(params,{token}={}){
   if(!String(token||'').trim())throw Object.assign(Error('Фільтр студій тимчасово недоступний. Спробуйте пізніше.'),{status:503});
   const ids=[...new Set(String(params.studio||'').split(',').map(x=>x.trim()).filter(Boolean))],studios=ids.map(studioById),category=params.category||'films',order=params.filter||'popular',genre=params.genre||'';
-  if(!ids.length||ids.length>MAX_STUDIOS||studios.some(x=>!x)||!['films','series','cartoons','animation'].includes(category)||!['popular','last'].includes(order)||genre&&!/^[a-z0-9-]{1,60}$/.test(genre))throw Error('Некоректний фільтр студії');
+  if(!ids.length||ids.length>MAX_STUDIOS||studios.some(x=>!x)||!['films','series','cartoons','animation','documentary'].includes(category)||!['popular','last'].includes(order)||genre&&!/^[a-z0-9-]{1,60}$/.test(genre))throw Error('Некоректний фільтр студії');
   if(params.query||params.source&&params.source!=='rezka')throw Error('Несумісні фільтри каталогу');
   // Pixar in «Фільми», Hulu in «Фільми»: no page could ever match, so the catalogue ends at once instead of reading 500 pages.
   if(!studios.some(s=>makes(s,category)))return {items:[],hasMore:false,page:1};
   let page=Math.max(1,Math.min(MAX_PAGE,Math.floor(Number(params.page)||1)));
-  const kinds=['cartoons','animation'].includes(category)?['movie','tv']:[category==='series'?'tv':'movie'];
+  // «Документальні»: TMDB's documentaries (99) of the studio, found under the source's films/documentary and series/documentary;
+  // its «genre» picks films or series, «Усі» alternates them as the animation sections do.
+  const docs=category==='documentary',kinds=docs?(genre==='films'?['movie']:genre==='series'?['tv']:['movie','tv']):['cartoons','animation'].includes(category)?['movie','tv']:[category==='series'?'tv':'movie'];
   page=Math.min(page,2000*kinds.length);
   const kind=kinds[(page-1)%kinds.length],window=Math.floor((page-1)/kinds.length),sourcePage=Math.floor(window/4)+1,offset=window%4*SIZE;
   const q=new URLSearchParams({language:'ru-RU',include_adult:'false',page:String(sourcePage),sort_by:order==='last'?(kind==='tv'?'first_air_date.desc':'primary_release_date.desc'):'popularity.desc'});
@@ -61,19 +63,20 @@ export function createStudioCatalogue({fetcher=globalThis.fetch,search,genres,fi
   q.set(kind==='tv'?'first_air_date.lte':'primary_release_date.lte',new Date(now()).toISOString().slice(0,10));
   // The source keeps animated titles under «Мультфільми» and «Аніме»: in films and series they would never match.
   const mapped=category==='cartoons'||category==='animation'?'':GENRES[genre]?.[kind==='tv'?1:0]||'';
-  if(category==='cartoons'||category==='animation')q.set('with_genres','16');else{q.set('without_genres','16');if(mapped)q.set('with_genres',mapped);}
+  if(docs)q.set('with_genres','99');else if(category==='cartoons'||category==='animation')q.set('with_genres','16');else{q.set('without_genres','16');if(mapped)q.set('with_genres',mapped);}
   const key=studios.map(x=>x.id).sort().join('+');
   const data=await cached('discover:'+key+':'+category+':'+q,()=>request('/discover/'+kind+'?'+q,token));
   if(!Array.isArray(data.results))throw Error('Некоректна відповідь студії');
   const candidates=data.results.slice(offset,offset+SIZE),items=[];
-  const genreName=genre?(await genres(category)).find(g=>g.slug===genre)?.name:null;
+  const genreName=genre&&!docs?(await genres(category)).find(g=>g.slug===genre)?.name:null;
   if(genre&&!genreName)throw Error('Цей жанр недоступний. Оберіть інший.');
   // A source error fails this page rather than silently losing a film in the catalogue.
   await Promise.all(candidates.map(async candidate=>{
    const year=String(candidate.release_date||candidate.first_air_date||'').slice(0,4),title=candidate.title||candidate.name,original=candidate.original_title||candidate.original_name;
    if(!title||!year)return;
-   const cards=await search({query:title,category,filter:order});
-   const eligible=cards.filter(c=>{try{return new URL(c.link).pathname.startsWith('/'+category+'/');}catch{return false;}});
+   const section=docs?(kind==='tv'?'series':'films'):category,prefix=docs?'/'+section+'/documentary/':'/'+category+'/';
+   const cards=await search({query:title,category:section,filter:order});
+   const eligible=cards.filter(c=>{try{return new URL(c.link).pathname.startsWith(prefix);}catch{return false;}});
    const unique=[...new Map(eligible.map(c=>[new URL(c.link).pathname,c])).values()];
    const matches=unique.filter(c=>{const year=Number(String(c.info||'').match(/\d{4}/)?.[0]);return year&&matchTitle({title:c.sourceTitle||c.title,year,aliases:[]},[candidate]);});
    if(matches.length!==1)return;

@@ -25,7 +25,9 @@ public final class Site {
 
  // ---------- models ----------
  public static final class Card{public String link,title,poster,info,type,studio;public String year(){Matcher m=Pattern.compile("(\\d{4}(?:\\s*-\\s*(?:\\d{4}|\\.\\.\\.))?)").matcher(info==null?"":info);return m.find()?m.group(1).replace(" ",""):null;}
-  public String genre(){if(info==null)return null;String[] p=info.split(",");return p.length>0?p[p.length-1].trim():null;}}
+  public String genre(){if(info==null)return null;String[] p=info.split(",");String g=p.length>0?p[p.length-1].trim():null;return notGenre(g)?null:g;}}
+ /** Where the source files a title, never shown as its genre (14.11, owner: «Зарубіжне кіно… їх всюда немає бути»). */
+ static boolean notGenre(String g){return g!=null&&(g.equalsIgnoreCase("Зарубежные")||g.equalsIgnoreCase("Русские")||g.equalsIgnoreCase("Украинские")||g.equalsIgnoreCase("Полнометражные"));}
  public static final class Voice{public String id,name;public boolean premium,camrip,ads,director;}
  public static final class Episode{public String season,episode,title;}
  public static final class Film{
@@ -38,7 +40,8 @@ public final class Site {
   final Map<String,List<Episode>> coverage=new HashMap<String,List<Episode>>();
  }
  public static final class Stream{public LinkedHashMap<String,String> qualities=new LinkedHashMap<String,String>();public LinkedHashMap<String,List<String>> alternatives=new LinkedHashMap<String,List<String>>();public String subtitles;public List<String[]> subtitleList=new ArrayList<String[]>();}
- public static final class Genre{public String slug,name;}
+ /** `name` is the source's (Russian), `label` the service's own Ukrainian name for the menus. */
+ public static final class Genre{public String slug,name,label;}
 
  // ---------- transport ----------
  private static SharedPreferences prefs(){return UiRuntime.app.getSharedPreferences("kik_site",0);}
@@ -297,7 +300,7 @@ public final class Site {
   String a=q.replace(" ",""),b=t.replace(" ","");if(a.length()>5&&distance(a,b.substring(0,Math.min(b.length(),a.length())),slack(a))<=slack(a))return .6;return .5*found/words.size();}
  public static List<Genre> genres(String category)throws IOException{
   JSONArray items=FreeSources.get("/api/genres?category="+FreeSources.enc(category),20000).optJSONArray("items");if(items==null)throw new IOException("Genres unavailable");
-  List<Genre> out=new ArrayList<Genre>();for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;String slug=x.optString("slug"),name=x.optString("sourceName",x.optString("name"));if(!slug.matches("[a-z0-9-]{1,60}")||name.isEmpty())continue;Genre g=new Genre();g.slug=slug;g.name=name;out.add(g);}
+  List<Genre> out=new ArrayList<Genre>();for(int i=0;i<items.length();i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;String slug=x.optString("slug"),name=x.optString("sourceName",x.optString("name"));if(!slug.matches("[a-z0-9-]{1,60}")||name.isEmpty())continue;Genre g=new Genre();g.slug=slug;g.name=name;g.label=x.optString("name","");out.add(g);}
   return out;
  }
 
