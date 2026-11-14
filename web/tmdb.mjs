@@ -1,5 +1,5 @@
 import {titleKey} from './sync.mjs';
-import {studiosFor,STUDIO_RULES} from './public/studios.js';
+import {studiosFor,studiosByChannel,STUDIO_RULES} from './public/studios.js';
 
 const API='https://api.themoviedb.org/3',CDN='https://image.tmdb.org/t/p';
 const DAY=86400000,MAX_ENTRIES=400;
@@ -65,7 +65,7 @@ export function selectImages(images,id,kind){
 /** A lookup still marked in flight after this long is taken as dead (its request was cancelled), never as running. */
 const ACTIVE_FOR=20000;
 /** Public artwork only. Both TMDB credential formats stay on this server. */
-export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,originalOf=null}={}){
+export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,originalOf=null,channelOf=null}={}){
  // Only settled answers are shared across requests. A Worker request cannot await another request's I/O: it never settles
  // once that request is cancelled (06.11 audit). `active` only counts lookups in flight (at most 12) and forgets a mark
  // after ACTIVE_FOR, so a lookup that never finished cannot hold a place for the isolate's life.
@@ -106,12 +106,16 @@ export function createArtworkService({fetcher=globalThis.fetch,now=Date.now,orig
   if(!match&&!identity.original&&originalOf){
    let original='';try{original=String(await originalOf(link)||'').trim();}catch{}
    // The page's original name is a name of the title too: a result is matched against it as well.
-   if(original&&!queries.includes(original)){const who={...identity,original};match=await search(original,who)||await search(original,who,other);}
+   // A page often joins several originals with « / » («Wśród nocnej ciszy / Wsrod nocnej ciszy / In the Silence of the Night»).
+   for(const name of original.split(/\s+\/\s+/).map(x=>x.trim()).filter(x=>x&&!queries.includes(x)).slice(0,3)){const who={...identity,original:name};match=await search(name,who)||await search(name,who,other);if(match)break;}
   }
   if(!match)return null;
   const kind=match.kind;
   const details=await request(`/${kind}/${match.id}?append_to_response=images&include_image_language=uk,en,null`,token,signal);
-  const artwork=selectImages(details.images||details,match.id,kind),studios=studiosFor(details);
+  const artwork=selectImages(details.images||details,match.id,kind);let studios=studiosFor(details);
+  // A show TMDB gives no platform for: the channel TVmaze has it on, by its English and original names.
+  if(!studios.length&&kind==='tv'&&channelOf){const names=[details.name,details.original_name].filter(n=>n&&!/[а-яёієїґ]/i.test(n)),year=Number(String(details.first_air_date||'').slice(0,4))||identity.year;
+   if(names.length)try{studios=studiosByChannel(await channelOf(names,year));}catch{}}
   return artwork?{...artwork,studios}:studios.length?{source:'tmdb',id:match.id,kind,page:`https://www.themoviedb.org/${kind}/${match.id}`,studios}:null;
  }
  async function lookup(input,{token,cache,origin='https://kik-artwork.invalid'}={}){

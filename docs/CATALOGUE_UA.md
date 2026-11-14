@@ -73,4 +73,11 @@ npm run build && npx wrangler d1 migrations apply kik-data --local && npx wrangl
 2. Ті самі назви навпаки: фільм як серіал, серіал як фільм. Аніме- й мультсеріали лежать у розділах «Аніме» й «Мультфільми», а не в «Серіалах».
 3. За оригінальною назвою зі сторінки фільму на джерелі, обома способами. У картці є лише російська назва, а TMDB часто не має її для нової назви («Taken: Natalee Holloway») або пише з «ё» («Зелёная миля»).
 
-Після кроків 2 і 3 TMDB знаходив уже 221 назву, значок мали 47. Студії: Netflix, Apple TV+, HBO, Prime Video, Disney+ (разом із Marvel Studios і Lucasfilm), Hulu, Peacock, Paramount+, Warner Bros., Pixar, National Geographic, Discovery. Решта знайдених назв справді не має стрімінгового сервісу: радянське кіно, BBC, концерти, кіностудії без власної платформи.
+Після кроків 2 і 3 TMDB знаходив уже 221 назву, значок мали 47. Ще:
+
+- **Кілька оригінальних назв.** Оригінальна назва зі сторінки часто містить кілька назв через « / » («Wśród nocnej ciszy / … / In the Silence of the Night»), і кожна шукається окремо.
+- **TVmaze.** Якщо TMDB знайшов серіал, але не дав його платформи, сервер питає TVmaze, на якому каналі той виходить («HBO Max», «Disney XD», «BBC iPlayer»), за англійською й оригінальною назвами та роком (`tvmazeChannel` у `metadata.mjs`).
+- **Нові мережі TMDB.** HBO Max після перейменування 2025 року має на TMDB нову мережу 8304, а ще є Max (6783). Disney — це й Disney Channel, Disney XD, Disney Junior. BBC — BBC One/Two/Three/Four, iPlayer і студії BBC.
+
+Деяких назв не знає жодне джерело: «Дзвін золота» (HBO Original) TMDB має лише з балтійським Go3, а TVmaze його не має взагалі.
+ Студії: Netflix, Apple TV+, HBO, Prime Video, Disney+ (разом із Marvel Studios і Lucasfilm), Hulu, Peacock, Paramount+, Warner Bros., Pixar, National Geographic, Discovery, BBC. Решта знайдених назв справді не має стрімінгового сервісу: радянське кіно, BBC, концерти, кіностудії без власної платформи.

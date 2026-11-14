@@ -106,3 +106,13 @@ test('season marks are not part of a name, and a later season is not held to its
  assert.deepEqual(artworkIdentity({link:'https://hdrezka.sh/cartoons/adventures/69136-zabytoe-chudo-2023-2023.html',title:'Забытое чудо (2023)',year:'2023'}).aliases,['Забытое чудо']);
  assert.deepEqual(artworkIdentity({link:'https://hdrezka.sh/animation/fiction/28578-legenda-ova-1-1988.html',title:'Легенда о героях Галактики [OVA-1]',year:'1988'}).aliases,['Легенда о героях Галактики']);
 });
+
+test('a show TMDB gives no platform asks TVmaze for its channel, by its English names only',async()=>{
+ const show={id:305245,name:'In the Silence of the Night',original_name:'Wśród nocnej ciszy',first_air_date:'2026-11-07'};
+ const fetcher=async url=>{if(url.includes('/search/tv'))return Response.json({results:url.includes('cisz')?[show]:[]});if(url.includes('/tv/305245'))return Response.json({...show,networks:[{id:9999}],images:{posters:[poster],backdrops:[]}});return Response.json({results:[]});};
+ let asked=null;const channelOf=async(names,year)=>{asked={names,year};return 'HBO Max';};
+ // The page joins three originals with « / »: each is searched on its own.
+ const service=createArtworkService({fetcher,channelOf,originalOf:async()=>'Wśród nocnej ciszy / Wsrod nocnej ciszy / In the Silence of the Night'});
+ const r=await service.lookup({link:'https://hdrezka.sh/series/drama/93864-sredi-nochnoy-tishiny-2026.html',title:'Среди ночной тишины',year:'2026'},{token:'test-only'});
+ assert.deepEqual(r.artwork.studios,['hbo']);assert.deepEqual(asked,{names:['In the Silence of the Night','Wśród nocnej ciszy'],year:2026});
+});

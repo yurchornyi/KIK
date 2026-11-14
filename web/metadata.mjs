@@ -9,6 +9,17 @@ export function entityData(e){const claim=p=>e.claims?.[p]?.[0]?.mainsnak?.datav
 export async function aliases(query){query=String(query||'').trim().slice(0,150);if(query.length<3)return [];return cached('aliases:'+query,async()=>{const results=await Promise.allSettled(['uk','ru','en'].map(language=>wd({action:'wbsearchentities',search:query,language,uselang:language,limit:'3',type:'item'})));const ids=[...new Set(results.flatMap(r=>r.value?.search||[]).map(x=>x.id))].slice(0,5);const data=(await entities(ids)).map(entityData).filter(e=>/^tt\d+$/.test(e.imdb)&&e.aliases.some(name=>norm(name)===norm(query)));return [...new Set(data.flatMap(x=>x.aliases))].filter(x=>norm(x)!==norm(query)).slice(0,4);}).catch(()=>[]);}
 /** TVmaze answers an IMDb lookup with a 301 to the show; the redirect is read, not followed, so every request stays on a known host. */
 async function tvmazeShow(imdb){const r=await fetch('https://api.tvmaze.com/lookup/shows?imdb='+imdb,{headers:{'User-Agent':AGENT,Accept:'application/json'},signal:AbortSignal.timeout(4500),redirect:'manual'});if(r.status===404)return 0;if(r.ok)return Number((await r.json()).id)||0;const id=Number(String(r.headers.get('location')||'').match(/^https:\/\/api\.tvmaze\.com\/shows\/(\d+)$/)?.[1]);if(r.status>=300&&r.status<400&&Number.isSafeInteger(id)&&id>0)return id;throw Error('api.tvmaze.com HTTP '+r.status);}
+/** The channel a show is on, from TVmaze by name («HBO Max», «Disney XD», «BBC iPlayer», «Netflix»): TMDB leaves the platform
+ *  out of many shows' networks. Only a show whose name is one of `names` and whose first year is within one of `year`. */
+export async function tvmazeChannel(names,year){
+ for(const name of [...new Set((names||[]).filter(Boolean))].slice(0,3)){
+  let show;try{show=await json('https://api.tvmaze.com/singlesearch/shows?'+new URLSearchParams({q:name}));}catch{continue;}
+  const first=Number(String(show?.premiered||'').slice(0,4));if(!show||year&&first&&Math.abs(first-year)>1)continue;
+  if(!names.some(n=>norm(n)===norm(show.name)))continue;
+  return show.webChannel?.name||show.network?.name||null;
+ }
+ return null;
+}
 export function episodeInfo(show){const next=show._embedded?.nextepisode;return next?{name:next.name,season:next.season,episode:next.number,airdate:next.airdate,airstamp:next.airstamp}:null;}
 export async function metadata(imdb,env={},kind=''){if(!['','movie','tv'].includes(kind)||!/^tt\d{5,12}$/.test(imdb||''))return {credits:[]};return cached('meta:'+imdb+':'+kind+':'+!!env.TMDB_READ_TOKEN,async()=>{const result={imdb,credits:[]};const outcomes=await Promise.allSettled([
  (async()=>{const found=await wd({action:'query',list:'search',srsearch:'haswbstatement:P345='+imdb,srnamespace:'0',srlimit:'1'});const id=found.query?.search?.[0]?.title;if(!/^Q\d+$/.test(id||''))return;const [e]=await entities([id]);const d=entityData(e);if(d.imdb!==imdb)return;Object.assign(result,{wikidata:d.id,aliases:d.aliases});if(!result.title&&d.title)result.title=d.title;result.credits.push({name:'Wikidata',url:'https://www.wikidata.org/wiki/'+d.id,license:'CC0'});})(),
