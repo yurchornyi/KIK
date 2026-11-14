@@ -91,3 +91,19 @@ test('a list that takes too long is answered without: the wait ends at the limit
  assert.equal(await within(slow,30),null);assert.ok(Date.now()-started<1000);finish(['late']);assert.deepEqual(await slow,['late']);
  assert.deepEqual(await within(Promise.resolve(['ready']),30),['ready']);await assert.rejects(within(Promise.reject(Error('source down')),30),/source down/);
 });
+
+test('similar titles: a search refused as busy is asked again instead of losing the pick',async()=>{
+ const page={link:'https://hdrezka.sh/cartoons/comedy/1768-simpsony-1989.html',imdb:'tt0096697',series:true,related:[]};
+ const fetcher=async url=>new Response(JSON.stringify(url.includes('/find/')?{tv_results:[{id:456}]}:url.includes('/recommendations')?{results:[{id:1434,name:'Гриффины',first_air_date:'1999-01-31'},{id:615,name:'Футурама',first_air_date:'1999-03-28'}]}:{results:[]}));
+ const catalogue={'Гриффины':[{link:'https://hdrezka.sh/cartoons/comedy/2-griffiny-1999.html',title:'Гриффины',info:'1999 - ..., США, Комедии'}],'Футурама':[{link:'https://hdrezka.sh/cartoons/fiction/3-futurama-1999.html',title:'Футурама',info:'1999 - ..., США, Фантастика'}]};
+ let clock=0;const refused=new Map(),pauses=[];
+ const search=async({query})=>{const n=(refused.get(query)||0)+1;refused.set(query,n);if(n<3)throw Object.assign(Error('busy'),{sourceBusy:true,status:503});return catalogue[query]||[];};
+ const items=await similar(page.link,{token:'a'.repeat(32),load:async()=>page,search,fetcher,now:()=>clock,pause:async ms=>{pauses.push(ms);clock+=ms;}});
+ assert.deepEqual(items.map(i=>i.title),['Гриффины','Футурама']);assert.equal(items.picks,2);assert.equal(items.partial,false);
+ assert.ok(pauses.length>=4&&pauses.every(ms=>ms===1200));
+ // Past SEARCH_FOR the pick is given up and the list is partial; a paused source is not waited for at all.
+ clock=0;const late=await similar(page.link,{token:'a'.repeat(32),load:async()=>page,search:async()=>{throw Object.assign(Error('busy'),{sourceBusy:true});},fetcher,now:()=>clock,pause:async ms=>{clock+=ms*20;}});
+ assert.equal(late.picks,0);assert.equal(late.partial,true);
+ let tries=0;const paused=await similar(page.link,{token:'a'.repeat(32),load:async()=>page,search:async()=>{tries++;throw Object.assign(Error('paused'),{sourceBusy:false,sourcePaused:true});},fetcher});
+ assert.equal(paused.partial,true);assert.equal(tries,2);
+});

@@ -1,7 +1,10 @@
 import {dropdown} from './dropdown.js';
 import {STUDIOS,studioById,studioBadge,studioCategory,makes} from './studios.js';
 /** The website's Catalogue section: categories, source genres, sorting and explicit pagination. */
-export const CATEGORIES=[['films','Фільми'],['series','Серіали'],['cartoons','Мультфільми'],['animation','Аніме']];
+/** 14.11, owner: «Аніме забираєш, документалки віддаєш». An old link to «Аніме» opens «Фільми». */
+export const CATEGORIES=[['films','Фільми'],['series','Серіали'],['cartoons','Мультфільми'],['documentary','Документальні']];
+/** The first entry of the genre list: «Документальні» chooses between films and series instead of a genre. */
+export const allGenres=category=>category==='documentary'?'Фільми й серіали':'Усі жанри';
 export const SORTS=[['popular','Популярні'],['last','Новинки'],['watching','Зараз дивляться']];
 /** «Новинки» show only titles of this year and last (a series by the year it began), in the order the source added them:
  *  its «last» list also holds old films it has just added (14.11, owner). The same rule as FreshPolicy on the TV. */
@@ -118,7 +121,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
    let items=genreCache.get(category);
    if(!items){const body=await api('/api/genres?category='+category);if(!Array.isArray(body?.items))throw Error('genres');items=body.items.filter(g=>g&&/^[a-z0-9-]{1,60}$/.test(g.slug)&&g.name);genreCache.set(category,items);}
    if(request!==genreRequest||target!==genreSelect||model.category!==category||!section?.isConnected)return;
-   target.replaceChildren(el('option',{value:''},'Усі жанри'),...items.map(g=>el('option',{value:g.slug},g.name)));
+   target.replaceChildren(el('option',{value:''},allGenres(category)),...items.map(g=>el('option',{value:g.slug},g.name)));
    // A genre from an old link that the source no longer lists still shows as chosen.
    if(model.genre&&!items.some(g=>g.slug===model.genre))target.append(el('option',{value:model.genre},model.genre));
    target.value=model.genre;target.disabled=false;

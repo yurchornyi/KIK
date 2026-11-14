@@ -23,7 +23,7 @@ export function studiosByChannel(name){const n=String(name||'').toLowerCase().tr
 export const STUDIO_RULES=(()=>{let h=2166136261;for(const c of JSON.stringify(STUDIOS.map(s=>[s.id,s.networks,s.companies,s.channels||[],s.within||''])))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h.toString(36);})();
 /** Catalogue sections a studio makes: Pixar only animated films, Hulu series and animated series; the rest, every one.
  *  Filtered by a studio, a section it does not make is empty however many pages are read (14.11, owner: «нічого немає від Pixar, Hulu»). */
-export const makes=(studio,category)=>!!studio&&(!studio.categories||studio.categories.includes(category));
+export const makes=(studio,category)=>!!studio&&(!studio.categories||(category==='documentary'?['films','series']:[category]).some(c=>studio.categories.includes(c)));
 /** The section to show for studios: the current one when one of them makes it, else the first studio's own first section. */
 export function studioCategory(ids,category){const studios=[].concat(ids||[]).map(studioById).filter(Boolean);return !studios.length||studios.some(s=>makes(s,category))?category:studios[0].categories[0];}
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');

@@ -30,6 +30,7 @@ test('studio marks use original networks and exact production companies, never w
 });
 test('a studio opens a section it makes: Pixar its cartoons, Hulu its series',()=>{
  assert.equal(makes(studioById('pixar'),'films'),false);assert.equal(makes(studioById('pixar'),'cartoons'),true);assert.equal(makes(studioById('netflix'),'animation'),true);
+ assert.equal(makes(studioById('pixar'),'documentary'),false);assert.equal(makes(studioById('hulu'),'documentary'),true);assert.equal(makes(studioById('netflix'),'documentary'),true);
  assert.equal(studioCategory('pixar','films'),'cartoons');assert.equal(studioCategory('hulu','films'),'series');assert.equal(studioCategory('hulu','cartoons'),'cartoons');
  assert.equal(studioCategory('natgeo','cartoons'),'series');assert.equal(studioCategory('netflix','films'),'films');assert.equal(studioCategory('','films'),'films');
  // Several studios keep the section when any of them makes it.

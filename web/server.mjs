@@ -13,7 +13,16 @@ import {uaSearch,uaFilmPlayable} from "./uaserials.mjs";
 import {aliases,metadata,tvmazeChannel} from "./metadata.mjs";
 import {searchAlternatives} from "./search-fix.mjs";
 import {similar,within} from "./similar.mjs";
-import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";
+import {catalogue,catalogueGenres,film,episodes,stream} from "./catalogue.mjs";import {MAIN_GENRES,genreName} from './public/taste.js';
+/** «Документальні» in the catalogue: the source keeps documentaries as a genre of films and of series. «Фільми» or «Серіали»
+ *  reads that one list; «Усі» reads both pages and alternates them, and fails as a whole when either does (the website and
+ *  TV ask again), so a cached page never holds half of them. */
+async function documentaryOr(params,options){
+ if(params.category!=="documentary")return catalogue(params,options);
+ if(params.genre==="films"||params.genre==="series")return catalogue({...params,category:params.genre,genre:"documentary"},options);
+ const [films,series]=await Promise.all(["films","series"].map(category=>catalogue({...params,category,genre:"documentary"},options)));
+ const out=[];for(let i=0;i<Math.max(films.length,series.length);i++){if(films[i])out.push(films[i]);if(series[i])out.push(series[i]);}return out;
+}
 import {createArtworkService} from "./tmdb.mjs";
 import {createStudioCatalogue} from './studio-catalogue.mjs';
 import {synopsis,synopsisNight} from "./synopsis.mjs";
@@ -156,8 +165,11 @@ async function api(request,env,ctx){
   const token=await session(db,changed.user_id,null,deviceName(b.device_name));return json({token,profile:await owned(db,{id:changed.user_id},changed.profile_id)});
  }
  if(path==="/api/genres"){
-  const category=url.searchParams.get("category")||"films",key=new Request(url.origin+path+"?category="+encodeURIComponent(category)+"&__presentation=uk2");
-  return edgeCached(ctx,key,3600,async()=>({items:await localizedGenres(db,await catalogueGenres(category))}));
+  const category=url.searchParams.get("category")||"films",key=new Request(url.origin+path+"?category="+encodeURIComponent(category)+"&__presentation=uk3");
+  // «Документальні» is a section of its own: it is chosen between films and series, the source has no genres inside it.
+  if(category==="documentary")return json({items:[{slug:"films",name:"Фільми",sourceName:"Фильмы"},{slug:"series",name:"Серіали",sourceName:"Сериалы"}]},200,{"Cache-Control":"public, max-age=3600"});
+  // Every section offers the same main genres in the same order (MAIN_GENRES), named the same way, as far as the source has them.
+  return edgeCached(ctx,key,3600,async()=>{const got=new Map((await localizedGenres(db,await catalogueGenres(category))).map(g=>[g.slug,g]));return {items:MAIN_GENRES.filter(s=>got.has(s)).map(s=>({slug:s,name:genreName(s)||got.get(s).name,sourceName:got.get(s).sourceName}))};});
  }
  if(path==="/api/catalogue"){
   const params=Object.fromEntries(url.searchParams),warm=params.warm==="1";delete params.warm;
@@ -166,9 +178,9 @@ async function api(request,env,ctx){
   // `warm=1`: the home page fetching ahead (its taste rows). It only takes a source slot that is about to be free, so a title
   // the viewer opens never waits behind it; the parameter is not part of the cached copy's address.
   const search=new URLSearchParams(params).toString(),key=new Request(url.origin+path+(search?"?"+search+"&":"?")+"__presentation=uk5");
-  return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):catalogue(params,warm?{background:true}:{}))};return {...result,items:await localizedCards(db,result.items)};});
+  return edgeCached(ctx,key,3600,async()=>{const result=params.studio?await studioCatalogue.lookup(params,{token:env.TMDB_READ_TOKEN}):{items:await (params.source==="uaserials"?uaSearch(params):documentaryOr(params,warm?{background:true}:{}))};return {...result,items:await localizedCards(db,result.items)};});
  }
- if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk1"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
+ if(path==="/api/film"){const link=url.searchParams.get("link"),source=new URL(link);return edgeCached(ctx,new Request(url.origin+path+"?link="+encodeURIComponent(source.href)+"&__presentation=uk2"),900,async()=>{const f=source.hostname==="uaserials.com"?await uaFilmPlayable(link,film):await film(link);delete f.favs;delete f.origin;delete f.imdbRef;return localizedFilm(db,f);});}
  // «Вам може сподобатися» under a title, on the web and on TV: the same list for everyone, so it is cached at the edge.
  // A whole «Схожі» list is kept three days (was 12 hours): TMDB's picks and the source's «see also» change slowly, and
  // the TV keeps its copy as long (RecommendationMetadata.picks) — fewer source pages and TMDB requests, the same list.
@@ -177,7 +189,11 @@ async function api(request,env,ctx){
   // title page is read first; when the whole list is not ready in 9 seconds, the answer is what the page itself says
   // (its «see also», its franchise and genres, marked `partial`), and the whole list is finished and stored after it.
   // `warm=1` (the home's taste rows fetching ahead): the title page is background work, like the searches after it.
-  const page=await film(link,url.searchParams.get("warm")==="1"?{background:true}:{}),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:params=>catalogue(params,{background:true})});
+  // Each search for one of TMDB's picks is kept a day at the edge: a list that ran out of time keeps what it found, and the
+  // next try asks the source only for the rest.
+  const pickSearch=async params=>{const at=new Request(url.origin+"/__pick-search?q="+encodeURIComponent(params.query)+"&__v=1"),kept=await caches.default.match(at).catch(()=>null);if(kept)return kept.json();
+   const found=await catalogue(params,{background:true});ctx?.waitUntil?.(caches.default.put(at,new Response(JSON.stringify([...found]),{headers:{"Content-Type":"application/json","Cache-Control":"public, max-age=86400"}})).catch(()=>{}));return found;};
+  const page=await film(link,url.searchParams.get("warm")==="1"?{background:true}:{}),whole=similar(link,{token:env.TMDB_READ_TOKEN,load:async()=>page,search:pickSearch});
   const answer=async(items,seconds)=>{const r=json({items:await localizedCards(db,items),picks:items.picks,parts:await localizedCards(db,items.parts),genres:items.genres,year:items.year,...(items.partial?{partial:true}:{})});r.headers.set("Cache-Control","public, max-age="+seconds);return r;};
   const items=await within(whole,9000);
   if(items){const r=await answer(items,items.partial?600:SIMILAR_FOR);ctx?.waitUntil?.(caches.default.put(key,r.clone()).catch(()=>{}));return r;}

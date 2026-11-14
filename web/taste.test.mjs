@@ -112,3 +112,13 @@ test('«Тому що ви дивилися»: a like or a title watched in the 
  assert.deepEqual(titlesOf(becauseSeeds(signals,noon+10*36e5,3*36e5)).slice(0,2),first(1),'the viewer\'s own day: 22:00 UTC is tomorrow three hours east');
  assert.equal(becauseSeeds([shows[0]],noon,0).length,1);
 });
+
+test('a title shows its real genres only, each once; with none left, the genre in its address',async()=>{
+ const {shownGenres}=await import('./public/taste.js');
+ assert.deepEqual(shownGenres(['Документальні','Зарубіжне кіно'],'https://hdrezka.sh/series/documentary/40177-ferma-klarksona-2021-latest.html'),['Документальні']);
+ assert.deepEqual(shownGenres(['Фентезі','Пригоди','Бойовики','Зарубіжне кіно']),['Фентезі','Пригоди','Бойовики']);
+ assert.deepEqual(shownGenres(['Російське кіно','Повнометражні','Українське кіно','Драми','драмы']),['Драми']);
+ assert.deepEqual(shownGenres(['Зарубіжне кіно'],'https://hdrezka.sh/series/documentary/40177-ferma-klarksona-2021.html'),['Документальні']);
+ assert.deepEqual(shownGenres(['Зарубіжне кіно'],''),[]);
+ assert.deepEqual(shownGenres(undefined,undefined),[]);
+});
