@@ -24,17 +24,12 @@ final class Studios {
   View old=frame.findViewWithTag(TAG);if(old!=null)frame.removeView(old);String[] studio=null;for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(id))studio=s;if(studio==null)return;
   Context c=frame.getContext();frame.addView(badge(c,studio),new FrameLayout.LayoutParams(-2,Ui.dp(c,22),Gravity.TOP|Gravity.START){{setMargins(Ui.dp(c,7),Ui.dp(c,7),0,0);}});
  }
- /** The emblem pill: a white pictogram and/or a short wordmark on a dark rounded pill with a thin edge, 22 dp tall everywhere. */
- static TextView badge(Context c,String[] studio){
-  TextView mark=Ui.bold(c,studio[2],10);mark.setTag(TAG);mark.setFocusable(false);mark.setClickable(false);mark.setIncludeFontPadding(false);mark.setGravity(Gravity.CENTER_VERTICAL);mark.setSingleLine(true);
-  mark.setContentDescription("Студія / платформа: "+studio[1]);mark.setTextColor(0xfff4f4f6);
-  if("disney".equals(studio[0]))mark.setTypeface(Typeface.create("sans-serif",Typeface.BOLD_ITALIC));
-  else if("pixar".equals(studio[0])){mark.setTypeface(Typeface.create("serif",Typeface.BOLD));mark.setLetterSpacing(0.12f);mark.setTextSize(9);}
-  else if("hbo".equals(studio[0]))mark.setLetterSpacing(0.04f);
-  else if("paramount".equals(studio[0]))mark.setTextSize(13);
-  int glyph=glyphOf(studio[0]),pad=Ui.dp(c,glyph>=0&&studio[2].isEmpty()?5:7);
-  if(glyph>=0){int size=Ui.dp(c,14);Glyph g=new Glyph(glyph,0xdd111113);g.setBounds(0,0,size,size);mark.setCompoundDrawables(g,null,null,null);mark.setCompoundDrawablePadding(Ui.dp(c,4));}
-  mark.setPadding(pad,0,pad,0);mark.setBackground(Ui.shape(0xdd111113,Ui.dp(c,6),Ui.dp(c,1),0x22ffffff));return mark;
+ /** The emblem pill (14.11, owner's pick «А»): the studio's own mark in its colours (Netflix's red ribbon N, Prime's
+  *  blue smile, Hulu green…) on a dark pill with a thin light edge, 22 dp tall everywhere; the same as the website's studios.js. */
+ static View badge(Context c,String[] studio){
+  ImageView mark=new ImageView(c);mark.setTag(TAG);mark.setFocusable(false);mark.setClickable(false);mark.setContentDescription("Студія / платформа: "+studio[1]);
+  mark.setImageDrawable(new Mark(studio[0],c.getResources().getDisplayMetrics().density));mark.setScaleType(ImageView.ScaleType.CENTER);
+  int pad=Ui.dp(c,"netflix".equals(studio[0])?5:7);mark.setPadding(pad,0,pad,0);mark.setBackground(Ui.shape(0xe00b0b0d,Ui.dp(c,7),Ui.dp(c,1),0x26ffffff));return mark;
  }
  /** Called on the main thread. Weak view references and a bounded shared cache survive rebuilt rows safely. */
  static void watch(FrameLayout frame,String link,String title,String year,String known){
@@ -62,22 +57,77 @@ final class Studios {
   HttpURLConnection c=(HttpURLConnection)new URL(UpdateConfig.WEB_ORIGIN+"/api/artwork/batch").openConnection();c.setConnectTimeout(4500);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
   try{try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes("UTF-8"));}if(c.getResponseCode()!=200)throw new IOException("Studio metadata unavailable");try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>2*1024*1024)throw new IOException("Studio data limit");out.write(bytes,0,n);}return new JSONObject(out.toString("UTF-8"));}}finally{c.disconnect();}
  }
-private static int glyphOf(String id){return "netflix".equals(id)?0:"apple".equals(id)?1:"prime".equals(id)?2:"paramount".equals(id)?3:"warner".equals(id)?4:-1;}
- static final class Glyph extends Drawable {
-  private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG),line=new Paint(Paint.ANTI_ALIAS_FLAG);private final int kind,back;private final Path path=new Path();
-  Glyph(int kind,int back){this.kind=kind;this.back=back;fill.setColor(Color.WHITE);line.setColor(Color.WHITE);line.setStyle(Paint.Style.STROKE);line.setStrokeCap(Paint.Cap.ROUND);line.setStrokeJoin(Paint.Join.ROUND);}
+ /** One studio's mark, drawn by KIK (no brand files) in dp on a 22 dp tall box: a pictogram and/or a wordmark in the
+  *  studio's own colours. Paths and shaders are made once; a draw allocates nothing. */
+ static final class Mark extends Drawable {
+  static final float H=22,CY=11;
+  private final String id;private final float d,w;private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG),line=new Paint(Paint.ANTI_ALIAS_FLAG),text=new Paint(Paint.ANTI_ALIAS_FLAG),text2=new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Path path=new Path();private final RectF base=new RectF();private String word="",word2="";private Shader left,right,arc;
+  Mark(String id,float density){
+   this.id=id;d=density;line.setStyle(Paint.Style.STROKE);line.setStrokeCap(Paint.Cap.ROUND);line.setStrokeJoin(Paint.Join.ROUND);text.setColor(0xfff4f4f6);text2.setColor(0xfff4f4f6);
+   Typeface black=Typeface.create("sans-serif-black",Typeface.NORMAL),bold=Typeface.create("sans-serif",Typeface.BOLD);
+   switch(id){
+    case "netflix":left=new LinearGradient(0,0,0,24,new int[]{0xff7a0510,0xffb1060f},new float[]{0,.45f},Shader.TileMode.CLAMP);right=new LinearGradient(0,24,0,0,new int[]{0xff7a0510,0xffb1060f},new float[]{0,.45f},Shader.TileMode.CLAMP);break;
+    case "apple":word="tv+";text.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));text.setTextSize(11.5f);text.setLetterSpacing(-.026f);break;
+    case "hbo":word="HB";text.setTypeface(black);text.setTextSize(11);text.setLetterSpacing(.05f);break;
+    case "prime":word="prime";text.setTypeface(bold);text.setTextSize(11);text.setLetterSpacing(-.018f);break;
+    case "disney":word="Disney";word2="+";text.setTypeface(Typeface.create(black,Typeface.ITALIC));text.setTextSize(11.5f);text.setLetterSpacing(-.018f);text2.setTypeface(bold);text2.setTextSize(12);text2.setColor(0xff59c9ff);break;
+    case "hulu":word="hulu";text.setTypeface(black);text.setTextSize(13);text.setLetterSpacing(-.046f);text.setColor(0xff1ce783);break;
+    case "paramount":word2="+";text2.setTypeface(bold);text2.setTextSize(14);break;
+    case "warner":word="WB";text.setTypeface(black);text.setTextSize(8.2f);text.setLetterSpacing(-.024f);text.setTextAlign(Paint.Align.CENTER);break;
+    case "pixar":word="PIXAR";text.setTypeface(black);text.setTextSize(10);text.setLetterSpacing(.16f);break;
+   }
+   w=width();
+   if("disney".equals(id))arc=new LinearGradient(0,0,w,0,new int[]{0x002f7bff,0xff59c9ff,0xffe6fbff},new float[]{0,.35f,1},Shader.TileMode.CLAMP);
+  }
+  private float width(){
+   float t=text.measureText(word),t2=text2.measureText(word2);
+   switch(id){
+    case "netflix":return 17*14/24f;
+    case "apple":case "pixar":return 18+t;
+    case "hbo":return t+.4f+7.8f;
+    case "prime":return Math.max(t,30);
+    case "disney":return t+1+t2;
+    case "hulu":return t;
+    case "paramount":return 14+t2;
+    case "warner":return 18*20/23f;
+    default:return 1;
+   }
+  }
+  @Override public int getIntrinsicWidth(){return (int)Math.ceil(w*d);}
+  @Override public int getIntrinsicHeight(){return Math.round(H*d);}
   @Override public void draw(Canvas c){
-   Rect b=getBounds();c.save();c.translate(b.left,b.top);c.scale(b.width()/24f,b.height()/24f);
-   if(kind==0){c.drawRect(4,2,8.5f,22,fill);c.drawRect(15.5f,2,20,22,fill);path.reset();path.moveTo(4,2);path.lineTo(8.5f,2);path.lineTo(15.5f,22);path.lineTo(11,22);path.close();c.drawPath(path,fill);}
-   else if(kind==1){path.reset();path.moveTo(12,6.4f);path.rCubicTo(-2.3f,-1.9f,-5.8f,-1.2f,-7.2f,1.5f);path.rCubicTo(-2,3.7f,.1f,9.8f,3.5f,11.8f);path.rCubicTo(1.2f,.7f,2.2f,.2f,3.7f,.2f);path.rCubicTo(1.5f,0,2.5f,.5f,3.7f,-.2f);path.rCubicTo(3.4f,-2,5.5f,-8.1f,3.5f,-11.8f);path.rCubicTo(-1.4f,-2.7f,-4.9f,-3.4f,-7.2f,-1.5f);path.close();c.drawPath(path,fill);
-    path.reset();path.moveTo(12.4f,5.6f);path.rCubicTo(.2f,-1.9f,1.5f,-3.2f,3.3f,-3.4f);path.rCubicTo(0,1.9f,-1.5f,3.4f,-3.3f,3.4f);path.close();c.drawPath(path,fill);}
-   else if(kind==2){line.setStrokeWidth(2.4f);path.reset();path.moveTo(3.5f,14.5f);path.cubicTo(8.3f,18.7f,16,18.8f,21,14.8f);c.drawPath(path,line);line.setStrokeWidth(2.2f);path.reset();path.moveTo(17.3f,12.2f);path.lineTo(21.5f,13.3f);path.lineTo(20.2f,17.4f);c.drawPath(path,line);}
-   else if(kind==3){path.reset();path.moveTo(3.5f,20.5f);path.lineTo(12,6);path.lineTo(20.5f,20.5f);path.close();c.drawPath(path,fill);fill.setColor(back);path.reset();path.moveTo(9.6f,11.4f);path.lineTo(12,6);path.lineTo(14.4f,11.4f);path.lineTo(12,13);path.close();c.drawPath(path,fill);fill.setColor(Color.WHITE);
-    float[][] stars={{5,9.2f},{8,5.4f},{12,2.6f},{16,5.4f},{19,9.2f}};for(float[] s:stars)c.drawCircle(s[0],s[1],1.4f,fill);}
-   else{line.setStrokeWidth(2.2f);path.reset();path.moveTo(4.5f,3);path.lineTo(19.5f,3);path.lineTo(19.5f,11.5f);path.cubicTo(19.5f,16.1f,16.5f,19.4f,12,21);path.cubicTo(7.5f,19.4f,4.5f,16.1f,4.5f,11.5f);path.close();c.drawPath(path,line);line.setStrokeWidth(1.9f);path.reset();path.moveTo(8,8);path.lineTo(9.6f,15);path.lineTo(12,10);path.lineTo(14.4f,15);path.lineTo(16,8);c.drawPath(path,line);}
+   Rect b=getBounds();c.save();c.translate(b.left,b.top);c.scale(d,d);fill.setShader(null);fill.setColor(Color.WHITE);line.setShader(null);
+   switch(id){
+    case "netflix":{c.save();c.translate(0,2.5f);c.scale(17/24f,17/24f);
+     path.reset();path.moveTo(0,0);path.lineTo(4.5f,0);path.lineTo(4.5f,23.3f);path.quadTo(2.2f,23.5f,0,24.3f);path.close();fill.setShader(left);c.drawPath(path,fill);
+     path.reset();path.moveTo(9.5f,-.3f);path.quadTo(11.8f,.5f,14,0);path.lineTo(14,24);path.lineTo(9.5f,24);path.close();fill.setShader(right);c.drawPath(path,fill);
+     fill.setShader(null);fill.setColor(0xffe50914);path.reset();path.moveTo(0,0);path.lineTo(4.5f,0);path.lineTo(14,24);path.lineTo(9.5f,24);path.close();c.drawPath(path,fill);c.restore();break;}
+    case "apple":{c.save();c.translate(0,4);c.scale(14/24f,14/24f);apple(c);c.restore();c.drawText(word,18,14.7f,text);break;}
+    case "hbo":{c.drawText(word,0,14.9f,text);float x=text.measureText(word)+.4f+3.9f;line.setColor(Color.WHITE);line.setStrokeWidth(1.6f);c.drawCircle(x,CY,3.1f,line);c.drawCircle(x,CY,1,fill);break;}
+    case "prime":{float t=text.measureText(word);c.drawText(word,(w-t)/2,11.6f,text);c.save();c.translate((w-30)/2,12);line.setColor(0xff1a98ff);line.setStrokeWidth(1.9f);
+     path.reset();path.moveTo(1.5f,1.2f);path.rCubicTo(7,4.6f,18,4.8f,25.5f,.6f);c.drawPath(path,line);line.setStrokeWidth(1.7f);path.reset();path.moveTo(24.2f,.6f);path.rLineTo(3.6f,.9f);path.rLineTo(-1,3.3f);c.drawPath(path,line);c.restore();break;}
+    case "disney":{line.setShader(arc);line.setStrokeWidth(1.6f);path.reset();path.moveTo(1,10.6f);path.cubicTo(12,2.2f,w*.62f,.6f,w-1,7.6f);c.drawPath(path,line);line.setShader(null);
+     c.drawText(word,0,16,text);c.drawText(word2,text.measureText(word)+1,16,text2);break;}
+    case "hulu":c.drawText(word,0,15.9f,text);break;
+    case "paramount":{c.save();c.translate(0,2.5f);c.scale(17/24f,17/24f);fill.setColor(0xff2f7bff);path.reset();path.moveTo(3,21);path.lineTo(12,8);path.lineTo(21,21);path.close();c.drawPath(path,fill);
+     fill.setColor(0xe6ffffff);path.reset();path.moveTo(9.7f,11.3f);path.lineTo(12,8);path.lineTo(14.3f,11.3f);path.lineTo(12,12.8f);path.close();c.drawPath(path,fill);
+     fill.setColor(Color.WHITE);c.drawCircle(4.2f,10.6f,1.25f,fill);c.drawCircle(6.6f,6.6f,1.25f,fill);c.drawCircle(10,4,1.25f,fill);c.drawCircle(14,4,1.25f,fill);c.drawCircle(17.4f,6.6f,1.25f,fill);c.drawCircle(19.8f,10.6f,1.25f,fill);
+     c.restore();c.drawText(word2,14,16.3f,text2);break;}
+    case "warner":{c.save();c.translate(0,2);c.scale(18/23f,18/23f);path.reset();path.moveTo(1.5f,1.5f);path.lineTo(18.5f,1.5f);path.lineTo(18.5f,12);path.cubicTo(18.5f,16.9f,15.1f,20.2f,10,21.9f);path.cubicTo(4.9f,20.2f,1.5f,16.9f,1.5f,12);path.close();
+     fill.setColor(0xff1f6fe8);c.drawPath(path,fill);line.setColor(0x55ffffff);line.setStrokeWidth(.8f);c.drawPath(path,line);c.drawText(word,10,13.6f,text);c.restore();break;}
+    case "pixar":{c.save();c.translate(0,4);c.scale(14/24f,14/24f);base.set(2,19.8f,12,22.4f);c.drawRoundRect(base,1.3f,1.3f,fill);line.setColor(Color.WHITE);line.setStrokeWidth(1.9f);
+     path.reset();path.moveTo(7,20.2f);path.lineTo(10,12.6f);path.lineTo(13.4f,5.2f);c.drawPath(path,line);path.reset();path.moveTo(12.4f,4.4f);path.lineTo(15,2.4f);path.lineTo(21.6f,7.6f);path.lineTo(16.6f,11.6f);path.close();c.drawPath(path,fill);
+     c.restore();c.drawText(word,18,14.6f,text);break;}
+   }
    c.restore();
   }
-  @Override public void setAlpha(int a){fill.setAlpha(a);line.setAlpha(a);}@Override public void setColorFilter(ColorFilter f){fill.setColorFilter(f);line.setColorFilter(f);}@Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}
+  /** The apple, on a 24-unit square. */
+  private void apple(Canvas c){path.reset();path.moveTo(12,6.4f);path.rCubicTo(-2.3f,-1.9f,-5.8f,-1.2f,-7.2f,1.5f);path.rCubicTo(-2,3.7f,.1f,9.8f,3.5f,11.8f);path.rCubicTo(1.2f,.7f,2.2f,.2f,3.7f,.2f);path.rCubicTo(1.5f,0,2.5f,.5f,3.7f,-.2f);path.rCubicTo(3.4f,-2,5.5f,-8.1f,3.5f,-11.8f);path.rCubicTo(-1.4f,-2.7f,-4.9f,-3.4f,-7.2f,-1.5f);path.close();c.drawPath(path,fill);
+   path.reset();path.moveTo(12.4f,5.6f);path.rCubicTo(.2f,-1.9f,1.5f,-3.2f,3.3f,-3.4f);path.rCubicTo(0,1.9f,-1.5f,3.4f,-3.3f,3.4f);path.close();c.drawPath(path,fill);}
+  @Override public void setAlpha(int a){fill.setAlpha(a);line.setAlpha(a);text.setAlpha(a);text2.setAlpha(a);}
+  @Override public void setColorFilter(ColorFilter f){fill.setColorFilter(f);line.setColorFilter(f);text.setColorFilter(f);text2.setColorFilter(f);}
+  @Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}
  }
  static final class FilterIcon extends Drawable {
   private final Paint pen=new Paint(Paint.ANTI_ALIAS_FLAG);private final int size;

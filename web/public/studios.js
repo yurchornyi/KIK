@@ -17,19 +17,27 @@ export function studiosFor(details={}){
  return STUDIOS.filter(s=>(details.networks||[]).some(n=>s.networks.includes(n.id))||
   (details.production_companies||[]).some(c=>s.companies.some(name=>normalize(name)===normalize(c.name)))).map(s=>s.id);
 }
-/** One emblem per studio, drawn in KIK's own hand (no brand files): a white 24-unit pictogram beside a short wordmark. */
-const GLYPHS={
- netflix:'<path d="M4 2h4.5v20H4zM15.5 2H20v20h-4.5zM4 2h4.5l7 20h-4.5z"/>',
- apple:'<path d="M12 6.4c-2.3-1.9-5.8-1.2-7.2 1.5-2 3.7.1 9.8 3.5 11.8 1.2.7 2.2.2 3.7.2s2.5.5 3.7-.2c3.4-2 5.5-8.1 3.5-11.8-1.4-2.7-4.9-3.4-7.2-1.5z"/><path d="M12.4 5.6c.2-1.9 1.5-3.2 3.3-3.4 0 1.9-1.5 3.4-3.3 3.4z"/>',
- prime:'<path d="M3.5 14.5c4.8 4.2 12.5 4.3 17.5.3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M17.3 12.2l4.2 1.1-1.3 4.1" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
- paramount:'<path d="M3.5 20.5 12 6l8.5 14.5z"/><path d="M9.6 11.4 12 6l2.4 5.4-2.4 1.6z" fill="#111"/><circle cx="5" cy="9.2" r="1.4"/><circle cx="8" cy="5.4" r="1.4"/><circle cx="12" cy="2.6" r="1.4"/><circle cx="16" cy="5.4" r="1.4"/><circle cx="19" cy="9.2" r="1.4"/>',
- warner:'<path d="M4.5 3h15v8.5c0 4.6-3 7.9-7.5 9.5C7.5 19.4 4.5 16.1 4.5 11.5z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M8 8l1.6 7 2.4-5 2.4 5L16 8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>'
-};
-const WORDS={netflix:'',apple:'tv+',hbo:'HBO',prime:'prime',disney:'Disney+',hulu:'hulu',paramount:'+',warner:'WB',pixar:'PIXAR'};
+/** One emblem per studio, drawn in KIK's own hand (no brand files): the studio's mark in its own colours on a dark pill
+ *  (owner's pick «А», 14.11), the same as Studios.Mark on the TV. Gradient ids are unique per badge: a badge hidden with
+ *  display:none must not hold the only copy another badge points at. */
+let marks=0;
+const APPLE='<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 6.4c-2.3-1.9-5.8-1.2-7.2 1.5-2 3.7.1 9.8 3.5 11.8 1.2.7 2.2.2 3.7.2s2.5.5 3.7-.2c3.4-2 5.5-8.1 3.5-11.8-1.4-2.7-4.9-3.4-7.2-1.5z"/><path d="M12.4 5.6c.2-1.9 1.5-3.2 3.3-3.4 0 1.9-1.5 3.4-3.3 3.4z"/></svg>';
+const word=(text,extra='')=>`<span class="studio-word">${text}</span>${extra}`;
+function mark(id){const g='studio-mark-'+(++marks);switch(id){
+ case 'netflix':return `<svg width="10" height="17" viewBox="0 0 14 24" aria-hidden="true"><defs><linearGradient id="${g}l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a0510"/><stop offset=".45" stop-color="#b1060f"/></linearGradient><linearGradient id="${g}r" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#7a0510"/><stop offset=".45" stop-color="#b1060f"/></linearGradient></defs><path d="M0 0h4.5v23.3Q2.2 23.5 0 24.3z" fill="url(#${g}l)"/><path d="M9.5-.3Q11.8.5 14 0v24H9.5z" fill="url(#${g}r)"/><path d="M0 0h4.5L14 24H9.5z" fill="#e50914"/></svg>`;
+ case 'apple':return APPLE+word('tv+');
+ case 'hbo':return word('HB','<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.1" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="5" cy="5" r="1" fill="#fff"/></svg>');
+ case 'prime':return `<span class="studio-stack">${word('prime')}<svg width="30" height="6.6" viewBox="0 0 30 6.6" aria-hidden="true"><path d="M1.5 1.2c7 4.6 18 4.8 25.5.6" fill="none" stroke="#1a98ff" stroke-width="1.9" stroke-linecap="round"/><path d="M24.2.6l3.6.9-1 3.3" fill="none" stroke="#1a98ff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+ case 'disney':return `<span class="studio-arc"><svg width="54" height="12" viewBox="0 0 54 12" aria-hidden="true"><defs><linearGradient id="${g}" x1="0" x2="1"><stop offset="0" stop-color="#2f7bff" stop-opacity="0"/><stop offset=".35" stop-color="#59c9ff"/><stop offset="1" stop-color="#e6fbff"/></linearGradient></defs><path d="M3 11C14 1 38-1 52 8" fill="none" stroke="url(#${g})" stroke-width="1.6" stroke-linecap="round"/></svg>${word('Disney','<i>+</i>')}</span>`;
+ case 'hulu':return word('hulu');
+ case 'paramount':return '<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21 12 8l9 13z" fill="#2f7bff"/><path d="M9.7 11.3 12 8l2.3 3.3-2.3 1.5z" fill="#fff" opacity=".9"/><g fill="#fff"><circle cx="4.2" cy="10.6" r="1.25"/><circle cx="6.6" cy="6.6" r="1.25"/><circle cx="10" cy="4" r="1.25"/><circle cx="14" cy="4" r="1.25"/><circle cx="17.4" cy="6.6" r="1.25"/><circle cx="19.8" cy="10.6" r="1.25"/></g></svg>'+word('+');
+ case 'warner':return '<svg width="15.5" height="18" viewBox="0 0 20 23" aria-hidden="true"><path d="M1.5 1.5h17V12c0 4.9-3.4 8.2-8.5 9.9C4.9 20.2 1.5 16.9 1.5 12z" fill="#1f6fe8" stroke="#ffffff55" stroke-width=".8"/><text x="10" y="13.6" text-anchor="middle" font-weight="900" font-size="8.2" fill="#fff" letter-spacing="-.2">WB</text></svg>';
+ case 'pixar':return '<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><rect x="2" y="19.8" width="10" height="2.6" rx="1.3"/><path d="M7 20.2 10 12.6 13.4 5.2" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.4 4.4 15 2.4 21.6 7.6 16.6 11.6z"/></svg>'+word('PIXAR');
+ default:return '';
+}}
 export function studioBadge(ids,document=globalThis.document){
  const studio=(ids||[]).map(studioById).find(Boolean);if(!studio)return null;
- const badge=document.createElement('span');badge.className='studio-badge studio-'+studio.id;
- if(GLYPHS[studio.id]){const glyph=document.createElement('span');glyph.className='studio-glyph';glyph.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+GLYPHS[studio.id]+'</svg>';badge.append(glyph);}
- if(WORDS[studio.id]){const word=document.createElement('span');word.className='studio-word';word.textContent=WORDS[studio.id];badge.append(word);}
+ const badge=document.createElement('span');badge.className='studio-badge studio-'+studio.id;badge.innerHTML=mark(studio.id);
  badge.title=studio.name;badge.setAttribute('aria-label','Студія / платформа: '+studio.name);badge.dataset.studio=studio.id;return badge;
 }
+

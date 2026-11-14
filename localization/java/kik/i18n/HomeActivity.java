@@ -248,7 +248,8 @@ public final class HomeActivity extends Activity {
  }
 
  // ---------- data ----------
- static final String[][] ROWS={{"Нове на KIK","","last"},{"Нові фільми","films","last"},{"Нові серіали","series","last"},{"Популярне","","popular"},{"Зараз дивляться","","watching"},{"Мультфільми","cartoons","last"},{"Аніме","animation","last"}};
+ /** Title, category, filter; a fourth column marks a row of new releases only (FreshPolicy: this year and last). */
+ static final String[][] ROWS={{"Нове на KIK","","last","new"},{"Нові фільми","films","last","new"},{"Нові серіали","series","last","new"},{"Популярне","","popular"},{"Зараз дивляться","","watching"},{"Мультфільми","cartoons","last"},{"Аніме","animation","last"}};
  private static long refreshedAt;
  private static final Map<String,String[]> DETAILS=new ConcurrentHashMap<String,String[]>();
  private void load(){
@@ -359,7 +360,14 @@ public final class HomeActivity extends Activity {
    try{Row r=new Row(Holidays.shelfTitle(shelf));for(Site.Card c:Site.holidayFilms(shelf)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=20)break;}festive[0]=r;}
    catch(Exception e){Log.w("KIK","Home holiday shelf "+shelf+": "+e);}},"kik-home-shelf");threads.add(t);t.start();}
   for(int k=0;k<ROWS.length;k++){final int idx=k;Thread t=new Thread(()->{
-   try{Row r=new Row(ROWS[idx][0]);for(Site.Card c:Site.list(ROWS[idx][1],null,ROWS[idx][2],1)){Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}out[idx]=r;}
+   try{Row r=new Row(ROWS[idx][0]);final boolean onlyNew=ROWS[idx].length>3;final int thisYear=Calendar.getInstance().get(Calendar.YEAR);Set<String> seen=new HashSet<String>();
+    // «Нове» rows: the site's «last» list also holds old films it has just added, so they are skipped and a page or two more is read.
+    for(int page=1;page<=(onlyNew?FreshPolicy.PAGES:1)&&r.items.size()<15;page++){
+     List<Site.Card> cards;try{cards=Site.list(ROWS[idx][1],null,ROWS[idx][2],page);}catch(IOException e){if(page==1)throw e;break;}
+     for(Site.Card c:cards){if(onlyNew&&!FreshPolicy.fresh(c.year(),thisYear)||!seen.add(c.link))continue;Item i=new Item();i.link=c.link;i.title=c.title;i.poster=c.poster;i.year=c.year();i.genre=c.genre();r.items.add(i);if(r.items.size()>=15)break;}
+     if(Site.lastRaw()==0)break;
+    }
+    out[idx]=r;}
    catch(Exception e){Log.w("KIK","Home row "+ROWS[idx][0]+": "+e);if(rowError==null)rowError=e;}});
    threads.add(t);t.start();
    if(k==0)try{t.join();}catch(InterruptedException ignored){} // the first request passes the bot check for the rest

@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parent.parent
 CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 svg=(ROOT/'web/public/icon.svg').read_text()
 defs=re.search(r'<defs>.*</defs>',svg,re.S).group(0)
-mark=re.search(r'<g transform="translate\(72\.4 169\.6\) scale\(3\.6\)"[^>]*>(.*)</g></svg>',svg,re.S).group(1)
+mark=re.search(r'<g transform="translate\([^)]*\) scale\([^)]*\)"[^>]*>(.*)</g></svg>',svg,re.S).group(1)
 def page(w,h,scale):
  x,y,k=(w-102*scale)/2,(h-48*scale)/2,scale/3.6
  return ('<!doctype html><html><body style="margin:0"><svg xmlns="http://www.w3.org/2000/svg" width="%s" height="%s" viewBox="0 0 %s %s">'%(w,h,w,h)+defs+
