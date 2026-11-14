@@ -15,7 +15,10 @@
 import {resolve} from './holiday-films.mjs';
 import {titleKey} from './sync.mjs';
 
-const API='https://api.themoviedb.org/3',DAY=86400000,RETRY=600000,BUDGET=20000;
+const API='https://api.themoviedb.org/3',DAY=86400000,RETRY=600000,BUDGET=20000,BUSY_PAUSE=1200;
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+/** The source busy: background work takes only a slot about to be free (catalogue.mjs sourceSlot). Not a failure. */
+const busy=e=>!!e?.sourceBusy&&!e?.sourcePaused;
 export const SHELVES={films:{limit:10},series:{limit:10},cartoons:{limit:15},anime:{limit:15},documentary:{limit:10},'new-documentary':{limit:15}};
 // TMDB's series can be a documentary and a reality, talk or news show at once: those stay out of «Документальне».
 const NOT_DOCUMENTARY=[10764,10767,10763];
@@ -69,13 +72,13 @@ export function freshRelease(card,now=Date.now()){const year=Number(String(card?
  *  shown a series and a film in turns. The pages are read one after another, as background work takes one source slot at
  *  a time (14.11: read side by side, one section was refused as busy and the shelf came back partial). A page that fails
  *  or the budget running out leaves what was read, `partial`, so the server does not keep it; nothing read at all fails. */
-async function freshShelf(id,{list,now,limit,budget}){
+async function freshShelf(id,{list,now,limit,budget,pause}){
  if(typeof list!=='function')throw Object.assign(Error('Полиця тимчасово недоступна'),{status:503});
  const {genre,categories}=FRESH[id],started=now(),lists=[];let partial=false,failure=null;
  for(const category of categories){const out=[];lists.push(out);
   for(let page=1;page<=FRESH_PAGES&&out.length<limit;page++){
    if(now()-started>budget){partial=true;break;}
-   let cards;try{cards=await list({category,genre,filter:'last',page});}catch(e){partial=true;failure??=e;break;}
+   let cards;try{cards=await list({category,genre,filter:'last',page});}catch(e){if(busy(e)&&now()-started<=budget){await pause(BUSY_PAUSE);page--;continue;}partial=true;failure??=e;break;}
    out.push(...(cards||[]).filter(c=>freshRelease(c,now())));if(!cards?.length)break;}
  }
  if(failure&&lists.every(l=>!l.length))throw failure;
@@ -96,17 +99,24 @@ async function request(path,token,fetcher){
  * (a failed search again after ten minutes); no new search starts after `budget` ms, and a shelf cut short by that or by
  * an error is `partial`, so the server does not keep it and the next request goes on from here.
  */
-export async function shelf(id,{token,search,list,fetcher=globalThis.fetch,now=Date.now,budget=BUDGET,cache=memo}={}){
+export async function shelf(id,{token,search,list,fetcher=globalThis.fetch,now=Date.now,budget=BUDGET,cache=memo,pause=sleep}={}){
  if(!Object.hasOwn(SHELVES,id))throw Object.assign(Error('Невідома полиця'),{status:400});
- if(Object.hasOwn(FRESH,id))return freshShelf(id,{list,now,limit:SHELVES[id].limit,budget});
+ if(Object.hasOwn(FRESH,id))return freshShelf(id,{list,now,limit:SHELVES[id].limit,budget,pause});
  if(!String(token||'').trim())throw Object.assign(Error('Полиця тимчасово недоступна'),{status:503});
  const started=now(),lists=await Promise.all(shelfQueries(id,started).map(async([kind,path,tier=0])=>({kind,tier,results:await request(path,token,fetcher)})));
  const items=[],seen=new Set(),limit=SHELVES[id].limit;let partial=false;
  for(const entry of candidates(id,lists)){
   let hit=cache.get(entry.id);
   if(!hit||hit.until<=now()){
-   if(now()-started>budget){partial=true;break;}
-   try{hit={card:await resolve(entry,search),until:now()+DAY};}catch(e){hit={failed:true,until:now()+RETRY};console.warn('KIK shelf',id,entry.queries[0],e?.message);}
+   // A busy source is not a failure to remember for ten minutes (14.11: after a new edge key five shelves were built at
+   // once, refused each other's searches as busy, and stayed empty on the phone and the TV): the same title is asked again
+   // after a pause, while the budget lasts.
+   hit=null;
+   while(!hit){
+    if(now()-started>budget){partial=true;break;}
+    try{hit={card:await resolve(entry,search),until:now()+DAY};}catch(e){if(busy(e)){await pause(BUSY_PAUSE);continue;}hit={failed:true,until:now()+RETRY};console.warn('KIK shelf',id,entry.queries[0],e?.message);}
+   }
+   if(!hit)break;
    if(cache.size>=600)cache.delete(cache.keys().next().value);cache.set(entry.id,hit);
   }
   if(hit.failed){partial=true;continue;}

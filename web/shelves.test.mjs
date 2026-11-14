@@ -101,3 +101,18 @@ test('«Нові документальні» reads its pages one after another 
  clock=NOW;const slow=await shelf('new-documentary',{list:async p=>{clock+=30000;return list(p);},now:()=>clock,budget:20000});
  assert.equal(slow.partial,true,'out of time: not kept');assert.deepEqual(slow.items.map(i=>i.title),['series1']);
 });
+
+test('a busy source is asked again after a pause, not remembered as a failure; out of budget the shelf is partial',async()=>{
+ const busyError=()=>Object.assign(Error('busy'),{sourceBusy:true,status:503});
+ const {fetcher}=tmdb({'/3/trending/movie/week':[movie(700,'Кино 1','Movie 1','2026-02-01'),movie(701,'Кино 2','Movie 2','2026-02-01')],'/3/trending/tv/week':[]});
+ let refusals=2,clock=NOW;const pauses=[];const search=async({query})=>{if(refusals>0){refusals--;throw busyError();}return /^Кино \d$/.test(query)?[card('films','7'+query.slice(-1)+'-kino','Кино '+query.slice(-1),2026)]:[];};
+ const cache=new Map(),pause=async ms=>{pauses.push(ms);clock+=ms;};
+ const r=await shelf('films',{token:'t',fetcher,search,cache,now:()=>clock,pause});
+ assert.deepEqual(r.items.map(i=>i.title),['Кино 1','Кино 2']);assert.equal(r.partial,false);assert.equal(pauses.length,2);
+ assert.ok([...cache.values()].every(h=>!h.failed),'nothing remembered as failed');
+ const always=await shelf('films',{token:'t',fetcher,search:async()=>{throw busyError();},cache:new Map(),now:()=>clock,pause,budget:5000});
+ assert.deepEqual(always.items,[]);assert.equal(always.partial,true,'the budget ends the waiting');
+ let busyOnce=true;const list=async({category,page})=>{if(busyOnce){busyOnce=false;throw busyError();}return page===1&&category==='series'?[{link:'https://hdrezka.sh/series/documentary/90-doc-2026.html',title:'Doc',info:'2026, США'}]:[];};
+ const fresh=await shelf('new-documentary',{list,now:()=>clock,pause});
+ assert.deepEqual(fresh.items.map(i=>i.title),['Doc'],'the busy page is read again');assert.equal(fresh.partial,false);
+});
