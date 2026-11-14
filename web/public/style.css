@@ -28,16 +28,22 @@ select{padding-right:44px;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 .studio-hbo{gap:1px}.studio-hbo .studio-word{font-weight:900;letter-spacing:.5px}
 .studio-stack{display:flex;flex-direction:column;align-items:center}.studio-prime .studio-word{font-weight:700;letter-spacing:-.2px;margin-bottom:-2px}
 .studio-arc{position:relative;display:flex;align-items:center;padding-top:3px}.studio-arc svg{position:absolute;left:-2px;top:-3px}
-.studio-disney .studio-word{font-size:11.5px;font-style:italic;font-weight:900;letter-spacing:-.2px}.studio-disney i{font-size:12px;font-style:normal;font-weight:700;color:#59c9ff;margin-left:1px}
+.studio-disney .studio-word{font-size:10px;font-style:italic;font-weight:900;letter-spacing:-.3px}.studio-disney i{font-size:10.5px;font-style:normal;font-weight:700;color:#59c9ff;margin-left:1px}
 .studio-hulu .studio-word{font-size:13px;font-weight:900;letter-spacing:-.6px;color:#1ce783}
 .studio-paramount{gap:0}.studio-paramount .studio-word{font-size:14px;font-weight:700;margin-left:-3px}
 .studio-warner{padding:0 6px}
 .studio-pixar .studio-word{font-size:10px;font-weight:900;letter-spacing:1.6px}
-.top-ten .shelf-line{grid-auto-columns:calc((100% - 72px)/5)}
-.ranked{display:flex;align-items:flex-end;min-width:0}.ranked .poster{flex:1;min-width:0}
-.rank{flex:none;margin:0 -.1em 46px 0;font:800 clamp(88px,10vw,168px)/.74 "Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;letter-spacing:-.08em;color:var(--bg);-webkit-text-stroke:2px #8c8c92;paint-order:stroke fill;user-select:none}
-@media(min-width:1500px){.top-ten .shelf-line{grid-auto-columns:calc((100% - 108px)/7)}}
-@media(max-width:650px){.top-ten .shelf-line{grid-auto-columns:58%}.rank{margin-bottom:40px;font-size:96px}}
+.studio-natgeo .studio-word{font-size:9.5px;font-weight:800;letter-spacing:.4px}
+.studio-discovery .studio-word{font-size:10.5px;font-weight:700;letter-spacing:-.2px}
+/* The week's Top 10, as on Netflix: every poster the same size and every number as wide as itself before it, «10» too,
+   with the same gap after the poster before it (14.11, owner: the tenth poster came out smaller, then «10 сильно
+   притулено… відстань»). So the line is a flex row and a poster's width comes from the line's own width (cqw): a pair
+   with «10» is just wider. A pair snaps by its number, not by its poster: snapping to the poster hid «1». */
+.top-ten .shelf-line{display:flex;container-type:inline-size;--rank:clamp(88px,10vw,168px);--slot:calc((100cqw - 72px)/5)}
+.ranked{flex:none;display:flex;align-items:flex-end;scroll-snap-align:start}.ranked .poster{flex:none;width:calc(var(--slot) - var(--rank)*.3);z-index:1;scroll-snap-align:none}
+.rank{flex:none;margin:0 -.1em 46px 0;font:800 var(--rank)/.74 "Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;letter-spacing:-.08em;color:var(--bg);-webkit-text-stroke:2px #8c8c92;paint-order:stroke fill;user-select:none;white-space:nowrap}
+@media(min-width:1500px){.top-ten .shelf-line{--slot:calc((100cqw - 108px)/7)}}
+@media(max-width:650px){.top-ten .shelf-line{--slot:58cqw;--rank:96px}.rank{margin-bottom:40px}}
 .detail-studios{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 18px}
 .detail-studio{display:inline-flex;align-items:center;gap:8px;color:#b4b4bd;font-size:12px}
 .detail-studio .studio-badge{position:static;max-width:none}

@@ -141,8 +141,14 @@ public final class BrowseActivity extends Activity {
    if(all)o.setPadding(o.getPaddingLeft()+dp(30),o.getPaddingTop(),o.getPaddingRight(),o.getPaddingBottom());else tick(o,on.contains(x[0]));
    o.setOnClickListener(v->{if(all){on.clear();popup.dismiss();return;}if(!on.remove(x[0]))on.add(x[0]);tick(o,on.contains(x[0]));chosenLook(items.get(0),on.isEmpty());});}
   popup.setOnDismissListener(()->{StringBuilder b=new StringBuilder();for(String[] x:Studios.ALL)if(on.contains(x[0])){if(b.length()>0)b.append(',');b.append(x[0]);}
-   studio=b.toString();paintStudio();if(!studio.equals(before))reload();studioButton.requestFocus();});
+   studio=b.toString();paintStudio();if(!studio.equals(before)&&!ownSection())reload();studioButton.requestFocus();});
   items.get(0).requestFocus();
+ }
+ /** Studios that never make the section on screen open their own (Pixar its cartoons, Hulu its series): filtered by
+  *  them, the section on screen stays empty (14.11, owner). True when it moved, which reloads the list itself. */
+ private boolean ownSection(){
+  List<String> on=studios();if(on.isEmpty())return false;for(String id:on)if(Studios.makes(id,category))return false;
+  String to=Studios.sections(on.get(0))[0];for(String[] x:SECTIONS)if(x[0].equals(to)){selectCategory(x[0],x[1]);return true;}return false;
  }
  private void tick(TextView o,boolean on){android.graphics.drawable.Drawable d=new Studios.CheckIcon(dp(18),on);d.setBounds(0,0,dp(18),dp(18));o.setCompoundDrawables(d,null,null,null);o.setCompoundDrawablePadding(dp(12));chosenLook(o,on);}
  private void chosenLook(TextView o,boolean on){o.setTypeface(on?android.graphics.Typeface.DEFAULT_BOLD:android.graphics.Typeface.DEFAULT);

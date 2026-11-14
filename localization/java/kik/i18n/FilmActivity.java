@@ -13,7 +13,7 @@ import java.util.*;
 public final class FilmActivity extends Activity {
  static Site.Film current;
  private boolean autoplayed;private String link,title,poster,profile;private Site.Film film;private Site.Voice voice,preferred;private String season;private int voiceCheck;
- private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo,studioLabel;private Button watch,later;private ImageView backdrop;private FrameLayout root;private ScrollView page;private Oops oops;
+ private TextView name,original,meta,desc,voiceChip,status,tasteChip,dislikeChip,sourceInfo,studioLabel;private LinearLayout studioRow;private Button watch,later;private ImageView backdrop;private FrameLayout root;private ScrollView page;private Oops oops;
  private LinearLayout body,voices,seasons,episodes,similar;private View similarHeader;private HorizontalScrollView voicesBox;private View epHeader;
  private final Map<String,String> uk=new HashMap<String,String>();
  private int dp(float n){return Ui.dp(this,n);}
@@ -42,7 +42,9 @@ public final class FilmActivity extends Activity {
   name=Ui.bold(this,title==null?"":title,34);name.setLetterSpacing(-0.01f);name.setMaxLines(2);name.setEllipsize(TextUtils.TruncateAt.END);body.addView(name,new LinearLayout.LayoutParams(Ui.contentWidth(this,760,80),-2));
   original=Ui.text(this,"",17,Ui.GREY);body.addView(original);Ui.space(body,8);
   meta=Ui.text(this,"",15,0xffd8d8dc);meta.setTypeface(Ui.MEDIUM);body.addView(meta);Ui.space(body,12);
-  studioLabel=Ui.text(this,"",13,Ui.GREY);studioLabel.setVisibility(View.GONE);body.addView(studioLabel);
+  // The studio as on the website's details: its badge, then its name (14.11, owner: «HBO» stood there as bare text).
+  studioRow=new LinearLayout(this);studioRow.setOrientation(0);studioRow.setGravity(Gravity.CENTER_VERTICAL);studioRow.setVisibility(View.GONE);
+  studioLabel=Ui.text(this,"",13,Ui.GREY);studioRow.addView(studioLabel);body.addView(studioRow);
   desc=Ui.text(this,"",15,0xffd0d0d4);desc.setLineSpacing(0,1.15f);desc.setMaxLines(3);desc.setEllipsize(TextUtils.TruncateAt.END);body.addView(desc,new LinearLayout.LayoutParams(Ui.contentWidth(this,640,80),-2));
   sourceInfo=Ui.text(this,"",13,Ui.GREY);sourceInfo.setVisibility(View.GONE);body.addView(sourceInfo);
   Ui.space(body,20);
@@ -136,7 +138,8 @@ public final class FilmActivity extends Activity {
   if(voice==null&&f.sourceUrl==null){status.setText("Для цього фільму немає доступних доріжок.");status.setVisibility(View.VISIBLE);}
  }
  private void loadStudio(final Site.Film f){
-  final int generation=loadGeneration;Ui.bg(()->{String label="";try{org.json.JSONObject a=FreeSources.get("/api/artwork?link="+FreeSources.enc(f.link)+"&title="+FreeSources.enc(f.title)+"&original="+FreeSources.enc(f.original==null?"":f.original)+"&year="+FreeSources.enc(f.year==null?"":f.year),12000).optJSONObject("artwork");if(a!=null)label=Studios.name(Studios.id(a.optJSONArray("studios")));}catch(Exception ignored){}final String shown=label;Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||film!=f||generation!=loadGeneration)return;studioLabel.setText(shown);studioLabel.setVisibility(shown.isEmpty()?View.GONE:View.VISIBLE);studioLabel.setPadding(0,0,0,shown.isEmpty()?0:dp(10));});});
+  final int generation=loadGeneration;Ui.bg(()->{String label="";try{org.json.JSONObject a=FreeSources.get("/api/artwork?link="+FreeSources.enc(f.link)+"&title="+FreeSources.enc(f.title)+"&original="+FreeSources.enc(f.original==null?"":f.original)+"&year="+FreeSources.enc(f.year==null?"":f.year),12000).optJSONObject("artwork");if(a!=null)label=Studios.id(a.optJSONArray("studios"));}catch(Exception ignored){}final String shown=label;Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||film!=f||generation!=loadGeneration)return;String[] studio=Studios.of(shown);if(studioRow.getChildCount()>1)studioRow.removeViewAt(0);studioRow.setVisibility(studio==null?View.GONE:View.VISIBLE);if(studio==null)return;
+    LinearLayout.LayoutParams bl=new LinearLayout.LayoutParams(-2,dp(22));bl.rightMargin=dp(10);studioRow.addView(Studios.badge(this,studio),0,bl);studioLabel.setText(studio[1]);studioRow.setPadding(0,0,0,dp(10));});});
  }
  private String synopsisAsked;
  /** Three lines that say what the title is about: the description if it fits, else the short synopsis (cached, else asked for once). */
@@ -251,7 +254,9 @@ public final class FilmActivity extends Activity {
   if(film==null)return;if(film.sourceUrl!=null){watch.setText("Перегляд у KIK недоступний");return;}Progress.Entry e=Progress.get(this,link);
   long left=e!=null&&e.dur>e.pos?(e.dur-e.pos+59999)/60000:0;
   if(e!=null&&!e.finished())watch.setText((film.series&&e.season!=null?"▶  Продовжити S"+e.season+"E"+e.episode:"▶  Продовжити")+(left>0?" · ще "+Ui.minutes(left):" з "+Ui.time(e.pos)));
-  else if(film.series&&e!=null&&e.finished())watch.setText("▶  Наступна серія");
+  // After a finished episode: the next one by name, or the last one again when the series has nothing after it (it played
+  // that one from the start under «Наступна серія»; 14.11, owner: «чи воно продовжує звідки я вибрав»).
+  else if(film.series&&e!=null&&e.finished()&&e.season!=null){Site.Episode n=KikPlayerActivity.next(film,e.season,e.episode);watch.setText(n!=null?"▶  Наступна серія S"+n.season+"E"+n.episode:"▶  Переглянути знову S"+e.season+"E"+e.episode);}
   else watch.setText("▶  Дивитися");
   Ui.watched(watch,e!=null&&!e.finished()&&e.dur>0?(float)e.pos/e.dur:0);
  }

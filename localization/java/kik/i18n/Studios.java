@@ -12,7 +12,12 @@ import org.json.*;
 /** Quiet, optional public metadata. Requests never hold up posters, focus or playback. */
 final class Studios {
  /** id, name, the wordmark on the badge (empty: the pictogram alone); the same emblems as the website's studios.js. */
- static final String[][] ALL={{"","Усі студії",""},{"netflix","Netflix",""},{"apple","Apple TV+","tv+"},{"hbo","HBO","HBO"},{"prime","Prime Video","prime"},{"disney","Disney+","Disney+"},{"hulu","Hulu","hulu"},{"paramount","Paramount+","+"},{"warner","Warner Bros.","WB"},{"pixar","Pixar","PIXAR"}};
+ static final String[][] ALL={{"","Усі студії",""},{"netflix","Netflix",""},{"apple","Apple TV+","tv+"},{"hbo","HBO","HBO"},{"prime","Prime Video","prime"},{"disney","Disney+","Disney+"},{"hulu","Hulu","hulu"},{"paramount","Paramount+","+"},{"warner","Warner Bros.","WB"},{"pixar","Pixar","PIXAR"},{"natgeo","National Geographic","NAT GEO"},{"discovery","Discovery","discovery"}};
+ /** Sections a studio makes (the website's studios.js): Pixar only cartoons, Hulu series and cartoons, National Geographic
+  *  and Discovery series and films; null = every one. A studio picked in a section it never makes opens its own. */
+ static String[] sections(String id){switch(id){case "pixar":return new String[]{"cartoons"};case "hulu":return new String[]{"series","cartoons"};case "natgeo":case "discovery":return new String[]{"series","films"};default:return null;}}
+ static boolean makes(String id,String section){String[] own=sections(id);if(own==null)return true;for(String x:own)if(x.equals(section))return true;return false;}
+ static String[] of(String id){if(id!=null&&!id.isEmpty())for(String[] s:ALL)if(s[0].equals(id))return s;return null;}
  static String name(String id){for(String[] s:ALL)if(s[0].equals(id))return s[1];return "";}
  static String id(JSONArray ids){if(ids!=null)for(int i=0;i<ids.length();i++)for(String[] s:ALL)if(!s[0].isEmpty()&&s[0].equals(ids.optString(i)))return s[0];return "";}
  private static final LinkedHashMap<String,String> cache=new LinkedHashMap<String,String>();
@@ -71,11 +76,13 @@ final class Studios {
     case "apple":word="tv+";text.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));text.setTextSize(11.5f);text.setLetterSpacing(-.026f);break;
     case "hbo":word="HB";text.setTypeface(black);text.setTextSize(11);text.setLetterSpacing(.05f);break;
     case "prime":word="prime";text.setTypeface(bold);text.setTextSize(11);text.setLetterSpacing(-.018f);break;
-    case "disney":word="Disney";word2="+";text.setTypeface(Typeface.create(black,Typeface.ITALIC));text.setTextSize(11.5f);text.setLetterSpacing(-.018f);text2.setTypeface(bold);text2.setTextSize(12);text2.setColor(0xff59c9ff);break;
+    case "disney":word="Disney";word2="+";text.setTypeface(Typeface.create(black,Typeface.ITALIC));text.setTextSize(10);text.setLetterSpacing(-.03f);text2.setTypeface(bold);text2.setTextSize(10.5f);text2.setColor(0xff59c9ff);break;
     case "hulu":word="hulu";text.setTypeface(black);text.setTextSize(13);text.setLetterSpacing(-.046f);text.setColor(0xff1ce783);break;
     case "paramount":word2="+";text2.setTypeface(bold);text2.setTextSize(14);break;
     case "warner":word="WB";text.setTypeface(black);text.setTextSize(8.2f);text.setLetterSpacing(-.024f);text.setTextAlign(Paint.Align.CENTER);break;
     case "pixar":word="PIXAR";text.setTypeface(black);text.setTextSize(10);text.setLetterSpacing(.16f);break;
+    case "natgeo":word="NAT GEO";text.setTypeface(bold);text.setTextSize(9.5f);text.setLetterSpacing(.042f);break;
+    case "discovery":word="discovery";text.setTypeface(bold);text.setTextSize(10.5f);text.setLetterSpacing(-.02f);break;
    }
    w=width();
    if("disney".equals(id))arc=new LinearGradient(0,0,w,0,new int[]{0x002f7bff,0xff59c9ff,0xffe6fbff},new float[]{0,.35f,1},Shader.TileMode.CLAMP);
@@ -91,6 +98,8 @@ final class Studios {
     case "hulu":return t;
     case "paramount":return 14+t2;
     case "warner":return 18*20/23f;
+    case "natgeo":return 13+t;
+    case "discovery":return 16+t;
     default:return 1;
    }
   }
@@ -119,6 +128,9 @@ final class Studios {
     case "pixar":{c.save();c.translate(0,4);c.scale(14/24f,14/24f);base.set(2,19.8f,12,22.4f);c.drawRoundRect(base,1.3f,1.3f,fill);line.setColor(Color.WHITE);line.setStrokeWidth(1.9f);
      path.reset();path.moveTo(7,20.2f);path.lineTo(10,12.6f);path.lineTo(13.4f,5.2f);c.drawPath(path,line);path.reset();path.moveTo(12.4f,4.4f);path.lineTo(15,2.4f);path.lineTo(21.6f,7.6f);path.lineTo(16.6f,11.6f);path.close();c.drawPath(path,fill);
      c.restore();c.drawText(word,18,14.6f,text);break;}
+    case "natgeo":{line.setColor(0xffffce00);line.setStrokeWidth(2.2f);c.drawRect(1.1f,4.1f,8.9f,17.9f,line);c.drawText(word,13,14.6f,text);break;}
+    case "discovery":{fill.setColor(0xff2d8cff);c.drawCircle(6.5f,CY,6,fill);line.setColor(Color.WHITE);line.setStrokeWidth(1);base.set(4,CY-6,9,CY+6);c.drawOval(base,line);
+     line.setStrokeWidth(.8f);c.drawLine(.5f,CY,12.5f,CY,line);c.drawLine(1.6f,CY-2.9f,11.4f,CY-2.9f,line);c.drawLine(1.6f,CY+2.9f,11.4f,CY+2.9f,line);c.drawText(word,16,14.8f,text);break;}
    }
    c.restore();
   }

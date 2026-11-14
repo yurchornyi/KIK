@@ -35,6 +35,7 @@ final class Glide {
   @Override protected int computeScrollDeltaToGetChildRectOnScreen(Rect r){return motion==null?super.computeScrollDeltaToGetChildRectOnScreen(r):motion.show(r);}
   @Override public boolean arrowScroll(int direction){return motion.arrow(direction);}
   @Override public void scrollTo(int x,int y){if(motion!=null&&(x!=getScrollX()||y!=getScrollY()))motion.moved();super.scrollTo(x,y);}
+  @Override public void requestChildFocus(View child,View focused){if(motion==null){super.requestChildFocus(child,focused);return;}motion.target=focused;try{super.requestChildFocus(child,focused);}finally{motion.target=null;}}
   @Override protected void onDetachedFromWindow(){motion.stop();super.onDetachedFromWindow();}
  }
 
@@ -57,6 +58,7 @@ final class Glide {
   @Override protected int computeScrollDeltaToGetChildRectOnScreen(Rect r){return motion==null?super.computeScrollDeltaToGetChildRectOnScreen(r):motion.show(r);}
   @Override public boolean arrowScroll(int direction){return motion.arrow(direction);}
   @Override public void scrollTo(int x,int y){if(motion!=null&&(x!=getScrollX()||y!=getScrollY()))motion.moved();super.scrollTo(x,y);}
+  @Override public void requestChildFocus(View child,View focused){if(motion==null){super.requestChildFocus(child,focused);return;}motion.target=focused;try{super.requestChildFocus(child,focused);}finally{motion.target=null;}}
   @Override protected void onDetachedFromWindow(){motion.stop();super.onDetachedFromWindow();}
  }
 
@@ -65,6 +67,10 @@ final class Glide {
   private final ViewGroup box;private final boolean vertical;private final float floor;private final Rect tmp=new Rect();
   /** A shelf's place for the focused card, px from the box's edge; -1 = only bring it into view. */
   int anchor=-1;
+  /** The view taking focus while Android asks to show it: the box's own focus still points at the view before it then
+   *  (ScrollView scrolls before it hands focus down), so a Top 10 card was placed by its poster and its «1» left the
+   *  screen (14.11, owner). */
+  View target;
   private int before,after,margin;
   private float at;private int to;private boolean running,self;private long last;
   Motion(ViewGroup box,boolean vertical){this.box=box;this.vertical=vertical;floor=FocusScrollPolicy.FLOOR_DP*box.getResources().getDisplayMetrics().density;}
@@ -91,7 +97,7 @@ final class Glide {
   /** The focused view's part of the box: the largest view around it that still fits on screen, with what sits just
    *  above it and has nothing to focus (a row's heading, a film's title over its buttons). */
   private int[] section(){
-   View f=box.findFocus();
+   View f=target!=null?target:box.findFocus();
    if(f==null||f==box||box.getChildCount()==0||!(box.getChildAt(0) instanceof ViewGroup))return null;
    ViewGroup content=(ViewGroup)box.getChildAt(0);int room=room();int[] best=null;
    for(View v=f;v!=content;){
