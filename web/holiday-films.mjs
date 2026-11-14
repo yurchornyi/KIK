@@ -35,8 +35,8 @@ export const HOLIDAY_FILMS={
   cartoon(2012,'ParaNorman','Паранорман'),cartoon(2012,'Frankenweenie','Франкенвини'),film(1978,'Halloween','Хэллоуин'),film(1996,'Scream','Крик'),film(2013,'The Conjuring','Заклятие')]
 };
 const LIMIT=15,DAY=86400000,RETRY=600000,BUDGET=8000;
-// The source's sections a kind may come from; series never count, every list is of films.
-const SECTIONS={film:['films','documentary'],cartoon:['cartoons','animation'],any:['films','cartoons','animation','documentary']};
+// The source's sections a kind may come from; a series section counts only for a series (shelves.mjs), holiday lists are of films.
+const SECTIONS={film:['films','documentary'],cartoon:['cartoons','animation'],series:['series','documentary'],any:['films','cartoons','animation','documentary']};
 const yearOf=(card,key)=>Number(String(card.info||'').match(/(?:18|19|20)\d{2}/)?.[0]||key.match(/-((?:18|19|20)\d{2})\.html$/)?.[1])||0;
 
 /** The card of one search that is this entry: `named` when its name is one of the entry's (exactly, or as the start of the card's longer name). */
@@ -44,7 +44,7 @@ export function pickCard(entry,cards){
  let best=null,top=0;
  for(const card of cards||[]){
   let key;try{key=titleKey(card.link);}catch{continue;}
-  const section=key.split('/')[0],year=yearOf(card,key);if(section==='series'||!year||Math.abs(year-entry.year)>1)continue;
+  const section=key.split('/')[0],year=yearOf(card,key);if((section==='series')!==(entry.kind==='series')&&(section==='series'||section==='films')||!year||Math.abs(year-entry.year)>1)continue;
   const name=Math.max(0,...String(card.title||'').split(/\s+\/\s+/).flatMap(part=>entry.queries.map(q=>nameScore(q,part)))),kind=SECTIONS[entry.kind||'any'].includes(section);
   if(name<.9&&!kind)continue;
   // A whole name beats the start of a longer one («Крик» over «Крик 2»), the kind and the exact year come next, then the source's order.
@@ -54,7 +54,7 @@ export function pickCard(entry,cards){
  return best&&{card:best,named:top>=20};
 }
 /** One entry on the catalogue: the first search whose cards name it, else the best card of the first search that had one. */
-async function resolve(entry,search){
+export async function resolve(entry,search){
  let fallback=null;
  for(const query of entry.queries){const found=pickCard(entry,await search({query}));if(found?.named)return found.card;fallback??=found?.card||null;}
  return fallback;

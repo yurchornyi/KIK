@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CataloguePages,catalogueSelection,selectionQuery,MAX_PAGE} from './public/catalogue-view.js';
+import {CataloguePages,catalogueSelection,selectionQuery,MAX_PAGE,SORTS,newRelease} from './public/catalogue-view.js';
 import {cataloguePath,parseGenres} from './catalogue.mjs';
 import {localizedGenres} from './localization.mjs';
 const card=id=>({link:'https://hdrezka.sh/films/drama/'+id+'-film.html',title:'Film '+id});
@@ -66,4 +66,12 @@ test('genre names are shown in Ukrainian from the dictionary without a network c
  const db={prepare:()=>({bind:()=>({all:async()=>({results:[]})})})};
  const out=await localizedGenres(db,[{slug:'drama',name:'Драмы'},{slug:'comedy',name:'Комедии'}]);
  assert.deepEqual(out.map(g=>[g.slug,g.name]),[['drama','Драми'],['comedy','Комедії']]);
+});
+test('«Новинки» keep this year\'s and last year\'s titles only, a series by the year it began',()=>{
+ const now=new Date(2026,10,14),at=(info,source)=>newRelease({info,...(source?{sourceInfo:source}:{})},now);
+ assert.deepEqual(SORTS.find(([v])=>v==='last'),['last','Новинки']);
+ assert.equal(at('2026, США, Драмы'),true);assert.equal(at('2025, Франция, Комедии'),true);assert.equal(at('2027, США, Фэнтези'),true);
+ assert.equal(at('1995, США, Приключения'),false,'an old film the source has just added');assert.equal(at('2024, США, Стендап'),false);
+ assert.equal(at('2016 - ..., США, Фантастика'),false,'a long-running series with a new season');assert.equal(at('2025 - ..., Испания, Драмы'),true);
+ assert.equal(at('',''),false,'no year, no place');assert.equal(at('2012, Япония','2026, Япония, Аниме'),true,'the source\'s own line first');
 });

@@ -109,7 +109,9 @@ public final class BrowseActivity extends Activity {
  private String shownList="";
  private String listSignature(){if("later".equals(mode))return String.valueOf(Progress.later(this));StringBuilder b=new StringBuilder();for(Progress.Entry e:Progress.recent(this))b.append(e.link).append(e.season).append(e.episode).append(e.pos/1000).append(e.finished()).append('\n');return b.toString();}
 
- private static final String[][] ORDERS={{"popular","Популярні"},{"last","Нові"},{"watching","Зараз дивляться"}};
+ /** «Новинки» (filter «last»): what the source added last, kept to this year's and last year's titles (FreshPolicy; 14.11,
+  *  owner: where it says new, it must be new — the source's list also holds old films it has just added). */
+ private static final String[][] ORDERS={{"popular","Популярні"},{"last","Новинки"},{"watching","Зараз дивляться"}};
  private static String sectionName(String slug){for(String[] x:SECTIONS)if(x[0].equals(slug))return x[1];return "Каталог";}
  private static String orderName(String slug){for(String[] x:ORDERS)if(x[0].equals(slug))return x[1];return ORDERS[0][1];}
  private TextView dropButton(String label){return Ui.dropButton(this,label);}
@@ -206,7 +208,8 @@ public final class BrowseActivity extends Activity {
   Ui.bg(()->{
    List<G> items=new ArrayList<G>();String[] heading={"Рекомендовано для вас"};
    try{Recommendations.Snapshot s=Recommendations.snapshot(this,profile);HomeActivity.Row r=Recommendations.row(this,s,new ArrayList<HomeActivity.Row>());if(!"Рекомендовано для вас".equals(r.title))heading[0]=r.title;for(HomeActivity.Item x:r.items){if(x==null)continue;G g=new G();g.link=x.link;g.title=x.title;g.poster=x.poster;g.year=x.year;g.genre=x.genre;g.sub=Ui.join(g.year,g.genre);items.add(g);if(items.size()>=12)break;}}catch(Exception ignored){}
-   if(items.isEmpty())try{heading[0]="Популярне зараз";for(Site.Card c:Site.list("",null,"popular",1)){items.add(of(c));if(items.size()>=12)break;}}catch(Exception ignored){}
+   // Without a taste yet: the week's Top 10 films (web/shelves.mjs), not the source's all-time «popular» (14.11).
+   if(items.isEmpty())try{heading[0]="Популярне цього тижня";for(Site.Card c:Site.shelf("films")){items.add(of(c));if(items.size()>=12)break;}}catch(Exception ignored){}
    Set<String> words=new HashSet<String>();for(G g:items){words.add(g.title);if(g.genre!=null)words.add(g.genre);}Map<String,String> uk=TitleTranslate.resolve(words);
    for(G g:items){String t=uk.get(g.title);if(t!=null)g.title=t;if(g.genre!=null){String gn=uk.get(g.genre);if(gn!=null)g.sub=Ui.join(g.year,gn);}}
    Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||items.isEmpty())return;h.setText(heading[0]);h.setVisibility(View.VISIBLE);
@@ -244,11 +247,13 @@ public final class BrowseActivity extends Activity {
   Ui.bg(()->{
    List<G> items=new ArrayList<G>();Throwable error=null;
    try{
-    // A page can be fully hidden by the country filter: keep paging while the source still has titles.
+    // A page can be fully hidden by the country filter: keep paging while the source still has titles. «Новинки» skip the
+    // old titles the source has just added, so they read on until two rows are full (a few pages at most).
     // A studio page holds only the few titles the source matched: keep asking until a row is full or ~25 s have passed.
-    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;requestedStudio.isEmpty()?tries<5&&items.isEmpty():tries<8&&items.size()<columns&&(items.isEmpty()||android.os.SystemClock.elapsedRealtime()-started<25000);tries++){
+    final boolean onlyNew="catalog".equals(mode)&&requestedStudio.isEmpty()&&"last".equals(requestedFilter);final int thisYear=Calendar.getInstance().get(Calendar.YEAR);
+    if("catalog".equals(mode)||"search".equals(mode))for(int tries=0;requestedStudio.isEmpty()?(onlyNew?tries<FreshPolicy.PAGES+1&&items.size()<2*columns:tries<5&&items.isEmpty()):tries<8&&items.size()<columns&&(items.isEmpty()||android.os.SystemClock.elapsedRealtime()-started<25000);tries++){
      if("search".equals(mode)&&(q==null||q.length()<2))break;reached[0]=next+tries;
-     for(Site.Card c:"catalog".equals(mode)?(requestedStudio.isEmpty()?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.studioList(requestedCategory,requestedGenre,requestedFilter,requestedStudio,reached[0])):Site.search(q,reached[0]))items.add(of(c));
+     for(Site.Card c:"catalog".equals(mode)?(requestedStudio.isEmpty()?Site.list(requestedCategory,requestedGenre,requestedFilter,reached[0]):Site.studioList(requestedCategory,requestedGenre,requestedFilter,requestedStudio,reached[0])):Site.search(q,reached[0])){if(onlyNew&&!FreshPolicy.fresh(c.year(),thisYear))continue;items.add(of(c));}
      studioMore[0]=Site.lastRaw()>0;if(Site.lastRaw()==0)break;}
     else if(next==1&&"history".equals(mode))for(Progress.Entry e:Progress.recent(this)){G g=new G();g.link=e.link;g.title=e.title;g.poster=e.poster;
       g.sub=(e.season!=null&&!"0".equals(e.season)?"S"+e.season+"E"+e.episode+" · ":"")+(e.finished()?"переглянуто":"з "+Ui.time(e.pos));g.progress=e.dur>0?(float)e.pos/e.dur:0;items.add(g);}

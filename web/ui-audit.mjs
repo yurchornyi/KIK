@@ -120,7 +120,7 @@ try{
    if(engine==='chromium'&&(width===390||width===1440))await page.screenshot({path:path.join(output,`${engine}-${width}-studio-picker.png`),animations:'disabled'});
    await page.locator('.dropdown-option').filter({hasText:'HBO'}).click();await page.locator('.studio-chip').waitFor();
    check(engine,'studio-route',new URL(page.url()).hash.includes('studio=hbo'),{width});
-   await page.getByRole('button',{name:/^Жанр каталогу:/}).click();await page.getByRole('option',{name:'Драми',exact:true}).click();await page.getByRole('button',{name:/^Порядок каталогу:/}).click();await page.getByRole('option',{name:'Нові надходження',exact:true}).click();
+   await page.getByRole('button',{name:/^Жанр каталогу:/}).click();await page.getByRole('option',{name:'Драми',exact:true}).click();await page.getByRole('button',{name:/^Порядок каталогу:/}).click();await page.getByRole('option',{name:'Новинки',exact:true}).click();
    check(engine,'studio-combined-filters',new URL(page.url()).hash.includes('studio=hbo')&&new URL(page.url()).hash.includes('g=drama')&&new URL(page.url()).hash.includes('s=last'),{width});
    await inspect(page,'studio-selected',{engine});
    if(engine==='chromium'&&(width===390||width===1440)){await page.screenshot({path:path.join(output,`${engine}-${width}-studio-selected.png`),animations:'disabled'});await page.locator('.catalogue-toolbar').screenshot({path:path.join(output,`${engine}-${width}-studio-toolbar.png`),animations:'disabled'});}
