@@ -196,17 +196,20 @@ function wantedPages(model){const pages=tastePages(model);return [...pages.map(p
 /** True once everything the taste asks for has arrived (or failed): the AI order is asked for only then, once, with all the candidates. */
 function tasteSettled(signals){return tasteSeeds(signals).every(s=>seedFacts.has(keyOf(s.link)))&&wantedPages(tasteModel(signals)).every(page=>genrePages.has(page));}
 /** The source was busy with what viewers opened (a 503 for a request fetched ahead): that piece is asked again in 20 s,
- *  twice at most, instead of counting as empty. */
-const warmRetries=new Map();let warmTimer=0;
-function retryWarm(e,what){if(e?.status!==503)return false;const n=(warmRetries.get(what)||0)+1;if(n>2)return false;warmRetries.set(what,n);clearTimeout(warmTimer);warmTimer=setTimeout(()=>warmTaste(),20000);return true;}
+ *  twice at most, instead of counting as empty. Until then a repaint does not ask for it: every home repaint calls
+ *  warmTaste, so a busy title used to be asked three times within a second of opening KIK, taking the source's slots
+ *  from the page's own requests (14.11). */
+const warmRetries=new Map(),warmUntil=new Map();let warmTimer=0;
+function retryWarm(e,what){if(e?.status!==503)return false;const n=(warmRetries.get(what)||0)+1;if(n>2)return false;warmRetries.set(what,n);warmUntil.set(what,Date.now()+19000);clearTimeout(warmTimer);warmTimer=setTimeout(()=>warmTaste(),20000);return true;}
+const warmWaits=what=>(warmUntil.get(what)||0)>Date.now();
 /** Loads what the taste asks for: the facts of its seeds and its catalogue pages. The home rows repaint when they arrive. */
 async function warmTaste(){if(!state.user||!state.profile)return;const signals=tasteSignals(),jobs=[];
- for(const s of tasteSeeds(signals)){const key=keyOf(s.link);if(seedFacts.has(key)||seedLoading.has(key))continue;seedLoading.add(key);
+ for(const s of tasteSeeds(signals)){const key=keyOf(s.link);if(seedFacts.has(key)||seedLoading.has(key)||warmWaits('seed:'+key))continue;seedLoading.add(key);
   // warm=1: fetched ahead for the home rows, behind anything the viewer opens (server.mjs); a busy source is asked again later.
   jobs.push(api('/api/similar?link='+encodeURIComponent(s.link)+'&warm=1')
    // An answer without TMDB's part (it failed) or of the old shape (the browser's own cache) serves this visit and is asked again on the next.
    .then(r=>seedFacts.set(key,{at:Date.now(),keep:Array.isArray(r.parts)&&!r.partial,info:(r.genres||[]).join(', '),picks:(r.items||[]).slice(0,r.picks||0).map(slim),parts:laterParts(r.parts||[])}),e=>{if(!retryWarm(e,'seed:'+key))seedFacts.set(key,{at:Date.now(),keep:false,info:'',picks:[],parts:[]});}).finally(()=>seedLoading.delete(key)));}
- for(const page of wantedPages(tasteModel(signals))){if(genrePages.has(page)||pageLoading.has(page))continue;pageLoading.add(page);const [category,genre,filter]=page.split('/');
+ for(const page of wantedPages(tasteModel(signals))){if(genrePages.has(page)||pageLoading.has(page)||warmWaits('page:'+page))continue;pageLoading.add(page);const [category,genre,filter]=page.split('/');
   jobs.push(api('/api/catalogue?category='+category+'&genre='+genre+'&filter='+filter+'&warm=1').then(r=>genrePages.set(page,r.items||[]),e=>{if(!retryWarm(e,'page:'+page))genrePages.set(page,[]);}).finally(()=>pageLoading.delete(page)));}
  if(!jobs.length)return;await Promise.all(jobs);saveSeeds();recsMemo=null;if(state.tab==='home')backgroundRender();recommendations();}
 /**

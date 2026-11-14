@@ -84,12 +84,14 @@ public final class FilmActivity extends Activity {
     final java.util.concurrent.FutureTask<String> about=new java.util.concurrent.FutureTask<String>(()->DescTranslate.tr(f.description,Ui.TRANSLATE_WAIT));new Thread(about,"kik-film-text").start();
     final Map<String,String> cached=TitleTranslate.resolve(words,Ui.TRANSLATE_WAIT);final String shown=about.get();
     Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration)return;uk.putAll(cached);show(f,shown);android.util.Log.d("KIK.Load","Film page "+(android.os.SystemClock.elapsedRealtime()-started)+"ms");});
+    // «Вам може сподобатися» needs only the page: it no longer waits for the facts and up to four voices' episodes below
+    // (seconds for a series), and its row is posted after the page itself.
+    Ui.bg(()->loadSimilar(f,generation));
     // Playback can start as soon as the page is parsed. Translation only updates text, never voice/focus.
     try{FreeSources.enrich(f);RecommendationMetadata.remember(this,f);}catch(Exception ignored){}
     // The page lists one voice's episodes; show every season the leading voices have.
     if(f.series&&f.sourceUrl==null){final List<Site.Episode> all=Site.allEpisodes(f,4);Ui.MAIN.post(()->{if(isFinishing()||isDestroyed()||generation!=loadGeneration||film!=f||all.size()<=f.episodes.size())return;
      f.episodes=new ArrayList<Site.Episode>(all);f.seasons.clear();for(Site.Episode x:all)if(!f.seasons.contains(x.season))f.seasons.add(x.season);if(season==null||!f.seasons.contains(season))season=f.seasons.isEmpty()?null:f.seasons.get(0);showEpisodes();});}
-    Ui.bg(()->loadSimilar(f,generation));
     Map<String,String> got=TitleTranslate.resolve(words);
     final String d=DescTranslate.tr(f.description);
     String span=run(f,null);if(span!=null)f.year=span;

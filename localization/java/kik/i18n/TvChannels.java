@@ -49,8 +49,13 @@ public final class TvChannels {
  public static void start(Context context){
   if(!supported())return;Context c=context.getApplicationContext();
   try{JobScheduler js=c.getSystemService(JobScheduler.class);if(js.getPendingJob(JOB)==null)js.schedule(new JobInfo.Builder(JOB,new ComponentName(c,Job.class)).setPeriodic(4*3_600_000L).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).build());}catch(Exception e){Log.w(TAG,"Schedule",e);}
-  if(System.currentTimeMillis()-prefs(c).getLong("published",0)>3_600_000L)IO.execute(()->publish(c,true));
+  // Not while Home loads: the channels ask the service for recommendations, metadata and artwork too (dozens of
+  // requests), so they wait half a minute and leave the network and the four cores to the rows and posters on screen.
+  if(stale(c))LATER.postDelayed(()->IO.execute(()->{if(stale(c))publish(c,true);}),START_DELAY_MS);
  }
+ private static final long START_DELAY_MS=30_000L;
+ private static final android.os.Handler LATER=new android.os.Handler(android.os.Looper.getMainLooper());
+ private static boolean stale(Context c){return System.currentTimeMillis()-prefs(c).getLong("published",0)>3_600_000L;}
 
  /** Periodic refresh of For you and New episodes for the remembered profile. */
  public static final class Job extends JobService {
