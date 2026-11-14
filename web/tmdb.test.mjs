@@ -109,7 +109,7 @@ test('season marks are not part of a name, and a later season is not held to its
 
 test('a show TMDB gives no platform asks TVmaze for its channel, by its English names only',async()=>{
  const show={id:305245,name:'In the Silence of the Night',original_name:'Wśród nocnej ciszy',first_air_date:'2026-11-07'};
- const fetcher=async url=>{if(url.includes('/search/tv'))return Response.json({results:url.includes('cisz')?[show]:[]});if(url.includes('/tv/305245'))return Response.json({networks:[{id:9999}],images:{posters:[poster],backdrops:[]}});return Response.json({results:[]});};
+ const fetcher=async url=>{if(url.includes('/search/tv'))return Response.json({results:url.includes('cisz')?[show]:[]});if(url.includes('/tv/305245'))return Response.json({...show,networks:[{id:9999}],images:{posters:[poster],backdrops:[]}});return Response.json({results:[]});};
  let asked=null;const channelOf=async(names,year)=>{asked={names,year};return 'HBO Max';};
  // The page joins three originals with « / »: each is searched on its own.
  const service=createArtworkService({fetcher,channelOf,originalOf:async()=>'Wśród nocnej ciszy / Wsrod nocnej ciszy / In the Silence of the Night'});
