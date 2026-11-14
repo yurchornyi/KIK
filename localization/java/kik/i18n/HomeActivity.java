@@ -292,9 +292,10 @@ public final class HomeActivity extends Activity {
    if(!cached.isEmpty()&&shelfSame&&sameBuild&&(refreshedAt>0&&SystemClock.elapsedRealtime()-refreshedAt<6*60*60_000L||cacheAge>=0&&cacheAge<6*60*60_000L)){recommendLater(preferences,cached,gen,profile);return;}
    List<Row> site=siteRows(cached.isEmpty()?row->{final List<Row> initial=homeRows(profile,local,Collections.singletonList(row),preferences);translateNow(initial);main.post(()->{
     if(!valid(gen,profile))return;show(initial);translateLater(initial,gen,profile);
-   });}:null,preferences,shelf);
+   });}:null,preferences,shelf,cached);
    if(site.isEmpty()){final Throwable why=rowError;main.post(()->{if(valid(gen,profile)&&first.isEmpty())fail(why);});return;}
-   refreshedAt=SystemClock.elapsedRealtime();saveCache(site,shelf);
+   // A row that did not come keeps last time's cards, and the page asks again in MISSING_RETRY_MS, not in six hours.
+   final boolean missing=rowsMissing;refreshedAt=missing?0:SystemClock.elapsedRealtime();saveCache(site,shelf,missing?System.currentTimeMillis()-6*60*60_000L+MISSING_RETRY_MS:System.currentTimeMillis());
    if(cached.isEmpty()){
     // site[0] is already on screen; the holiday's shelf goes after «Продовжити перегляд», the rest at the end.
     List<Row> remaining=new ArrayList<Row>(site);Row festive=takeShelf(remaining,shelf);if(!remaining.isEmpty())remaining.remove(0);
@@ -373,7 +374,11 @@ public final class HomeActivity extends Activity {
   for(int k=0;k<a.length();k++){JSONObject o=a.optJSONObject(k);if(o==null)continue;Item i=new Item();i.link=Site.opt(o,"link");i.title=Site.opt(o,"title");i.poster=Site.opt(o,"poster");i.year=Site.opt(o,"year");i.genre=Site.opt(o,"genre");if(i.link!=null&&i.title!=null)saved.items.add(i);}
   return saved;
  }
- private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste,final String shelf){
+ /** A row that failed or came back empty on the last refresh (14.11: «Топ-10 серіалів цього тижня» came empty while the
+  *  service rebuilt it and was gone from Home for six hours): its saved cards stand in, and Home asks again soon. */
+ private volatile boolean rowsMissing;
+ static final long MISSING_RETRY_MS=10*60_000L;
+ private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste,final String shelf,List<Row> previous){
   final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
   final long started=SystemClock.elapsedRealtime();
   // Every row and the shelves come from KIK's service at once: it has no bot check a first request must pass
@@ -405,16 +410,20 @@ public final class HomeActivity extends Activity {
   if(first!=null&&out[0]!=null&&!out[0].items.isEmpty()){Log.d("KIK.Load","Home first row "+(SystemClock.elapsedRealtime()-started)+"ms");first.accept(out[0]);}
   for(Thread t:threads)try{t.join(Math.max(1,deadline-SystemClock.elapsedRealtime()));}catch(InterruptedException ignored){}
   Log.d("KIK.Load","Home rows from the service "+(SystemClock.elapsedRealtime()-started)+"ms");
-  List<Row> rows=new ArrayList<Row>();for(Row r:out)if(r!=null&&!r.items.isEmpty())rows.add(r);rows.addAll(genreRows(taste,rows));if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
+  List<Row> rows=new ArrayList<Row>();boolean missing=false;
+  for(int k=0;k<out.length;k++){Row r=out[k];
+   if(r==null||r.items.isEmpty()){missing=true;r=null;for(Row p:previous)if(p.title.equals(ROWS[k][0])&&!p.items.isEmpty()){r=p;break;}}
+   if(r!=null)rows.add(r);}
+  rowsMissing=missing;rows.addAll(genreRows(taste,rows));if(first!=null&&!rows.isEmpty()&&(out[0]==null||out[0].items.isEmpty()))first.accept(rows.get(0));
   // Second in the list, after the row already on screen; placeShelf puts it in its place on the page. Never alone: without
   // the catalogue the page fails as before instead of caching a shelf for six hours.
   if(!rows.isEmpty()&&festive[0]!=null&&!festive[0].items.isEmpty())rows.add(1,festive[0]);
   return rows;
  }
- private void saveCache(List<Row> rows,String shelf){
+ private void saveCache(List<Row> rows,String shelf,long updated){
   JSONArray a=new JSONArray();
   try{for(Row r:rows){JSONArray items=new JSONArray();for(Item i:r.items)items.put(new JSONObject().put("link",i.link).put("title",i.title).put("poster",i.poster).put("year",i.year).put("genre",i.genre));a.put(new JSONObject().put("title",r.title).put("items",items));}}catch(JSONException ignored){}
-  getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",System.currentTimeMillis()).putString("shelf",shelf==null?"":shelf).putString("version",AppUpdater.version(this)).apply();
+  getSharedPreferences("kik_home",0).edit().putString("rows",a.toString()).putLong("updated",updated).putString("shelf",shelf==null?"":shelf).putString("version",AppUpdater.version(this)).apply();
  }
  /** A row of new releases only (ROWS' fourth column): its saved cards pass FreshPolicy again, a year on as well. */
  static boolean newRow(String title){return flagged(title,"new");}

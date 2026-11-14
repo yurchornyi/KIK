@@ -5,9 +5,11 @@
  * out until the next visit. Now:
  *  - the last good answer of each row is kept in this browser for KEEP_FOR and shown at once, then refreshed quietly;
  *  - a row still on its way is `pending`: Home draws its place (app.js placeholderShelf), so nothing below it moves;
- *  - a failed request is asked again after RETRIES; only then does a row with nothing kept leave the page.
+ *  - a failed request is asked again after RETRIES; only then does a row with nothing kept leave the page;
+ *  - an empty answer counts as a failed one (14.11: a shelf the service was still putting together came back empty, and
+ *    «Топ-10 серіалів цього тижня» left the page instead of being asked again, its kept answer replaced by nothing).
  */
-export const KEEP_FOR=12*3600000,RETRIES=[3000,10000,30000],KEY='kik-home-rows';
+export const KEEP_FOR=12*3600000,RETRIES=[3000,10000,30000,60000],KEY='kik-home-rows';
 
 export function createRowStore({storage,load,onChange=()=>{},now=Date.now,wait=(fn,ms)=>setTimeout(fn,ms)}){
  let kept={};try{kept=JSON.parse(storage.getItem(KEY)||'{}')||{};}catch{kept={};}
@@ -21,7 +23,7 @@ export function createRowStore({storage,load,onChange=()=>{},now=Date.now,wait=(
  function attempt(id,tries){
   const row=rows.get(id);
   Promise.resolve().then(()=>load(id)).then(items=>{
-   if(!Array.isArray(items))throw Error('Row '+id);
+   if(!Array.isArray(items)||!items.length)throw Error('Row '+id);
    const before=JSON.stringify(row.items||[]);row.items=items;row.at=now();row.pending=false;kept[id]={items,at:row.at};save();
    if(JSON.stringify(items)!==before)onChange(id);
   }).catch(()=>{

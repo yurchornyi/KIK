@@ -44,3 +44,14 @@ test('a kept row stays on screen when the fresh request fails, and the same answ
  let calls=0;const once=createRowStore({storage:memory(),load:async()=>{calls++;return [film(2)];}});once.ask(['films']);once.ask(['films']);await tick();
  assert.equal(calls,1);
 });
+
+test('an empty answer is asked again and never replaces a kept row',async()=>{
+ const storage=memory({[KEY]:JSON.stringify({series:{items:[film(1)],at:Date.now()}})}),waits=[];let calls=0,changed=0;
+ const store=createRowStore({storage,load:async()=>{calls++;return calls<3?[]:[film(2)];},onChange:()=>changed++,wait:(fn,ms)=>waits.push([fn,ms])});
+ store.ask(['series']);await tick();await tick();
+ assert.deepEqual(store.view('series'),{items:[film(1)],pending:false},'the kept Top 10 stays');assert.deepEqual(waits.map(w=>w[1]),[RETRIES[0]]);
+ waits[0][0]();await tick();await tick();waits[1][0]();await tick();await tick();
+ assert.equal(calls,3);assert.deepEqual(store.view('series').items,[film(2)]);assert.equal(changed,1);
+ const fresh=createRowStore({storage:memory(),load:async()=>[],wait:()=>{}});fresh.ask(['series']);await tick();await tick();
+ assert.equal(fresh.view('series').pending,true,'nothing kept: its place is held while it is asked again');
+});

@@ -93,8 +93,15 @@ async function api(request,env,ctx){
  // Home shelves TMDB picks (shelves.mjs: the week's Top 10 films and series, new cartoons, new anime), found on the source and kept at the
  // edge: fresh for 6 hours, answering for up to a week while TMDB or the source is down. A shelf not whole yet (time ran
  // out, the source was busy) answers as it is and is not kept: the next request goes on with it.
- if(path==="/api/shelf"&&request.method==="GET"){const id=url.searchParams.get("id")||"";if(!Object.hasOwn(SHELVES,id))fail("Невідома полиця");if(!env.TMDB_READ_TOKEN)fail("Полиця тимчасово недоступна",503);
-  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v=2"),21600,async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000}),list:params=>catalogue(params,{background:true,budget:8000})});return {items:await localizedCards(db,found.items),...(found.partial?{partial:true}:{})};},v=>!v.partial,2*86400);}
+ if(path==="/api/shelf"&&request.method==="GET"){const SHELF_KEYS={documentary:2};const id=url.searchParams.get("id")||"";if(!Object.hasOwn(SHELVES,id))fail("Невідома полиця");if(!env.TMDB_READ_TOKEN)fail("Полиця тимчасово недоступна",503);
+  // Each shelf's own edge key: a new one makes every data centre build the shelf again at once, so only a shelf whose
+  // kept copies are wrong gets one (14.11: «Топ-10 документальних» kept two namesakes; the key bumped for all shelves left
+  // the phone and the TV without their Top 10s, «Мультфільми» and «Аніме» while they were rebuilt).
+  return edgeCached(ctx,new Request(url.origin+path+"?id="+id+"&__v="+(SHELF_KEYS[id]||1)),21600,async()=>{const found=await shelf(id,{token:env.TMDB_READ_TOKEN,search:params=>catalogue(params,{background:true,budget:8000}),list:params=>catalogue(params,{background:true,budget:8000})});
+   // A shelf still being put together with nothing found yet (a cold edge, the source busy) is an error to ask again, not
+   // an empty row the website and the TV would keep (14.11: «Топ-10 серіалів цього тижня» gone from both for hours).
+   if(found.partial&&!found.items.length)throw Object.assign(Error('Добірка ще складається. Спробуйте за хвилину.'),{status:503,sourceBusy:true});
+   return {items:await localizedCards(db,found.items),...(found.partial?{partial:true}:{})};},v=>!v.partial,2*86400);}
  // TV sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // Sign-in starts with the email alone: it says whether to ask for the password or to create one.
  // An admin adds the email; the person then picks a password. A reset password is created again the same way.
