@@ -160,7 +160,7 @@ export function createCatalogueView({main,el,button,card,keyOf,api,visible=items
   more=button('Показати ще',()=>load(true),'pill primary');
   section=el('section',{class:'grid-page catalogue-page'},
    el('div',{class:'page-head'},el('div',{},el('div',{class:'eyebrow'},'КАТАЛОГ KIK'),el('h1',{},label(model.category))),count),
-   el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},dropdown(genreSelect),dropdown(sort,'',{value:o=>o.value==='last'?'Нові':o.textContent}),studioControl,studioChip,genreRetry)),
+   el('div',{class:'catalogue-toolbar'},categories,el('div',{class:'catalogue-selects'},dropdown(genreSelect),dropdown(sort,'',{fit:true}),studioControl,studioChip,genreRetry)),
    list,failure=el('div',{class:'catalogue-failure'}),el('div',{class:'catalogue-bottom'},note,more));
   shownKeys=new Set();painted=0;ghosts=[];lastBatch=0;starved=false;main.replaceChildren(section);onSelection(selection());paintStudio();paint();loadGenres();
   watcher?.disconnect();if(typeof IntersectionObserver!=='undefined'){watcher=new IntersectionObserver(e=>{if(e.some(x=>x.isIntersecting))autoMore();},{rootMargin:'0px 0px 900px 0px'});watcher.observe(more);}
