@@ -218,6 +218,17 @@ public final class Site {
  /** A Home shelf TMDB picks on KIK's service (web/shelves.mjs): «films» and «series» (the week's Top 10s), «cartoons», «anime»;
   *  HDRezka is never asked. */
  public static List<Card> shelf(String id)throws IOException{return serviceCards("/api/shelf?id="+FreeSources.enc(id));}
+ /** TMDB's «viewers of this title also watch» for a title, found on the catalogue: the first `picks` cards of KIK's
+  *  /api/similar (as background work there, warm=1). A list the service could not finish in time (partial) is not an
+  *  answer yet; a country the viewer hid is left out. */
+ public static List<Card> similarPicks(String link)throws IOException{
+  JSONObject d=FreeSources.get("/api/similar?link="+FreeSources.enc(link)+"&warm=1",30000);if(d.optBoolean("partial"))throw new IOException("Similar titles not ready");
+  JSONArray items=d.optJSONArray("items");int picks=Math.max(0,d.optInt("picks",0));List<Card> out=new ArrayList<Card>();
+  for(int i=0;items!=null&&i<Math.min(picks,items.length());i++){JSONObject x=items.optJSONObject(i);if(x==null)continue;
+   String l=x.optString("link"),title=x.optString("sourceTitle",x.optString("title"));if(!FreeSources.rezka(l)||title.isEmpty())continue;
+   Card c=new Card();c.link=l;c.title=title;c.poster=opt(x,"poster");c.info=x.optString("sourceInfo",opt(x,"info"));c.type=opt(x,"type");c.studio=opt(x,"studio");if(!CountryFilter.blocked(c.info))out.add(c);}
+  return out;
+ }
  /** A holiday's film shelf for Home (Holidays.shelfOn): KIK's service picks the films and answers in the catalogue's shape; HDRezka is never asked. */
  public static List<Card> holidayFilms(String id)throws IOException{return serviceCards("/api/holiday-films?id="+FreeSources.enc(id));}
  private static final long LIST_TTL_MS=30*60_000L;

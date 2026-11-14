@@ -76,6 +76,18 @@ export function similarity(a,b){
 }
 /** Watching and saves fade over weeks (a week 0.8, a month 0.5, never under a third); a rating stays as given. */
 export const fade=(at,now=Date.now())=>1/(1+Math.min(8,Math.max(0,now-at)/(7*864e5))*.25);
+/**
+ * «Тому що ви дивилися» (14.11, owner: two rows, TMDB's picks first, a month's memory, turned daily): the titles a row may
+ * stand on — a like (`rated`, w ≥ 3) or a title watched with w ≥ 3 in the last SEED_DAYS days — the SEEDS strongest, the
+ * list turned by two each local day, so tomorrow's Home has other titles' rows. The TV does the same
+ * (RecommendationRanker.seeds).
+ */
+export const SEED_DAYS=30,SEEDS=6;
+export function becauseSeeds(signals,now=Date.now(),zoneOffset=-new Date(now).getTimezoneOffset()*6e4){
+ const strength=s=>s.w*(s.at?fade(s.at,now):1);
+ const all=signals.filter(s=>s.w>=3&&s.title&&!String(s.link).includes('uaserials.com')&&(s.rated||s.at&&now-s.at>=0&&now-s.at<=SEED_DAYS*864e5)).sort((a,b)=>strength(b)-strength(a)).slice(0,SEEDS);
+ if(all.length<2)return all;const off=(Math.floor((now+zoneOffset)/864e5)*2)%all.length;return [...all.slice(off),...all.slice(0,off)];
+}
 /** Hours with one title add up to half to its weight: 20 hours of a series say as much as a like. */
 export const devotion=watchedMs=>1+Math.min(.5,Math.max(0,watchedMs||0)/144e6);
 /**

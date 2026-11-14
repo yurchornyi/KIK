@@ -17,7 +17,10 @@ final class RecommendationMetadata {
   if(f==null||f.link==null)return;
   try{JSONObject o=new JSONObject().put("link",f.link).put("title",f.title).put("original",f.original).put("poster",f.poster).put("plot",f.description==null?"":f.description.substring(0,Math.min(5000,f.description.length()))).put("country",f.country).put("year",f.year).put("rating",f.rating).put("genres",new JSONArray(f.genres)).put("people",new JSONArray(f.people)).put("time",System.currentTimeMillis());
    JSONArray related=new JSONArray();for(Site.Card r:f.related)related.put(new JSONObject().put("link",r.link).put("title",r.title).put("poster",r.poster).put("year",r.year()).put("genre",r.genre()));o.put("related",related);
-   JSONObject all=data(c);all.put(RecommendationRanker.key(f.link),o);
+   JSONObject all=data(c),old=all.optJSONObject(RecommendationRanker.key(f.link));
+   // TMDB's picks are fetched on their own (rememberPicks): a new look at the film page keeps them.
+   if(old!=null&&old.has("picks"))o.put("picks",old.get("picks")).put("picksTime",old.optLong("picksTime"));
+   all.put(RecommendationRanker.key(f.link),o);
    if(all.length()>300){List<String> keys=new ArrayList<String>();Iterator<String> it=all.keys();while(it.hasNext())keys.add(it.next());Collections.sort(keys,(a,b)->Long.compare(all.optJSONObject(a).optLong("time"),all.optJSONObject(b).optLong("time")));for(int i=0;i<keys.size()-300;i++)all.remove(keys.get(i));}write(c);
   }catch(Exception e){Log.w("KIK","Remember film facts",e);}
  }
@@ -32,6 +35,26 @@ final class RecommendationMetadata {
   for(int i=0;i<a.length();i++){JSONObject r=a.optJSONObject(i);if(r==null||r.optString("link","").isEmpty()||r.optString("title","").isEmpty())continue;HomeActivity.Item x=new HomeActivity.Item();x.link=r.optString("link");x.title=r.optString("title");x.poster=r.optString("poster",null);x.year=r.optString("year",null);x.genre=r.optString("genre",null);out.add(x);}
   return out;
  }
+ /** TMDB's «viewers of this title also watch» found on the catalogue (KIK's /api/similar): the first cards of the title's
+  *  «Тому що ви дивилися» row (14.11, owner). Public catalogue data, kept PICKS_FOR; a list the service could not finish
+  *  is asked again after PICKS_RETRY. */
+ private static final long PICKS_FOR=3*DAY,PICKS_RETRY=10*60_000L;
+ static synchronized void rememberPicks(Context c,String link,List<Site.Card> picks){
+  try{JSONObject all=data(c);String key=RecommendationRanker.key(link);JSONObject o=all.optJSONObject(key);if(o==null){o=new JSONObject();all.put(key,o);}
+   JSONArray a=new JSONArray();for(Site.Card r:picks)a.put(new JSONObject().put("link",r.link).put("title",r.title).put("poster",r.poster).put("year",r.year()).put("genre",r.genre()));
+   o.put("picks",a).put("picksTime",System.currentTimeMillis());o.remove("picksFailed");trim(all);write(c);
+  }catch(Exception e){Log.w("KIK","Remember picks",e);}
+ }
+ static synchronized List<HomeActivity.Item> picks(Context c,String link){
+  List<HomeActivity.Item> out=new ArrayList<HomeActivity.Item>();JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));JSONArray a=o==null?null:o.optJSONArray("picks");if(a==null)return out;
+  for(int i=0;i<a.length();i++){JSONObject r=a.optJSONObject(i);if(r==null||r.optString("link","").isEmpty()||r.optString("title","").isEmpty())continue;HomeActivity.Item x=new HomeActivity.Item();x.link=r.optString("link");x.title=r.optString("title");x.poster=r.isNull("poster")?null:r.optString("poster",null);x.year=r.isNull("year")?null:r.optString("year",null);x.genre=r.isNull("genre")?null:r.optString("genre",null);out.add(x);}
+  return out;
+ }
+ static synchronized boolean needsPicks(Context c,String link){
+  JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));long now=System.currentTimeMillis(),failed=o==null?0:o.optLong("picksFailed"),at=o==null?0:o.optLong("picksTime");
+  if(failed>0&&now-failed>=0&&now-failed<PICKS_RETRY)return false;return at<=0||now-at<0||now-at>PICKS_FOR;
+ }
+ static synchronized void picksFailed(Context c,String link){try{JSONObject all=data(c);String key=RecommendationRanker.key(link);JSONObject o=all.optJSONObject(key);if(o==null){o=new JSONObject();all.put(key,o);}o.put("picksFailed",System.currentTimeMillis());trim(all);write(c);}catch(Exception ignored){}}
  /** Entries cached before related titles were stored are refreshed for signals, failures still back off. */
  static synchronized boolean needsRelated(Context c,String link){JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));if(o==null||o.has("related"))return needs(c,link);return !o.optBoolean("failed")||needs(c,link);}
  static synchronized boolean needs(Context c,String link){JSONObject o=data(c).optJSONObject(RecommendationRanker.key(link));if(o==null)return true;long age=System.currentTimeMillis()-o.optLong("time");return age<0||age>(o.optBoolean("failed")?DAY/24:30*DAY);}
