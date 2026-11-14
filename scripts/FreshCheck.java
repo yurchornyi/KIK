@@ -1,5 +1,5 @@
 import kik.i18n.FreshPolicy;
-/** «Нове на KIK» keeps only new releases: this year's and last year's titles, a series by the year it began. */
+/** «Нові фільми» and «Нові серіали» keep only new releases: this year's and last year's titles, a series by the year it began. */
 public final class FreshCheck {
  static void check(boolean v,String what){if(!v)throw new AssertionError(what);}
  public static void main(String[] args){

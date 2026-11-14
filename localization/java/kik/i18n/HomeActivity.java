@@ -260,8 +260,10 @@ public final class HomeActivity extends Activity {
  /** Title, category, filter; a fourth column marks a row of new releases only (FreshPolicy: this year and last) or the
   *  Top 10. A «shelf:» filter is a shelf TMDB picks on KIK's service (Site.shelf, 14.11: the source's «popular» was
   *  mostly old titles, its new cartoons old ones it had just added). The two documentary rows after «Нові серіали», as the series have theirs (14.11, owner: «2 розділа має бути для докум»):
-  *  the week's Top 10 and the source's new documentaries, both shelves of KIK's service (shelves.mjs). */
- static final String[][] ROWS={{"Нове на KIK","","last","new"},{"Топ-10 фільмів цього тижня","","shelf:films","top"},{"Нові фільми","films","last","new"},{"Топ-10 серіалів цього тижня","","shelf:series","top"},{"Нові серіали","series","last","new"},{"Топ-10 документальних цього тижня","","shelf:documentary","top"},{"Нові документальні","","shelf:new-documentary"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
+  *  the week's Top 10 and the source's new documentaries, both shelves of KIK's service (shelves.mjs). The website has the
+  *  same rows in the same order (app.js HOME_ROWS; 14.11, owner: one order for both). «Нове на KIK» is gone: it was the
+  *  source's newest of every section, and its first cards were those of «Нові фільми». */
+ static final String[][] ROWS={{"Топ-10 фільмів цього тижня","","shelf:films","top"},{"Нові фільми","films","last","new"},{"Топ-10 серіалів цього тижня","","shelf:series","top"},{"Нові серіали","series","last","new"},{"Топ-10 документальних цього тижня","","shelf:documentary","top"},{"Нові документальні","","shelf:new-documentary"},{"Зараз дивляться","","watching"},{"Мультфільми","","shelf:cartoons"},{"Аніме","","shelf:anime"}};
  private static long refreshedAt;
  private static final Map<String,String[]> DETAILS=new ConcurrentHashMap<String,String[]>();
  private void load(){
@@ -305,6 +307,11 @@ public final class HomeActivity extends Activity {
     // The first catalogue row is already usable. Append remaining rows without replacing focus.
     appendRows(rest);for(Row r:extra)insertRow(r);translateLater(added,gen,profile);
    });}
+   // A row that came or went on this refresh (14.11: «Топ-10 серіалів цього тижня» came back, but stayed off the screen
+   // until Home was opened again): the page is drawn again at once while the remote is not on a row, else on the next
+   // return to Home, from the rows just saved.
+   else if(!catalogueTitles(site).equals(catalogueTitles(cached))){final List<Row> fresh=homeRows(profile,local,site,preferences);placeShelf(fresh,shelf);translateNow(fresh);
+    main.post(()->{if(valid(gen,profile)&&foreground&&!rowFocused())show(fresh);});}
    recommendLater(preferences,site,gen,profile);
   },"kik-home").start();
  }
@@ -378,6 +385,10 @@ public final class HomeActivity extends Activity {
   *  service rebuilt it and was gone from Home for six hours): its saved cards stand in, and Home asks again soon. */
  private volatile boolean rowsMissing;
  static final long MISSING_RETRY_MS=10*60_000L;
+ /** The catalogue rows (ROWS) a list holds, in order; the genre rows from the taste are left aside. */
+ private static List<String> catalogueTitles(List<Row> rows){List<String> out=new ArrayList<String>();for(Row r:rows)for(String[] x:ROWS)if(x[0].equals(r.title)){out.add(r.title);break;}return out;}
+ /** Whether the remote is on a card of a row, not on the menu or the banner: drawing the rows again would move it. */
+ private boolean rowFocused(){for(View p=getCurrentFocus();p!=null;p=p.getParent() instanceof View?(View)p.getParent():null)for(View[] v:rowViews.values())if(v[1]==p)return true;return false;}
  private List<Row> siteRows(java.util.function.Consumer<Row> first,Recommendations.Snapshot taste,final String shelf,List<Row> previous){
   final Row[] out=new Row[ROWS.length];final Row[] festive=new Row[1];List<Thread> threads=new ArrayList<Thread>();rowError=null;
   final long started=SystemClock.elapsedRealtime();
