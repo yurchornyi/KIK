@@ -62,7 +62,7 @@ test('a response from an old studio cannot replace the newly selected one',async
 test('network discovery pages the full brand catalogue independently of already loaded KIK cards',async()=>{
  const {api,calls}=service();const a=await api.lookup({studio:'hbo',category:'series',page:1},{token});const b=await api.lookup({studio:'hbo',category:'series',page:2},{token});
  assert.equal(a.items.length,5);assert.equal(b.items[0].title,'Series 6');assert.deepEqual(b.items[0].studios,['hbo']);assert.equal(a.hasMore,true);
- assert.equal(calls.length,1,'the provider page is shared across candidate windows');assert.equal(calls[0].searchParams.get('with_networks'),'49|3186');
+ assert.equal(calls.length,1,'the provider page is shared across candidate windows');assert.equal(calls[0].searchParams.get('with_networks'),'49|3186|6783|8304');
  assert.equal(calls[0].searchParams.has('with_watch_providers'),false);
  const last=await api.lookup({studio:'hbo',category:'series',page:4},{token});assert.equal(last.hasMore,false);
 });
@@ -101,7 +101,7 @@ test('a genre narrows the brand discovery itself, so documentaries are found ins
 });
 test('several studios search any of their networks at once and leave the badge to each title',async()=>{
  const {api,calls}=service();const result=await api.lookup({studio:'hbo,netflix',category:'series',page:1},{token});
- assert.equal(calls.find(u=>u.pathname.includes('/discover/')).searchParams.get('with_networks'),'49|3186|213');assert.deepEqual(result.items[0].studios,[]);
+ assert.equal(calls.find(u=>u.pathname.includes('/discover/')).searchParams.get('with_networks'),'49|3186|6783|8304|213');assert.deepEqual(result.items[0].studios,[]);
  const films=service({results:[]});await films.api.lookup({studio:'netflix,hbo',category:'films'},{token});
  assert.equal(films.calls.find(u=>u.pathname.includes('/discover/')).searchParams.get('with_companies'),'22');
  await assert.rejects(api.lookup({studio:'hbo,evil',category:'series'},{token}));
