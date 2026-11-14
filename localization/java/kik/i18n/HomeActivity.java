@@ -591,7 +591,17 @@ public final class HomeActivity extends Activity {
   final View ring=Ui.ring(this,dp(8),holidayId==null?RED:Holidays.accent(holidayId));frame.addView(ring,new FrameLayout.LayoutParams(-1,-1));
   Studios.watch(frame,i.link,i.title,i.year,null);
   if(i.rating!=null){TextView r=text("★ "+i.rating,12,Color.WHITE);r.setPadding(dp(6),dp(2),dp(6),dp(2));r.setBackground(shape(0xcc000000,dp(4),0,0));FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.END);p.setMargins(0,dp(6),dp(6),0);frame.addView(r,p);}
-  if(i.resume){View track=new View(this);track.setBackgroundColor(0xff77777b);frame.addView(track,new FrameLayout.LayoutParams(-1,dp(3),Gravity.BOTTOM));View bar=new View(this);bar.setBackgroundColor(RED);frame.addView(bar,new FrameLayout.LayoutParams(Math.max(dp(3),Math.round(dp(150)*i.progress)),dp(3),Gravity.BOTTOM|Gravity.START));}
+  if(i.resume){
+   // How much is watched, inside the poster: a soft dark fade at its bottom, then a thin rounded grey track with the red part
+   // watched, clear of the rounded corners and under the focus ring. It used to run square along the very bottom edge,
+   // across the corners and over the ring (14.11, owner: «як погано зроблено»). The website's card is the same.
+   int at=frame.indexOfChild(ring),r=dp(8);
+   android.graphics.drawable.GradientDrawable fade=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,new int[]{0xb3000000,0x00000000});
+   fade.setCornerRadii(new float[]{0,0,0,0,r,r,r,r});View shade=new View(this);shade.setBackground(fade);frame.addView(shade,at,new FrameLayout.LayoutParams(-1,dp(40),Gravity.BOTTOM));
+   FrameLayout track=new FrameLayout(this);track.setBackground(shape(0x5cffffff,dp(2),0,0));View bar=new View(this);bar.setBackground(shape(RED,dp(2),0,0));
+   track.addView(bar,new FrameLayout.LayoutParams(Math.max(dp(4),Math.round(dp(150-20)*(i.next?1f:i.progress))),-1));
+   FrameLayout.LayoutParams tl=new FrameLayout.LayoutParams(-1,dp(4),Gravity.BOTTOM);tl.setMargins(dp(10),0,dp(10),dp(10));frame.addView(track,at+1,tl);
+  }
   box.addView(frame,new LinearLayout.LayoutParams(dp(150),dp(200)));
   TextView t=text(tr(i.title),14,0xffe6e6ea);t.setTag(new Label(i,false));t.setSingleLine(true);t.setEllipsize(TextUtils.TruncateAt.END);t.setPadding(dp(2),dp(8),dp(2),0);
   box.addView(t,new LinearLayout.LayoutParams(dp(150),-2));

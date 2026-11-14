@@ -538,3 +538,6 @@ div.dl-rows .dl-row{grid-template-columns:minmax(0,1fr) auto}
 .hero-dot.mine .hero-dot-track{background:#e5091488}.hero-dot.mine i{background:#ff3b44}
 @media(max-width:650px){.hero .hero-text{min-height:calc(2 * 1.65em)}}
 @media(max-height:500px) and (orientation:landscape){.hero .hero-text{min-height:calc(2 * 1.65em)}}
+/* How much of a card is watched: a thin rounded bar inside the poster, clear of its rounded corners, as on the TV (14.11). */
+.poster-image .progress{left:10px;right:10px;bottom:10px;height:4px;border-radius:2px;overflow:hidden;background:#ffffff5c}.poster-image .progress i{border-radius:2px}
+.poster-image .continue-label{bottom:22px}
