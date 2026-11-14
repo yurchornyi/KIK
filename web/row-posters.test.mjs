@@ -9,6 +9,7 @@ class El{
  is(sel){return sel==='.shelf'?this.cls==='shelf':sel==='img'?this.tagName==='img':false;}
  matches(sel){return this.is(sel);}
  querySelectorAll(sel){
+  if(sel==='[data-posters-held]')return this.all().filter(e=>e.dataset.postersHeld);
   if(sel==='img[data-held-src],img[data-held-srcset]')return this.all().filter(e=>e.is('img')&&('heldSrc' in e.dataset||'heldSrcset' in e.dataset));
   return this.all().filter(e=>e.is(sel));
  }
@@ -20,6 +21,7 @@ function fakeWindow(){
  const w={innerHeight:800,observed:new Set()};
  w.IntersectionObserver=class{constructor(cb,opts){w.near=cb;w.opts=opts;}observe(e){w.observed.add(e);}unobserve(e){w.observed.delete(e);}};
  w.MutationObserver=class{constructor(cb){w.changed=cb;}observe(){}};
+ w.setTimeout=(fn,ms)=>{w.timer=fn;w.wait=ms;return 1;};
  return w;
 }
 const row=(top,...imgs)=>new El('section','shelf',{},top).add(new El('div','shelf-line').add(...imgs));
@@ -48,6 +50,23 @@ test('a poster already shown is never taken away, a card repainted into a waitin
  w.changed([{addedNodes:[late],removedNodes:[]}]);
  assert.equal(late.children[0].getAttribute('src'),null,'waits with its row');
  far.isConnected=false;w.changed([{addedNodes:[],removedNodes:[far]}]);assert.ok(!w.observed.has(far));
+});
+
+test('where nothing is drawn the observer never reports: after a while every row gets its posters and nothing more waits',()=>{
+ const w=fakeWindow(),main=new El('main');holdFarRows(main,w);
+ const a=poster('https://p/a.jpg'),far=row(3000,a);main.add(far);w.changed([{addedNodes:[far],removedNodes:[]}]);
+ assert.equal(a.getAttribute('src'),null);assert.equal(w.wait,4000);
+ w.timer();
+ assert.equal(a.getAttribute('src'),'https://p/a.jpg');assert.ok(!w.observed.has(far));
+ const b=poster('https://p/b.jpg'),later=row(5000,b);main.add(later);w.changed([{addedNodes:[later],removedNodes:[]}]);
+ assert.equal(b.getAttribute('src'),'https://p/b.jpg','no longer held on this page');
+});
+
+test('once the observer has reported, the timer changes nothing',()=>{
+ const w=fakeWindow(),main=new El('main');holdFarRows(main,w);
+ const a=poster('https://p/a.jpg'),far=row(3000,a);main.add(far);w.changed([{addedNodes:[far],removedNodes:[]}]);
+ w.near([{isIntersecting:false,target:far}]);w.timer();
+ assert.equal(a.getAttribute('src'),null,'still waits for its row to come near');
 });
 
 test('without the observers (an old browser) or a page without #main nothing changes',()=>{
