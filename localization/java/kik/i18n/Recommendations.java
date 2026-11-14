@@ -63,7 +63,7 @@ final class Recommendations {
   List<String> ai=aiOrder(c,s);List<String> local=new ArrayList<String>();Map<String,HomeActivity.Item> byPath=new HashMap<String,HomeActivity.Item>();
   for(RecommendationRanker.Candidate x:ranked){HomeActivity.Item it=items.get(RecommendationRanker.key(x.link));String path=Progress.norm(it.link);local.add(path);byPath.put(path,it);}
   int overlap=0;for(String k:ai)if(byPath.containsKey(k))overlap++;
-  if(overlap>=3){row.title="Рекомендовано для вас · AI";local=blend(local,ai);}
+  if(overlap>=3)local=blend(local,ai);// the title stays: no «AI» on screen (14.11, owner)
   for(String path:local){row.items.add(byPath.get(path));if(row.items.size()>=15)break;}return row;
  }
  private static final int AI_POOL=40;
