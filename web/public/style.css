@@ -136,7 +136,8 @@ dialog:focus{outline:none}
      really don't fit (the narrowest phones), and then every line fills the width too.
    - The main action comes first; the one that takes something away (Видалити, Скинути пароль) comes last, apart.
    - Every control is at least 44px tall, and empty error lines take no space. */
-.settings-grid{align-items:start}
+/* Cards in one row share its height, so two side by side end on one line. */
+.settings-grid{align-items:stretch}
 @media(min-width:801px){.settings-grid>.settings-wide{grid-column:1/-1;order:1}.settings-grid>.settings-card:last-child:nth-child(even){grid-column:1/-1}}
 .settings-card .pill,.manage-row .pill{min-height:44px}
 .manage-row .pill{font-size:13px}
