@@ -205,7 +205,7 @@ async function api(request,env,ctx){
  if(path==="/api/diagnostics/site"&&request.method==="POST"){const b=await body(request,2048),result=await siteReport(db,user,b);
   // A TV signed in before sessions carried a name gets one from its first report, so the website can list it as a TV.
   const token=request.headers.get("Authorization")&&requestToken(request);if(token)await db.prepare("UPDATE sessions SET device=? WHERE token_hash=? AND device IS NULL").bind(deviceName(b.device_name),await hash(token)).run();return json(result);}
- if(path==="/api/recommendations"&&request.method==="POST"){const b=await body(request,65536),p=await owned(db,user,b.profile_id);return json(await recommendations(db,p,b.items,env));}
+ if(path==="/api/recommendations"&&request.method==="POST"){const b=await body(request,65536),p=await owned(db,user,b.profile_id);return json(await recommendations(db,p,b.items,env,b.hidden));}
  if(path==="/api/auth/logout-others"&&request.method==="POST")return json(await logoutOtherSessions(db,user,requestToken(request)));
  if(path==="/api/devices"&&request.method==="GET")return json(await devices(db,user,requestToken(request)));
  if(path==="/api/devices/revoke"&&request.method==="POST")return json(await revokeDevice(db,user,requestToken(request),await body(request,2048)));

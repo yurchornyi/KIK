@@ -81,3 +81,25 @@ test('the AI\'s picks keep their order, with at most two of one kind side by sid
  const key=(section,genre,n)=>`${section}/${genre}/${n}-x-2020.html`,docs=[1,2,3,4,5].map(n=>key('series','documentary',n)),comedy=key('series','comedy',6),cartoon=key('cartoons','comedy',7),base=[...docs,comedy,cartoon].map(k=>({key:k}));
  assert.deepEqual(rankedKeys(base,[...docs,comedy,cartoon]),[docs[0],docs[1],comedy,docs[2],docs[3],cartoon,docs[4]]);
 });
+// 19.11, Sentra's judge on weak free models: answers with 26–40 IDs, IDs never offered, a Russian film first. The code keeps
+// the rules whatever model answers.
+test('rule 1: only IDs of the candidates sent count; IDs never offered go, a numeric string is read as its ID',()=>{
+ assert.deepEqual(decodeOrder('{"order":[16,17,9,"4",3,15,-2,1.5,"x"]}',16),[9,4,3,15]);assert.throws(()=>decodeOrder('{"order":[16,17,40]}',16),/Insufficient/);});
+test('rule 2: a duplicate ID goes and the model\'s order stays',()=>{assert.deepEqual(decodeOrder('[12,3,12,40,3,7]',48),[12,3,40,7]);});
+test('rule 3: titles from hidden countries are no candidates, so neither the model nor the fill ever gets one',()=>{
+ const cards=[card(1,'Американська драма'),{...card(2,'Російська драма'),info:'2020, Россия, Драмы, Русские'},{...card(3,'Фільм із TV'),info:'2020, Драмы, Русские'},{...card(4,'Радянська драма'),info:'1980, СССР, Драмы'},{...card(5,'Білоруська драма'),sourceInfo:'2020, Белоруссия, Драмы',info:'2020, Білорусь, Драми'},{...card(6,'Українська драма'),info:'2020, Украина, Драмы, Украинские'}];
+ assert.deepEqual(candidatesOf(cards).map(c=>c.title),['Американська драма','Українська драма'],'KIK\'s default hidden countries');
+ assert.deepEqual(candidatesOf(cards,['СССР']).map(c=>c.title),['Американська драма','Російська драма','Фільм із TV','Білоруська драма','Українська драма'],'the device\'s own list');
+ assert.equal(candidatesOf(cards,[]).length,6,'a device that hides nothing');assert.equal(candidatesOf(cards,'Россия').length,2,'a malformed list keeps the default');
+ // The source's sections are no genres for the model either.
+ assert.deepEqual(lineParts('2020, Россия, Драмы, Русские'),{genres:'Драми',country:'Росія'});assert.deepEqual(lineParts('2020, Комедии, Зарубежные, Полнометражные'),{genres:'Комедії',country:''});});
+test('rule 4: at most 24 picks are kept; with fewer than 8 the regular order fills the list',()=>{
+ assert.deepEqual(decodeOrder(JSON.stringify({order:Array.from({length:40},(_,i)=>39-i)}),48),Array.from({length:24},(_,i)=>39-i));
+ const base=baselineRank(candidatesOf(Array.from({length:30},(_,i)=>card(i+1,'Title '+(i+1)))),{signals:[],excluded:new Set()}),normal=rankedKeys(base),picks=[normal[20],normal[5]];
+ const shown=rankedKeys(base,picks);assert.equal(shown.length,24);assert.deepEqual(shown.slice(0,2),picks);assert.deepEqual(shown.slice(2),normal.filter(k=>!picks.includes(k)).slice(0,22));});
+test('a weak model\'s answer still gives a valid list: no hidden title, no unknown ID, nothing twice, 24 at most',()=>viaSentra(()=>sentraReply('{"order":[7,2,7,50,"4",0,99]}'),async(env,sent)=>{
+ const cards=[...Array.from({length:27},(_,i)=>({link:`https://hdrezka.sh/films/${i%2?'comedy':'fantasy'}/${i+1}-film-${2000+i}.html`,title:'Title '+(i+1),info:(2000+i)+', США, '+(i%2?'Комедии':'Фэнтези')})),{link:'https://hdrezka.sh/films/comedy/90-rus-2020.html',title:'Російська комедія',info:'2020, Россия, Комедии, Русские'},{link:'https://hdrezka.sh/films/comedy/91-tv-2021.html',title:'Комедія з TV',info:'2021, Комедии, Русские'}];
+ const r=await recommendations(database(home),{id:'weak-model',enhanced_recs:1},cards,env),request=JSON.parse(JSON.parse(sent[0].opts.body).messages[1].content);
+ assert.equal(r.mode,'ai');assert.ok(!request.candidates.some(c=>/Російська|Комедія з TV/.test(c.title)),'never offered to the model');
+ const picks=[7,2,4,0].map(id=>request.candidates[id].title),titleOf=key=>cards.find(c=>c.link.endsWith(key)).title;
+ assert.equal(r.keys.length,24);assert.equal(new Set(r.keys).size,24);assert.deepEqual(new Set(r.keys.slice(0,4).map(titleOf)),new Set(picks));assert.ok(!r.keys.some(k=>/\/(90|91)-/.test(k)));}));
