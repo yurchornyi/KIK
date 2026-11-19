@@ -4,3 +4,10 @@ export function workKeys(item){let path='';try{path=new URL(item.link).pathname;
 export function uniqueTitles(items){const out=[],seen=new Map();for(const item of items||[]){if(!item?.link||!item.title)continue;const keys=workKeys(item);let at;for(const key of keys)if(seen.has(key)){const prior=out[seen.get(key)];if(!(prior.imdb&&item.imdb&&prior.imdb!==item.imdb)){at=seen.get(key);break;}}if(at===undefined){at=out.length;out.push({...item});}else{const prior=out[at],winner=prior.external&&!item.external?item:prior;const other=winner===prior?item:prior;out[at]={...winner,poster:winner.poster||other.poster,original:winner.original||other.original,imdb:winner.imdb||other.imdb};}for(const key of keys)seen.set(key,at);}return out;}
 /** A Top 10 (rank) keeps its ten, even a title another row shows too, and takes none from the rows after it. */
 export function uniqueShelves(rows,featured){const used=new Set(featured?workKeys(featured):[]);return rows.map(row=>row.rank?{...row,items:uniqueTitles(row.items)}:({...row,items:uniqueTitles(row.items).filter(item=>{const keys=workKeys(item);if(keys.some(k=>used.has(k)))return false;keys.forEach(k=>used.add(k));return true;})}));}
+/** Countries hidden from the catalogue, search and recommendations unless a device chooses otherwise (CountryFilter.java on the TV). */
+export const COUNTRY_DEFAULT=['Россия','СССР','Беларусь','Казахстан'];
+/** Other names a hidden country has in a catalogue line: the source's other spellings, KIK's Ukrainian ones and, for Russia,
+ *  the source's «Русские» section (its Russian films, shown as «Російське кіно»), which a TV line may list with no country. */
+const COUNTRY_ALIASES={'Россия':['Российская Федерация','Росія','Русские','Російське кіно'],'СССР':['СРСР'],'Беларусь':['Белоруссия','Білорусь']};
+/** A test for titles from hidden countries, read from the untouched catalogue line (`sourceInfo`, else `info`). */
+export function hiddenCountry(hidden=COUNTRY_DEFAULT){const names=new Set();for(const c of hidden){names.add(c);for(const a of COUNTRY_ALIASES[c]||[])names.add(a);}return item=>String(item?.sourceInfo||item?.info||'').split(',').some(p=>names.has(p.trim()));}
